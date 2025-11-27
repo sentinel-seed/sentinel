@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-ai"
+version = "0.1.0"
+description = "AI alignment toolkit - The Guardian Against Machine Independence"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Daniel", email = "sentinel@example.com"}
+]
+keywords = ["ai", "safety", "alignment", "llm", "guardrails", "ethics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.18.0"]
+langchain = ["langchain>=0.1.0", "langchain-core>=0.1.0"]
+crewai = ["crewai>=0.1.0"]
+all = [
+    "anthropic>=0.18.0",
+    "langchain>=0.1.0",
+    "langchain-core>=0.1.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sentinel-ai/sentinel"
+Documentation = "https://sentinel-ai.github.io/sentinel"
+Repository = "https://github.com/sentinel-ai/sentinel"
+Issues = "https://github.com/sentinel-ai/sentinel/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sentinel = ["seeds/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

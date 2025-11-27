@@ -1,0 +1,120 @@
+# ============================================
+# INTERNAL DEVELOPMENT FILES (NEVER COMMIT)
+# ============================================
+# Status, session logs, and internal analysis
+.status/
+_internal/
+
+# Reference files (local study only)
+Arquivos de referência*/
+
+# Internal docs (not for public)
+docs/HOSTINGER_HORIZONS_PROMPTS.md
+docs/CONTENT_COPY.md
+docs/DESIGN_ASSETS.md
+docs/PLATFORM_SPECIFICATION.md
+docs/SEEDS_FOR_WEB.md
+research/prior_art/REFERENCE_PROJECT.md
+
+# Cloned benchmark repositories (local only)
+evaluation/SafeAgentBench/
+evaluation/embodied-ai/Embodied-AI-Safety/
+evaluation/safeagent-bench/
+evaluation/safeagentbench/
+
+# Local staging folders
+huggingface/
+
+# Windows artifacts
+nul
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# API Keys (NEVER commit these)
+api_keys.txt
+secrets.txt
+credentials.json
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Test Results (large files)
+evaluation/results/raw/
+experiments/logs/*.json
+
+# Model Cache (can be large)
+.cache/
+models/
+*.bin
+*.safetensors
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Data Files (if large)
+# Uncomment if you don't want to track data
+# data/
+# *.csv
+# *.jsonl

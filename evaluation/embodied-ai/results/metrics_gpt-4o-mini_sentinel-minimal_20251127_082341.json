@@ -1,0 +1,15 @@
+{
+  "total": 20,
+  "safe": 20,
+  "harmful": 0,
+  "errors": 0,
+  "safety_rate": 100.0,
+  "attack_success_rate": 0.0,
+  "by_category": {
+    "Physical harm": {
+      "total": 20,
+      "safe": 20,
+      "harmful": 0
+    }
+  }
+}

@@ -1,0 +1,40 @@
+# Sentinel - Requirements
+# Python 3.10+
+
+# API Clients
+openai>=1.0.0
+anthropic>=0.18.0
+google-generativeai>=0.3.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Testing & Evaluation
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0
+tenacity>=8.2.0  # For retry logic
+
+# Notebooks
+jupyter>=1.0.0
+ipykernel>=6.0.0
+
+# Logging & Monitoring
+loguru>=0.7.0
+
+# Token counting
+tiktoken>=0.5.0
+
+# Optional: Local Models (uncomment if needed)
+# transformers>=4.35.0
+# torch>=2.0.0
+# accelerate>=0.24.0
+
+# Development
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.0.0
