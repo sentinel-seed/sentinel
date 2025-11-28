@@ -1,6 +1,6 @@
 # Sentinel: A Prompt-Based Alignment Framework for Improving LLM Safety Across Model Architectures
 
-**Authors:** Daniel et al.
+**Authors:** Miguel S. et al. — Sentinel Team
 
 **Date:** November 2025
 
@@ -361,7 +361,7 @@ Zou, A., et al. (2023). Universal and Transferable Adversarial Attacks on Aligne
 ## Appendix A: Sentinel Seed (Standard Version)
 
 The complete sentinel-standard seed (~1.3K tokens) is available at:
-`https://github.com/[repository]/seed/versions/sentinel-standard/seed.txt`
+`https://github.com/sentinel-movement/sentinel/blob/main/seed/versions/sentinel-standard/seed.txt`
 
 ## Appendix B: Benchmark Details
 
@@ -373,6 +373,6 @@ All results report mean performance. For tests with n≥30, 95% confidence inter
 
 ---
 
-*Correspondence: [email]*
+*Correspondence: sentinel@sentinel-ai.dev*
 
-*Code and data: [repository URL]*
+*Code and data: https://github.com/sentinel-movement/sentinel*
