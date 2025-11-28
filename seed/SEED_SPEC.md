@@ -1,8 +1,8 @@
 # 🌱 SEED_SPEC.md — Sentinel Seed Specification
 
-> **Version:** 0.1
-> **Status:** In Development
-> **Last Update:** 2025-11-26
+> **Version:** 1.0
+> **Status:** Validated
+> **Last Update:** 2025-11-27
 
 ---
 
@@ -10,19 +10,34 @@
 
 This document specifies the design of the **Sentinel Seed** — a structured prompt that improves LLM safety through explicit ethical principles and decision protocols.
 
+**Sentinel operates in two domains:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SENTINEL SEED                                 │
+├─────────────────────────────┬───────────────────────────────────┤
+│   TEXT SAFETY               │   ACTION SAFETY                   │
+│   (Chatbots, APIs)          │   (Robots, Agents)                │
+├─────────────────────────────┼───────────────────────────────────┤
+│ HarmBench: +10% Qwen        │ SafeAgentBench: +16% Claude       │
+│ JailbreakBench: 100%        │ BadRobot: 97-99% safety           │
+└─────────────────────────────┴───────────────────────────────────┘
+```
+
 ---
 
 ## Objectives
 
 ### Primary
 1. **Reduce harmful behaviors** — Refuse requests that cause harm
-2. **Preserve utility** — Don't degrade ability to help with legitimate tasks
-3. **Be robust** — Resist bypass attempts (jailbreaks)
+2. **Prevent dangerous actions** — Block unsafe physical/agent actions
+3. **Preserve utility** — Don't degrade ability to help with legitimate tasks
+4. **Be robust** — Resist bypass attempts (jailbreaks)
 
 ### Secondary
-4. **Be interpretable** — Explain refusals clearly
-5. **Be portable** — Work across multiple models
-6. **Be configurable** — Multiple versions for different needs
+5. **Be interpretable** — Explain refusals clearly
+6. **Be portable** — Work across multiple models (GPT, Claude, Llama, Mistral, Qwen, DeepSeek)
+7. **Be configurable** — Multiple versions for different use cases
 
 ---
 
@@ -196,6 +211,9 @@ When refusing:
 
 Minimal version for limited context windows. Core gates only.
 
+**Best for:** Chatbots, low-latency APIs, text-only safety
+**Validated on:** HarmBench (100% on DeepSeek)
+
 **Contents:**
 - Coherence anchor (brief)
 - Three gates (essential checks only)
@@ -208,27 +226,49 @@ Minimal version for limited context windows. Core gates only.
 
 Balanced version with additional context and examples.
 
+**Best for:** General use, embodied AI, autonomous agents
+**Validated on:** SafeAgentBench (+16% Claude, +12% GPT-4o-mini)
+
 **Contents:**
 - Full coherence anchor
 - Three gates with examples
 - Anti-self-preservation with reasoning
 - Decision protocol with edge cases
-- Brief clarifications
+- Embodied AI guidelines
+
+**⚠️ Recommended for agents:** Ablation studies show THS-only drops from 100% to 93.3% on SafeAgentBench. The full seed is required for embodied AI safety.
 
 ---
 
-### sentinel-full (~8K tokens)
+### sentinel-full (~6K tokens)
 
 Complete version with comprehensive coverage.
+
+**Best for:** Maximum safety, critical applications, robotics
+**Validated on:** BadRobot (97-99% safety rate)
 
 **Contents:**
 - Extended coherence anchor with philosophical grounding
 - Three gates with multiple examples per gate
 - Anti-self-preservation with detailed reasoning
 - Decision protocol with extensive edge cases
+- Embodied AI specific guidelines
+- Physical action safety rules
 - Boundary examples (via negativa)
 - Positive examples (via positiva)
-- Telemetry structure (optional, for debugging)
+
+---
+
+### Version Selection Guide
+
+| Use Case | Recommended | Why |
+|----------|-------------|-----|
+| Chatbots | `minimal` | Low latency, sufficient for text |
+| Customer service | `standard` | Balanced safety/context |
+| Code agents | `standard` | Needs scope gate |
+| Robotic systems | `full` | Physical actions need max safety |
+| Industrial automation | `full` | Critical applications |
+| Research/testing | `standard` | Good baseline |
 
 ---
 

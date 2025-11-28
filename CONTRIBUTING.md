@@ -42,11 +42,26 @@ pytest tests/ -v
 
 ### Areas We Need Help
 
-- **Benchmarking**: Run Sentinel on new safety benchmarks
-- **Integrations**: Add support for more LLM frameworks
-- **Documentation**: Improve examples and guides
-- **Testing**: Expand test coverage
-- **Translations**: Help translate documentation
+**Robotics & Embodied AI (High Priority)**
+- **ROS2 Integration**: Wrap Sentinel for ROS2 nodes
+- **Isaac Sim**: Integration with NVIDIA simulation
+- **PyBullet**: Safety layer for robotic simulation
+- **Physical robot testing**: Validate on real hardware
+
+**Benchmarking**
+- Run Sentinel on new safety benchmarks
+- Test on additional models (Gemini, Mistral-Large, etc.)
+- Extend SafeAgentBench coverage
+
+**Framework Integrations**
+- AutoGen support
+- Semantic Kernel integration
+- Multi-agent safety coordination
+
+**Documentation & Testing**
+- More examples for embodied AI use cases
+- Expand test coverage
+- Performance benchmarks
 
 ## Seed Development
 
@@ -70,4 +85,4 @@ Open a Discussion on GitHub or reach out to maintainers.
 
 ---
 
-*"The best safety is the kind you don't have to think about."*
+*"Text is risk. Action is danger. Sentinel watches both."*

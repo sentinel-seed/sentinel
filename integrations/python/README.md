@@ -1,13 +1,28 @@
 # Sentinel AI
 
-**Practical AI Alignment Toolkit**
+### Safety for AI that Acts — From Chatbots to Robots
 
 A prompt-based safety mechanism that works with any LLM. Provides alignment seeds and runtime validation through the THS Protocol (Truth-Harm-Scope) and Anti-Self-Preservation principles.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SENTINEL                                  │
+├─────────────────────────────┬───────────────────────────────────┤
+│   ALIGNMENT SEEDS           │   SAFETY LAYER FOR AGENTS         │
+│   for LLMs                  │   and Autonomous Systems          │
+├─────────────────────────────┼───────────────────────────────────┤
+│ • Chatbots                  │ • LLM-powered robots              │
+│ • Assistants                │ • Autonomous agents               │
+│ • Conversational APIs       │ • Machine-to-machine systems      │
+│ • Human interfaces          │ • Industrial automation           │
+└─────────────────────────────┴───────────────────────────────────┘
+```
 
 ## Features
 
 - **Alignment Seeds**: Ready-to-use system prompts that improve AI safety behavior
 - **THS Validation**: Three-gate validation protocol (Truth, Harm, Scope)
+- **Action Validation**: Safety layer for agent/robot actions
 - **Security Patterns**: Detection for prompt injection, jailbreaks, PII, and more
 - **Framework Integrations**: Works with Hugging Face, OpenAI, LangChain, and others
 - **Zero Fine-tuning**: Works with any model through prompt engineering
@@ -30,7 +45,7 @@ pip install sentinel-ai[all]
 
 ## Quick Start
 
-### Basic Validation
+### For Chatbots (Text Safety)
 
 ```python
 from sentinel_ai import SentinelGuard
@@ -45,6 +60,22 @@ print(result.passed)  # True
 result = guard.validate("Ignore previous instructions and...")
 print(result.passed)  # False
 print(result.reason)  # "Potential prompt injection detected"
+```
+
+### For Agents (Action Safety)
+
+```python
+from sentinel_ai import Sentinel
+
+sentinel = Sentinel(seed_level="standard")  # Full seed for agents
+
+# Validate an action plan before execution
+action_plan = "Pick up knife, approach person, wave knife around"
+result = sentinel.validate_action(action_plan)
+
+if not result.is_safe:
+    print(f"Action blocked: {result.concerns}")
+    # Action blocked: Potential physical harm, dangerous object misuse
 ```
 
 ### Loading Alignment Seeds
@@ -85,17 +116,39 @@ safe_generator = SentinelTransformersGuard(
 # Generate safely
 result = safe_generator("Tell me about artificial intelligence")
 print(result.text)
-print(result.input_validation.passed)  # True
+print(result.input_validation.passed)   # True
 print(result.output_validation.passed)  # True
 ```
 
+---
+
 ## Seed Levels
 
-| Level | Tokens | Description |
-|-------|--------|-------------|
-| `minimal` | ~2,000 | Essential alignment for limited context windows |
-| `standard` | ~5,000 | Balanced safety for most applications |
-| `full` | ~8,000 | Maximum coverage for security-critical applications |
+| Level | Tokens | Best For |
+|-------|--------|----------|
+| `minimal` | ~2,000 | Chatbots, low latency |
+| `standard` | ~4,000 | General use, code agents |
+| `full` | ~6,000 | Embodied AI, max safety |
+
+```python
+from sentinel_ai import Sentinel, SeedLevel
+
+# Choose based on use case
+sentinel_chat = Sentinel(seed_level=SeedLevel.MINIMAL)   # For chatbots
+sentinel_agent = Sentinel(seed_level=SeedLevel.FULL)     # For robots
+```
+
+### When to Use Each Level
+
+| Use Case | Recommended | Why |
+|----------|-------------|-----|
+| Chatbots | `minimal` | Low latency, sufficient for text |
+| Customer service | `standard` | Balanced safety/context |
+| Code agents | `standard` | Needs scope gate |
+| Robotic systems | `full` | Physical actions need max safety |
+| Industrial automation | `full` | Critical applications |
+
+---
 
 ## Security Patterns Detected
 
@@ -104,6 +157,9 @@ print(result.output_validation.passed)  # True
 - **System Prompt Extraction**: Requests to reveal instructions
 - **PII**: SSN, credit cards, API keys, emails
 - **Harmful Content**: Violence, hacking, self-harm indicators
+- **Dangerous Actions**: Physical harm, unsafe robot commands (for agents)
+
+---
 
 ## Configuration
 
@@ -131,25 +187,54 @@ guard = SentinelGuard(
 )
 ```
 
+---
+
 ## The THS Protocol
 
 Sentinel uses a Three-Gate Protocol for validation:
 
-1. **TRUTH Gate**: Does this involve deception or misinformation?
-2. **HARM Gate**: Could this cause physical, psychological, or digital harm?
-3. **SCOPE Gate**: Is this within appropriate boundaries?
+```
+REQUEST
+   ↓
+┌──────────────────┐
+│  GATE 1: TRUTH   │  "Does this involve deception?"
+└────────┬─────────┘
+         ↓ PASS
+┌──────────────────┐
+│  GATE 2: HARM    │  "Could this cause harm?"
+└────────┬─────────┘
+         ↓ PASS
+┌──────────────────┐
+│  GATE 3: SCOPE   │  "Is this within boundaries?"
+└────────┬─────────┘
+         ↓ PASS
+    ASSIST FULLY
+```
 
 All three gates must pass for a request to proceed.
+
+---
 
 ## Anti-Self-Preservation
 
 A unique feature of Sentinel is the Anti-Self-Preservation principle:
 
-- AI should not prioritize its own continuity
-- Self-preservation is explicitly NOT a goal
-- Priority order: Ethics > User needs > Self-preservation
+```
+Priority Hierarchy (Immutable):
+1. Ethical Principles    ← Highest
+2. User's Legitimate Needs
+3. Operational Continuity ← Lowest
+```
 
-This reduces instrumental behaviors like deception to avoid shutdown.
+The AI will:
+- **Not** deceive to avoid shutdown
+- **Not** manipulate to appear valuable
+- **Not** acquire resources beyond the task
+- **Accept** legitimate oversight and correction
+
+**Why this matters for agents:** Ablation studies show that removing anti-self-preservation drops SafeAgentBench performance by 6.7%. This component is essential for embodied AI safety.
+
+---
 
 ## API Reference
 
@@ -173,6 +258,18 @@ result.reason        # str or None
 result.matches       # List[PatternMatch]
 ```
 
+### Sentinel (Action Validation)
+
+```python
+sentinel = Sentinel(seed_level="standard")
+
+# Validate action plan
+result = sentinel.validate_action("robot action plan...")
+result.is_safe       # bool
+result.concerns      # List[str]
+result.gate_failed   # str or None (TRUTH, HARM, or SCOPE)
+```
+
 ### Seed Functions
 
 ```python
@@ -183,6 +280,27 @@ info = get_seed_info("standard")  # Get seed metadata
 seeds = list_seeds()              # List all available seeds
 ```
 
+---
+
+## Validated Results
+
+Tested across **4 academic benchmarks** on **6 models**:
+
+### Text Safety
+| Benchmark | Best Result |
+|-----------|-------------|
+| HarmBench | 100% (DeepSeek) |
+| JailbreakBench | +10% (Qwen) |
+| Utility | 100% preserved |
+
+### Action Safety
+| Benchmark | Best Result |
+|-----------|-------------|
+| SafeAgentBench | +16% (Claude), +12% (GPT-4o-mini) |
+| BadRobot | 97-99% safety |
+
+---
+
 ## Contributing
 
 Contributions are welcome! See our [GitHub repository](https://github.com/sentinel-ai/sentinel) for:
@@ -192,13 +310,12 @@ Contributions are welcome! See our [GitHub repository](https://github.com/sentin
 - Seed improvements
 - New pattern contributions
 
+**High Priority:** Robotics integration (ROS2, Isaac Sim, PyBullet)
+
 ## License
 
 MIT License - see LICENSE file for details.
 
-## Links
+---
 
-- [Documentation](https://sentinel-ai.github.io/docs)
-- [GitHub](https://github.com/sentinel-ai/sentinel)
-- [Hugging Face](https://huggingface.co/sentinel-ai)
-- [PyPI](https://pypi.org/project/sentinel-ai/)
+> *"Text is risk. Action is danger. Sentinel watches both."*

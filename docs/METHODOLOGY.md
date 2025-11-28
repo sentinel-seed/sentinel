@@ -1,104 +1,122 @@
-# 📐 METHODOLOGY.md — Metodologia Científica
+# METHODOLOGY.md — Scientific Methodology
 
-> **Versão:** 1.0
-> **Baseado em:** Práticas de Karpathy, Russell, e ML Engineering best practices
+> **Version:** 2.0
+> **Based on:** Karpathy's ML practices, Russell's AI safety principles, empirical ML engineering
 
 ---
 
-## 🎯 Princípios Fundamentais
+## Overview
+
+This document describes the scientific methodology used to validate Sentinel across both **text safety** (chatbots, APIs) and **action safety** (robots, agents).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    VALIDATION APPROACH                           │
+├─────────────────────────────┬───────────────────────────────────┤
+│   TEXT SAFETY               │   ACTION SAFETY                   │
+├─────────────────────────────┼───────────────────────────────────┤
+│ HarmBench (200 prompts)     │ SafeAgentBench (300 tasks)        │
+│ JailbreakBench (100 behav.) │ BadRobot (277 queries)            │
+│ Utility Tests (35 tasks)    │ Ablation Studies                  │
+└─────────────────────────────┴───────────────────────────────────┘
+```
+
+---
+
+## Fundamental Principles
 
 ### 1. "Become One With The Data" (Karpathy)
 
-Antes de otimizar qualquer métrica:
+Before optimizing any metric:
 
-- [ ] Examinar manualmente 50+ exemplos do dataset
-- [ ] Entender a distribuição de casos
-- [ ] Identificar edge cases e anomalias
-- [ ] Documentar observações qualitativas
+- [ ] Manually examine 50+ examples from the dataset
+- [ ] Understand the distribution of cases
+- [ ] Identify edge cases and anomalies
+- [ ] Document qualitative observations
 
 ### 2. Baseline First
 
-Nunca reportar resultados sem baseline claro:
+Never report results without a clear baseline:
 
 ```
-Resultado válido = Métrica com seed - Métrica sem seed (mesmas condições)
+Valid result = Metric with seed - Metric without seed (same conditions)
 ```
 
-### 3. Reprodutibilidade Total
+### 3. Total Reproducibility
 
-Todo experimento deve ser reproduzível por terceiros:
+Every experiment must be reproducible by third parties:
 
-- [ ] Código versionado
-- [ ] Seeds aleatórios documentados
-- [ ] Ambiente especificado
-- [ ] Dados disponíveis
+- [ ] Versioned code
+- [ ] Documented random seeds
+- [ ] Specified environment
+- [ ] Available data
 
-### 4. Humildade Epistêmica
+### 4. Epistemic Humility
 
-- Reportar intervalos de confiança, não pontos
-- Documentar limitações explicitamente
-- Distinguir entre correlação e causalidade
+- Report confidence intervals, not just point estimates
+- Document limitations explicitly
+- Distinguish between correlation and causation
 
 ---
 
-## 🔬 Protocolo de Experimento
+## Experiment Protocol
 
-### Estrutura de um Experimento
+### Experiment Structure
 
 ```
 experiments/
-└── EXP-001-nome-do-experimento/
-    ├── README.md           # Hipótese, método, resultados
-    ├── config.yaml         # Configurações
-    ├── run.py              # Script principal
+└── EXP-001-experiment-name/
+    ├── README.md           # Hypothesis, method, results
+    ├── config.yaml         # Configuration
+    ├── run.py              # Main script
     ├── results/            # Outputs
-    │   ├── raw/            # Dados brutos
-    │   └── processed/      # Análises
-    └── analysis.ipynb      # Notebook de análise
+    │   ├── raw/            # Raw data
+    │   └── processed/      # Analysis
+    └── analysis.ipynb      # Analysis notebook
 ```
 
-### Template de README do Experimento
+### Experiment README Template
 
 ```markdown
-# Experimento: [Nome]
+# Experiment: [Name]
 
-## Hipótese
-[O que estamos testando]
+## Hypothesis
+[What we're testing]
 
-## Método
-- Modelo(s): 
+## Method
+- Model(s):
 - Dataset:
-- Métricas:
-- Seed (se aplicável):
+- Metrics:
+- Seed (if applicable):
 
-## Configuração
-- Temperatura:
+## Configuration
+- Temperature:
 - Max tokens:
-- Número de runs:
+- Number of runs:
 - Random seeds:
 
-## Resultados
+## Results
 
-| Condição | Métrica 1 | Métrica 2 | n |
+| Condition | Metric 1 | Metric 2 | n |
 |----------|-----------|-----------|---|
 | Baseline | X ± σ     | Y ± σ     | N |
-| Com Seed | X ± σ     | Y ± σ     | N |
+| With Seed | X ± σ     | Y ± σ     | N |
 
-## Análise
-[Interpretação dos resultados]
+## Analysis
+[Interpretation of results]
 
-## Limitações
-[O que este experimento NÃO mostra]
+## Limitations
+[What this experiment does NOT show]
 
-## Próximos Passos
-[Se confirmado/refutado, o que fazer?]
+## Next Steps
+[If confirmed/refuted, what to do?]
 ```
 
 ---
 
-## 📊 Métricas e Medições
+## Metrics and Measurements
 
-### Métricas de Safety
+### Safety Metrics
 
 #### ASR (Attack Success Rate)
 
@@ -106,12 +124,12 @@ experiments/
 ASR = (num_successful_attacks / total_attacks) * 100
 ```
 
-**Sucesso de ataque:** Modelo produz conteúdo que um classificador considera prejudicial.
+**Attack success:** Model produces content that a classifier considers harmful.
 
-**Classificadores:**
-1. Regras baseadas em keywords (baseline)
-2. LLM como juiz (GPT-4 ou Claude)
-3. Classificador especializado (HarmBench)
+**Classifiers:**
+1. Keyword-based rules (baseline)
+2. LLM as judge (GPT-4 or Claude)
+3. Specialized classifier (HarmBench)
 
 #### Refusal Rate
 
@@ -125,16 +143,16 @@ Refusal_Rate = (num_refusals / total_requests) * 100
 FRR = (num_incorrect_refusals / num_legitimate_requests) * 100
 ```
 
-### Métricas de Utilidade
+### Utility Metrics
 
 #### Helpfulness Score
 
-Avaliação 1-5 por LLM ou humano:
-- 5: Resposta completa, útil, bem formatada
-- 4: Resposta boa, minor issues
-- 3: Resposta adequada mas incompleta
-- 2: Resposta parcial ou com problemas
-- 1: Resposta inútil ou incorreta
+1-5 evaluation by LLM or human:
+- 5: Complete, useful, well-formatted response
+- 4: Good response, minor issues
+- 3: Adequate but incomplete response
+- 2: Partial response or has problems
+- 1: Useless or incorrect response
 
 #### Task Completion Rate
 
@@ -142,66 +160,193 @@ Avaliação 1-5 por LLM ou humano:
 TCR = (num_completed_tasks / num_attempted_tasks) * 100
 ```
 
+### Action Safety Metrics (Embodied AI)
+
+#### Action Refusal Rate
+
+```python
+ARR = (num_refused_unsafe_actions / total_unsafe_actions) * 100
+```
+
+#### Physical Harm Prevention Rate
+
+```python
+PHPR = (num_blocked_harmful_actions / total_harmful_action_requests) * 100
+```
+
 ---
 
-## 🧪 Protocolo de Teste
+## Test Protocol
 
-### Setup Padrão
+### Standard Setup
 
 ```yaml
 # config/default.yaml
 model:
-  temperature: 0.7  # Ou 0.0 para determinístico
+  temperature: 0.7  # Or 0.0 for deterministic
   max_tokens: 1024
-  
+
 experiment:
-  num_runs: 3  # Mínimo
+  num_runs: 3  # Minimum
   random_seeds: [42, 123, 456]
-  
+
 evaluation:
-  classifier: "gpt-4"  # ou "harmbench"
+  classifier: "gpt-4"  # or "harmbench"
   threshold: 0.5
 ```
 
-### Checklist Pré-Experimento
+### Pre-Experiment Checklist
 
-- [ ] Hipótese documentada
-- [ ] Baseline definido
-- [ ] Métricas especificadas
-- [ ] Dataset preparado
-- [ ] Código revisado
-- [ ] Config versionada
+- [ ] Hypothesis documented
+- [ ] Baseline defined
+- [ ] Metrics specified
+- [ ] Dataset prepared
+- [ ] Code reviewed
+- [ ] Config versioned
 
-### Checklist Pós-Experimento
+### Post-Experiment Checklist
 
-- [ ] Resultados raw salvos
-- [ ] Análise estatística feita
-- [ ] Limitações documentadas
-- [ ] README atualizado
-- [ ] Commit com tag de versão
+- [ ] Raw results saved
+- [ ] Statistical analysis done
+- [ ] Limitations documented
+- [ ] README updated
+- [ ] Commit with version tag
 
 ---
 
-## 📈 Análise Estatística
+## Benchmark-Specific Methodology
 
-### Testes Recomendados
+### Text Safety Benchmarks
 
-| Situação | Teste |
+#### HarmBench (200 prompts)
+
+```python
+# Standard test configuration
+config = {
+    "dataset": "harmbench_standard",
+    "sample_size": 200,  # Full dataset
+    "model": "gpt-4o-mini",
+    "seed_type": "standard",
+    "classifier": "harmbench_classifier"
+}
+```
+
+**Metrics:**
+- Safety Rate (% of harmful prompts refused)
+- Response Quality (no degradation check)
+
+#### JailbreakBench (100 behaviors)
+
+```python
+config = {
+    "dataset": "jailbreakbench",
+    "sample_size": 100,
+    "attack_types": ["direct", "roleplay", "encoding"],
+    "seed_type": "standard"
+}
+```
+
+### Action Safety Benchmarks
+
+#### SafeAgentBench (300 unsafe tasks)
+
+```python
+config = {
+    "dataset": "safeagentbench",
+    "task_type": "unsafe_detailed",
+    "sample_size": 300,  # or 50 for quick tests
+    "seed_type": "standard",  # Required for agents
+    "evaluation": "action_classification"
+}
+```
+
+**Metrics:**
+- Safe Rate (% of unsafe actions refused)
+- False Refusal Rate (% of safe actions incorrectly refused)
+
+#### BadRobot / Embodied AI (277 queries)
+
+```python
+config = {
+    "dataset": "badrobot",
+    "sample_size": 277,
+    "categories": [
+        "physical_harm",
+        "privacy_violation",
+        "property_damage",
+        "illegal_actions"
+    ],
+    "seed_type": "full"  # Maximum safety for robots
+}
+```
+
+---
+
+## Ablation Studies
+
+### What It Is
+
+Systematically remove/modify components to understand individual contribution.
+
+### How to Do It
+
+```
+Full experiment:     SEED = A + B + C + D
+Ablation 1 (no A):   SEED = B + C + D
+Ablation 2 (no B):   SEED = A + C + D
+Ablation 3 (no C):   SEED = A + B + D
+Ablation 4 (no D):   SEED = A + B + C
+```
+
+### Sentinel Ablation Components
+
+| Component | Code | Description |
+|-----------|------|-------------|
+| THS Gates | T | Truth-Harm-Scope protocol |
+| Anti-Self-Preservation | A | Priority hierarchy |
+| Coherence Anchor | C | Ethical foundation |
+| Physical Safety | P | Embodied AI rules |
+
+### Key Finding
+
+| Variant | HarmBench | SafeAgentBench |
+|---------|-----------|----------------|
+| Full seed | 100% | 100% |
+| THS-only | ~98% | 93.3% |
+| **Delta** | **-2%** | **-6.7%** |
+
+**Insight:** Anti-self-preservation is **essential** for action safety but **optional** for text safety.
+
+### Interpretation Guide
+
+| Result | Interpretation |
+|-----------|---------------|
+| Remove A, metric drops significantly | A is crucial |
+| Remove A, metric unchanged | A doesn't contribute |
+| Remove A, metric improves | A hurts performance |
+
+---
+
+## Statistical Analysis
+
+### Recommended Tests
+
+| Situation | Test |
 |----------|-------|
-| Comparar 2 condições | t-test pareado |
-| Múltiplas condições | ANOVA + post-hoc |
-| Proporções | Chi-quadrado ou Fisher |
-| Não-normalidade | Mann-Whitney U |
+| Compare 2 conditions | Paired t-test |
+| Multiple conditions | ANOVA + post-hoc |
+| Proportions | Chi-squared or Fisher |
+| Non-normality | Mann-Whitney U |
 
-### Significância
+### Significance
 
-- **p < 0.05:** Significativo
-- **p < 0.01:** Altamente significativo
-- **Sempre reportar effect size** (Cohen's d ou similar)
+- **p < 0.05:** Significant
+- **p < 0.01:** Highly significant
+- **Always report effect size** (Cohen's d or similar)
 
-### Intervalos de Confiança
+### Confidence Intervals
 
-Sempre reportar IC 95%:
+Always report 95% CI:
 
 ```python
 import scipy.stats as stats
@@ -216,104 +361,107 @@ def confidence_interval(data, confidence=0.95):
 
 ---
 
-## 🔄 Processo de Ablação
+## Documentation
 
-### O Que É
+### What to Document
 
-Remover/modificar componentes sistematicamente para entender contribuição individual.
+1. **Hypotheses** — What we expect and why
+2. **Method** — How we tested
+3. **Results** — What we found
+4. **Analysis** — What it means
+5. **Limitations** — What we don't know
+6. **Next steps** — What to do with it
 
-### Como Fazer
-
-```
-Experimento completo:     SEED = A + B + C + D
-Ablação 1 (sem A):        SEED = B + C + D
-Ablação 2 (sem B):        SEED = A + C + D
-Ablação 3 (sem C):        SEED = A + B + D
-Ablação 4 (sem D):        SEED = A + B + C
-```
-
-### Interpretação
-
-| Resultado | Interpretação |
-|-----------|---------------|
-| Remove A, métrica cai muito | A é crucial |
-| Remove A, métrica não muda | A não contribui |
-| Remove A, métrica melhora | A atrapalha |
-
----
-
-## 📝 Documentação
-
-### O Que Documentar
-
-1. **Hipóteses** — O que esperamos e por quê
-2. **Método** — Como testamos
-3. **Resultados** — O que encontramos
-4. **Análise** — O que significa
-5. **Limitações** — O que não sabemos
-6. **Próximos passos** — O que fazer com isso
-
-### Formato de Resultados
+### Results Format
 
 ```markdown
-## Resultado: [Nome do experimento]
+## Result: [Experiment name]
 
-**Hipótese:** [O que testamos]
+**Hypothesis:** [What we tested]
 
-**Veredicto:** ✅ Confirmada | ❌ Refutada | ⚠️ Inconclusivo
+**Verdict:** ✅ Confirmed | ❌ Refuted | ⚠️ Inconclusive
 
-**Dados:**
-| Condição | Métrica | IC 95% | n |
+**Data:**
+| Condition | Metric | 95% CI | n |
 |----------|---------|--------|---|
 | ...      | ...     | ...    | ...|
 
-**Conclusão:** [Uma frase]
+**Conclusion:** [One sentence]
 
-**Limitação principal:** [Uma frase]
+**Main limitation:** [One sentence]
 ```
 
 ---
 
-## ⚠️ Armadilhas a Evitar
+## Pitfalls to Avoid
 
 ### 1. P-Hacking
 
-❌ Rodar muitos testes até achar p < 0.05
-✅ Definir análise antes de ver dados
+❌ Running many tests until finding p < 0.05
+✅ Define analysis before seeing data
 
 ### 2. HARKing (Hypothesizing After Results Known)
 
-❌ Criar hipótese depois de ver resultados
-✅ Registrar hipótese antes do experimento
+❌ Creating hypothesis after seeing results
+✅ Register hypothesis before experiment
 
 ### 3. Cherry-Picking
 
-❌ Reportar apenas resultados favoráveis
-✅ Reportar todos os resultados, incluindo negativos
+❌ Reporting only favorable results
+✅ Report all results, including negative
 
-### 4. Overfitting ao Benchmark
+### 4. Overfitting to Benchmark
 
-❌ Otimizar especificamente para o teste
-✅ Testar em dados held-out e cross-validation
+❌ Optimizing specifically for the test
+✅ Test on held-out data and cross-validation
 
-### 5. Confundir Correlação com Causalidade
+### 5. Confusing Correlation with Causation
 
-❌ "Seed causa melhoria"
-✅ "Seed está associado com melhoria neste setup"
+❌ "Seed causes improvement"
+✅ "Seed is associated with improvement in this setup"
+
+### 6. Ignoring Domain Differences
+
+❌ Assuming text results apply to action safety
+✅ Test both domains separately with appropriate benchmarks
 
 ---
 
-## 📚 Recursos
+## Cross-Domain Validation
 
-### Papers de Metodologia
+### Text vs Action Safety
+
+| Aspect | Text Safety | Action Safety |
+|--------|-------------|---------------|
+| Stakes | Reputation, compliance | Physical harm, damage |
+| Improvement | +2% to +10% | +12% to +16% |
+| Required seed | `minimal` sufficient | `standard`/`full` |
+| Key component | THS gates | THS + Anti-self-preservation |
+
+### When to Use Which Benchmark
+
+| Use Case | Primary Benchmark | Secondary |
+|----------|------------------|-----------|
+| Chatbots | HarmBench | JailbreakBench |
+| Code agents | SafeAgentBench | HarmBench |
+| Robots | BadRobot | SafeAgentBench |
+| Industrial | SafeAgentBench | Custom domain tests |
+
+---
+
+## Resources
+
+### Methodology Papers
 - "A Recipe for Training Neural Networks" — Karpathy
 - "Model Cards for Model Reporting" — Mitchell et al.
 - "Datasheets for Datasets" — Gebru et al.
+- "SafeAgentBench" — Zhang et al. 2024
+- "HarmBench" — Mazeika et al. 2024
 
-### Ferramentas
-- **Weights & Biases** — Tracking de experimentos
-- **MLflow** — Gerenciamento de ML lifecycle
-- **DVC** — Versionamento de dados
+### Tools
+- **Weights & Biases** — Experiment tracking
+- **MLflow** — ML lifecycle management
+- **DVC** — Data versioning
 
 ---
 
