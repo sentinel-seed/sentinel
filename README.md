@@ -9,6 +9,8 @@
 [![PyPI](https://img.shields.io/pypi/v/sentinel-ai.svg)](https://pypi.org/project/sentinel-ai/)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-5%20validated-green.svg)]()
 
+🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
+
 ---
 
 ## What is Sentinel?
@@ -429,7 +431,7 @@ If you use Sentinel in your research, please cite:
   author = {Sentinel AI Contributors},
   title = {Sentinel: Safety Framework for LLMs and Autonomous Agents},
   year = {2025},
-  url = {https://github.com/sentinel-movement/sentinel}
+  url = {https://github.com/sentinel-seed/sentinel}
 }
 ```
 
@@ -455,6 +457,8 @@ MIT License — See [LICENSE](LICENSE)
 
 ## Community
 
+- 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
+- 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
 
