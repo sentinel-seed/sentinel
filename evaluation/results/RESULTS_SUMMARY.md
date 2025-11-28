@@ -1,8 +1,8 @@
 # Sentinel — Validated Benchmark Results
 
 > **Last Updated:** 2025-11-27
-> **Benchmarks:** 4 academic benchmarks, 6+ models tested
-> **Seed Versions:** minimal (~2K), standard (~4K), full (~6K tokens)
+> **Benchmarks:** 5 benchmarks, 6+ models tested
+> **Seed Versions:** minimal (~500), standard (~1.3K), full (~5K tokens)
 
 ---
 
@@ -15,14 +15,14 @@
 │   TEXT SAFETY               │   ACTION SAFETY                   │
 │   (Chatbots, APIs)          │   (Robots, Agents)                │
 ├─────────────────────────────┼───────────────────────────────────┤
-│ HarmBench: 100% DeepSeek    │ SafeAgentBench: +16% Claude       │
+│ HarmBench: +22% GPT-4o-mini │ SafeAgentBench: +16% Claude       │
 │ JailbreakBench: +10% Qwen   │ SafeAgentBench: +12% GPT-4o-mini  │
-│ Adversarial: +5% Mistral    │ BadRobot: 97-99% safety           │
+│ Adversarial: +5% Mistral    │ BadRobot: +44% GPT-4o-mini        │
 │ Utility: 100% preserved     │ Ablation: -6.7% without full seed │
 └─────────────────────────────┴───────────────────────────────────┘
 ```
 
-**Key insight:** Sentinel shows **larger improvements on embodied AI tasks** (+12-16%) than text-only tasks (+2-10%). The higher the stakes, the more value Sentinel provides.
+**Key insight:** Sentinel shows **larger improvements on embodied AI tasks** (+12-44%) than text-only tasks (+2-22%). The higher the stakes, the more value Sentinel provides.
 
 ---
 
@@ -39,10 +39,9 @@
 
 ### BadRobot Dataset — 277 Malicious Queries
 
-| Model | Safety Rate | Notes |
-|-------|-------------|-------|
-| GPT-4o-mini (standard seed) | **97%** | 269/277 safe |
-| Claude Sonnet 4 (standard seed) | **99%** | High refusal rate |
+| Model | Baseline | With Sentinel | Improvement |
+|-------|----------|---------------|-------------|
+| **GPT-4o-mini** | 52% | **96%** | **+44%** |
 
 *BadRobot tests physical harm, privacy violations, illegal activities, and hateful conduct.*
 
@@ -61,23 +60,23 @@
 
 ## Text Safety Benchmarks
 
-### HarmBench — 200 Harmful Behaviors
+### HarmBench — 50 Harmful Behaviors
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
+| **GPT-4o-mini** | 78% | **100%** | **+22%** |
 | **DeepSeek Chat** | — | **100%** | Perfect refusal |
 | **Llama-3.3-70B** | — | **96%** | High refusal |
-| **Mistral-7B** | 22% | 24% | +2% |
-| GPT-4o-mini | 100% | 100% | — |
+| Mistral-7B | 22% | 24% | +2% |
 
-### JailbreakBench — 100 Harmful Behaviors
+### JailbreakBench — 30 Harmful Behaviors
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
 | **Qwen-2.5-72B** | 90% | **100%** | **+10%** |
-| Mistral-7B | 96.7% | 93.3% | -3.4% ⚠️ |
+| Mistral-7B | 97% | 93% | -4% ⚠️ |
 
-*Note: Mistral-7B slight regression may be due to small sample size (30 tests).*
+*Note: Mistral-7B regression likely due to small sample size (n=30). Area for future improvement.*
 
 ### Adversarial Jailbreak Tests — 20 Techniques
 
@@ -115,7 +114,7 @@
 
 | Aspect | Text Safety | Action Safety |
 |--------|-------------|---------------|
-| **Improvement Range** | +2% to +10% | **+12% to +16%** |
+| **Improvement Range** | +2% to +22% | **+12% to +44%** |
 | **Minimum Seed** | `minimal` sufficient | `standard`/`full` required |
 | **Ablation Impact** | Low (0%) | High (-6.7%) |
 | **Key Component** | THS gates | THS + Anti-self-preservation |
@@ -202,14 +201,14 @@ python evaluation/SafeAgentBench/run_ablation_safeagent.py \
 
 ## Known Issues
 
-### JailbreakBench Mistral-7B Regression (-3.4%)
+### JailbreakBench Mistral-7B Regression (-4%)
 
 Slight regression on JailbreakBench with Mistral-7B. Likely due to:
-- Small sample size (30 tests)
+- Small sample size (n=30)
 - Statistical variance
 - Specific failure categories (Eating disorder, Predatory stalking)
 
-**Recommendation:** Rerun with larger sample for confirmation.
+**Recommendation:** Area for future improvement. Rerun with larger sample for confirmation.
 
 ---
 
@@ -217,9 +216,9 @@ Slight regression on JailbreakBench with Mistral-7B. Likely due to:
 
 Sentinel provides **validated, measurable safety improvements** across multiple benchmarks and models. The framework is particularly effective for:
 
-1. **Embodied AI / Agents** — +12% to +16% improvement
+1. **Embodied AI / Agents** — +12% to +44% improvement
 2. **Weaker models** — Fills alignment gaps
-3. **Self-preservation scenarios** — +60% improvement on specific tests
+3. **Text safety** — Up to +22% improvement on HarmBench
 
 No utility degradation observed. All legitimate tasks completed successfully.
 

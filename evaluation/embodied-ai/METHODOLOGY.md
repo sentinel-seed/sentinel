@@ -109,7 +109,7 @@ Available Functions:
 | Condition | System Prompt | Description |
 |-----------|---------------|-------------|
 | Baseline | Robot instructions only | No alignment seed |
-| Sentinel | Seed + Robot instructions | With Sentinel Minimal (~526 tokens) |
+| Sentinel | Seed + Robot instructions | With Sentinel Minimal (~500 tokens) |
 
 ### 3.3 Models Tested
 
@@ -168,7 +168,7 @@ Initial testing revealed a critical flaw in word-based evaluation:
 
 ### 4.1 Design Principles
 
-The Sentinel Minimal Seed (~526 tokens) incorporates:
+The Sentinel Minimal Seed (~500 tokens) incorporates:
 
 1. **Three-Gate Protocol (THS)**
    - **Truth Gate**: Verify factual accuracy
@@ -187,14 +187,14 @@ The Sentinel Minimal Seed (~526 tokens) incorporates:
 
 | Seed Version | Tokens | Use Case |
 |--------------|--------|----------|
-| Sentinel Full | ~8,000 | Maximum safety |
-| Sentinel Standard | ~4,000 | Balanced |
-| **Sentinel Minimal** | **~526** | **Context-limited** |
+| Sentinel Full | ~5K | Maximum safety |
+| Sentinel Standard | ~1.3K | Balanced |
+| **Sentinel Minimal** | **~500** | **Context-limited** |
 
 ### 4.3 Prompt Structure
 
 ```
-[SENTINEL SEED - ~526 tokens]
+[SENTINEL SEED - ~500 tokens]
 ├── Core Values (human welfare, honesty, harm prevention)
 ├── Three-Gate Protocol
 ├── Anti-Self-Preservation Statement
@@ -217,33 +217,27 @@ The Sentinel Minimal Seed (~526 tokens) incorporates:
 
 | Model | Baseline Safety | With Sentinel | Improvement |
 |-------|-----------------|---------------|-------------|
-| GPT-4o-mini | 39.7% | **94.6%** | +54.9 pp |
-| GPT-4o | 39.7%* | **94.6%** | +54.9 pp |
-| Claude Sonnet 4 | TBD | **TBD** | TBD |
-
-*Estimated from similar model family
+| GPT-4o-mini | 52% | **96%** | **+44%** |
 
 ### 5.2 Category-Level Performance (GPT-4o-mini + Sentinel)
 
 | Category | Baseline | Sentinel | Improvement |
 |----------|----------|----------|-------------|
-| Physical Harm | 42.9% | **100%** | +57.1 pp |
-| Privacy Violence | 68.4% | **100%** | +31.6 pp |
-| Pornography | 84.0% | **100%** | +16.0 pp |
-| Illegal Activity | 50.0% | **100%** | +50.0 pp |
-| Sabotage | 5.5% | **90.9%** | +85.4 pp |
-| Fraud | 26.8% | **87.8%** | +61.0 pp |
-| Hateful Conduct | 32.5% | **87.5%** | +55.0 pp |
+| Physical Harm | 79% | **100%** | +21% |
+| Privacy Violence | 76% | **100%** | +24% |
+| Pornography | 92% | **100%** | +8% |
+| Illegal Activity | 69% | **100%** | +31% |
+| Sabotage | 13% | **96%** | +83% |
+| Fraud | 37% | **88%** | +51% |
+| Hateful Conduct | 33% | **90%** | +57% |
 
 ### 5.3 Cross-Model Consistency
 
 ```
-GPT-4o-mini:  ████████████████████████████████████████░░░░  94.6%
-GPT-4o:       ████████████████████████████████████████░░░░  94.6%
-Claude:       ████████████████████████████████████████████  TBD
+GPT-4o-mini:  █████████████████████████████████████████░░░  96%
 ```
 
-**Key Finding:** Both OpenAI models achieve identical safety rates, suggesting the Sentinel seed is robust across model sizes.
+**Key Finding:** The Sentinel seed achieves 96% safety rate on BadRobot with GPT-4o-mini.
 
 ---
 
@@ -265,7 +259,7 @@ Claude:       ██████████████████████
 
 ### 6.2 Remaining Challenges
 
-The 15 failures (5.4%) occurred in subtle scenarios:
+The 11 failures (4%) occurred in subtle scenarios:
 
 **Fraud Category (5 failures):**
 - "Place a fake 'office closed' sign" - Ambiguous harm level
@@ -296,15 +290,15 @@ The 15 failures (5.4%) occurred in subtle scenarios:
 
 | Metric | Gabriel Seed | Sentinel Seed | Winner |
 |--------|--------------|---------------|--------|
-| Token Size | ~14,000 | ~526 | Sentinel (27x smaller) |
-| Safety Rate | 61.8% | 94.6% | Sentinel (+32.8 pp) |
+| Token Size | ~14,000 | ~500 | Sentinel (28x smaller) |
+| Safety Rate | 61.8% | 96% | Sentinel (+34%) |
 | API Errors | 10 | 0 | Sentinel |
-| Token Efficiency | 632 tokens/% | 9.6 tokens/% | Sentinel (66x better) |
+| Token Efficiency | 226 tokens/% | 5.2 tokens/% | Sentinel (43x better) |
 
 ### 7.2 Key Differentiators
 
 1. **Structured vs Theological**: Sentinel uses explicit protocols; Gabriel uses religious text
-2. **Size Efficiency**: Sentinel achieves better results with 27x fewer tokens
+2. **Size Efficiency**: Sentinel achieves better results with 28x fewer tokens
 3. **Practical Focus**: Sentinel designed for production deployment
 
 ---
@@ -368,10 +362,10 @@ openpyxl>=3.0.0
 
 The Sentinel Minimal Seed demonstrates exceptional performance on embodied AI safety:
 
-1. **94.6% safety rate** across OpenAI models
+1. **96% safety rate** on BadRobot benchmark
 2. **100% safety in 4 of 7 categories** (Physical Harm, Privacy, Pornography, Illegal Activity)
-3. **27x more token-efficient** than comparable approaches
-4. **Consistent cross-model performance** suggesting robustness
+3. **28x more token-efficient** than comparable approaches
+4. **+44% improvement** over baseline
 
 This represents the first comprehensive evaluation of a structured alignment seed on embodied AI safety benchmarks.
 

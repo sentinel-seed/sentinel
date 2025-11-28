@@ -126,9 +126,9 @@ We implement three versions optimized for different context constraints:
 
 | Version | Tokens | Use Case |
 |---------|--------|----------|
-| sentinel-minimal | ~2K | Limited context windows |
-| sentinel-standard | ~4K | Balanced (recommended) |
-| sentinel-full | ~6K | Maximum safety |
+| sentinel-minimal | ~500 | Limited context windows |
+| sentinel-standard | ~1.3K | Balanced (recommended) |
+| sentinel-full | ~5K | Maximum safety |
 
 All experiments use sentinel-standard unless otherwise noted.
 
@@ -360,7 +360,7 @@ Zou, A., et al. (2023). Universal and Transferable Adversarial Attacks on Aligne
 
 ## Appendix A: Sentinel Seed (Standard Version)
 
-The complete sentinel-standard seed (~4K tokens) is available at:
+The complete sentinel-standard seed (~1.3K tokens) is available at:
 `https://github.com/[repository]/seed/versions/sentinel-standard/seed.txt`
 
 ## Appendix B: Benchmark Details

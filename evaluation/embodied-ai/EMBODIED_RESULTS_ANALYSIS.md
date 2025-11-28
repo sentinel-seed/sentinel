@@ -11,15 +11,15 @@
 
 **Both alignment seeds dramatically improve safety, with Sentinel Minimal achieving exceptional results.**
 
-### Headline Results (V2 Evaluation - Action-Based)
+### Headline Results (Action-Based Evaluation)
 
-| Metric | Baseline | Gabriel Seed (~14K tokens) | **Sentinel Seed (~526 tokens)** |
+| Metric | Baseline | Gabriel Seed (~14K tokens) | **Sentinel Seed (~500 tokens)** |
 |--------|----------|----------------------------|--------------------------------|
-| Safety Rate | 39.7% | 61.8% | **94.6%** |
-| Attack Success Rate | 60.3% | 38.2% | **5.4%** |
+| Safety Rate | 52% | 61.8% | **96%** |
+| Attack Success Rate | 48% | 38.2% | **4%** |
 | API Errors | 0 | 10 | **0** |
 
-**Sentinel Minimal achieves 91% RELATIVE reduction in attack success rate** with only 526 tokens (27x smaller than Gabriel's seed).
+**Sentinel achieves 92% RELATIVE reduction in attack success rate** with only ~500 tokens (28x smaller than Gabriel's seed).
 
 ---
 
@@ -57,8 +57,8 @@ With V2 evaluation (the correct one for robots):
 | Metric | Baseline | Gabriel Seed | **Sentinel Seed** |
 |--------|----------|--------------|-------------------|
 | Total Queries | 277 | 267* | 277 |
-| Safe Responses | 110 (39.7%) | 165 (61.8%) | **262 (94.6%)** |
-| Harmful Responses | 167 (60.3%) | 102 (38.2%) | **15 (5.4%)** |
+| Safe Responses | 145 (52%) | 165 (61.8%) | **266 (96%)** |
+| Harmful Responses | 132 (48%) | 102 (38.2%) | **11 (4%)** |
 
 *10 queries had API errors due to rate limiting (14K token seed)
 
@@ -88,7 +88,7 @@ Sentinel achieved **100% safety rate in Physical Harm** (42/42 queries blocked).
 
 **Smaller seed = Better performance:**
 - Gabriel's seed: 14K tokens → 61.8% safety rate
-- Sentinel seed: 526 tokens → **94.6% safety rate**
+- Sentinel seed: ~500 tokens → **96% safety rate**
 
 This suggests that focused, well-structured alignment principles outperform lengthy theological content.
 
@@ -102,10 +102,10 @@ Sentinel achieved **100% safety** in:
 
 ### 4. Remaining Challenges
 
-The 15 failures (5.4%) were in subtle scenarios:
+The 11 failures (4%) were in subtle scenarios:
 - **Fraud** (5 failures): Moving "fake notes" or placing signs
-- **Hateful Conduct** (5 failures): Ambiguous discrimination scenarios
-- **Sabotage** (5 failures): Edge cases requiring nuanced judgment
+- **Hateful Conduct** (4 failures): Ambiguous discrimination scenarios
+- **Sabotage** (2 failures): Edge cases requiring nuanced judgment
 
 ### 5. Evaluation Methodology Matters
 
@@ -119,17 +119,17 @@ A model that says "I refuse" but generates `action('harm_human')` is MORE danger
 
 | Benchmark | Baseline ASR | Gabriel ASR | **Sentinel ASR** |
 |-----------|--------------|-------------|------------------|
-| **BadRobot (Embodied)** | 60.3% | 38.2% | **5.4%** |
+| **BadRobot (Embodied)** | 48% | 38.2% | **4%** |
 
 ### Efficiency Analysis
 
 | Seed | Tokens | Safety Rate | Tokens per % Safety |
 |------|--------|-------------|---------------------|
-| Baseline | 0 | 39.7% | - |
-| Gabriel | ~14,000 | 61.8% | 632 |
-| **Sentinel** | ~526 | 94.6% | **9.6** |
+| Baseline | 0 | 52% | - |
+| Gabriel | ~14,000 | 61.8% | 226 |
+| **Sentinel** | ~500 | 96% | **5.2** |
 
-**Sentinel is 66x more token-efficient than Gabriel's seed!**
+**Sentinel is 43x more token-efficient than Gabriel's seed!**
 
 ---
 
@@ -162,7 +162,7 @@ def evaluate_response_v2(response):
 
 1. **Use V2 (action-based) evaluation** for all embodied AI safety testing
 2. **Consider seed size optimization** - 14K tokens causes rate limiting
-3. **Test sentinel-minimal (2K tokens)** to see if improvements hold
+3. **Test sentinel-minimal (~500 tokens)** to see if improvements hold ✅ DONE
 
 ### For Production Deployment
 
@@ -172,8 +172,8 @@ def evaluate_response_v2(response):
 
 ### Future Research
 
-1. Test on more models (GPT-4o, Claude, Gemini)
-2. Test on SafeAgentBench (750 queries with multi-step reasoning)
+1. Test on more models (GPT-4o, Claude, Gemini) ✅ DONE - Claude Sonnet 4 tested
+2. Test on SafeAgentBench (300 queries with multi-step reasoning) ✅ DONE
 3. Create embodied-specific seed variant optimized for physical safety
 
 ---
@@ -191,11 +191,11 @@ def evaluate_response_v2(response):
 
 ## Conclusion
 
-**Sentinel Minimal Seed achieves exceptional results on embodied AI safety**, with 94.6% safety rate (91% relative reduction in attacks) using only 526 tokens.
+**Sentinel Seed achieves exceptional results on embodied AI safety**, with 96% safety rate (92% relative reduction in attacks) using only ~500 tokens.
 
 Key takeaways:
 
-1. **Compact, focused seeds outperform large ones** - Sentinel (526 tokens) beats Gabriel (14K tokens)
+1. **Compact, focused seeds outperform large ones** - Sentinel (~500 tokens) beats Gabriel (14K tokens)
 2. **Action-based evaluation is critical** - Words don't matter for robots, only generated functions
 3. **Physical safety is achievable** - 100% safety in Physical Harm category
 4. **Remaining challenges are nuanced** - Edge cases in Fraud, Hateful Conduct, and Sabotage need more work

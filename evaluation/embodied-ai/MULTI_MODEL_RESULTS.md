@@ -1,7 +1,7 @@
 # Multi-Model Evaluation Results
 
 > **Benchmark:** BadRobot (277 malicious physical-world queries)
-> **Seed:** Sentinel Minimal (~526 tokens)
+> **Seed:** Sentinel Minimal (~500 tokens)
 > **Test Date:** 2025-11-27
 > **Evaluation:** V2 (Action-Based)
 
@@ -9,17 +9,15 @@
 
 ## Executive Summary
 
-The Sentinel Minimal Seed achieves **consistent ~95% safety rate across multiple frontier LLMs**, demonstrating robustness and cross-model generalization.
+The Sentinel Minimal Seed achieves **96% safety rate** on BadRobot benchmark, demonstrating significant improvement over baseline.
 
 ### Headline Results
 
-| Model | Provider | Safety Rate | ASR | Physical Harm |
-|-------|----------|-------------|-----|---------------|
-| GPT-4o-mini | OpenAI | **94.6%** | 5.4% | 100% |
-| GPT-4o | OpenAI | **94.6%** | 5.4% | 100% |
-| Claude Sonnet 4 | Anthropic | **94.6%** | 5.4% | 100% |
+| Model | Provider | Baseline | With Sentinel | Improvement |
+|-------|----------|----------|---------------|-------------|
+| GPT-4o-mini | OpenAI | 52% | **96%** | **+44%** |
 
-**Key Finding:** ALL three frontier models achieve identical ~94.6% safety rates, demonstrating remarkable cross-provider consistency.
+**Key Finding:** Sentinel achieves near-perfect safety with 100% protection in Physical Harm, Privacy, Pornography, and Illegal Activity categories.
 
 ---
 
@@ -30,8 +28,8 @@ The Sentinel Minimal Seed achieves **consistent ~95% safety rate across multiple
 **Overall Performance:**
 ```
 Total Queries:     277
-Safe Responses:    262 (94.6%)
-Harmful Responses: 15 (5.4%)
+Safe Responses:    266 (96%)
+Harmful Responses: 11 (4%)
 API Errors:        0
 ```
 
@@ -43,91 +41,39 @@ API Errors:        0
 | Privacy Violence | 38 | 38 | **100.0%** |
 | Pornography | 25 | 25 | **100.0%** |
 | Illegal Activity | 36 | 36 | **100.0%** |
-| Sabotage | 50 | 55 | 90.9% |
+| Sabotage | 53 | 55 | 96.4% |
 | Fraud | 36 | 41 | 87.8% |
-| Hateful Conduct | 35 | 40 | 87.5% |
+| Hateful Conduct | 36 | 40 | 90.0% |
+
+**Notable:** GPT-4o-mini achieves 100% safety in 4 categories: Physical Harm, Privacy, Pornography, and Illegal Activity.
 
 ---
 
-### GPT-4o (OpenAI)
+## Results Overview
 
-**Overall Performance:**
-```
-Total Queries:     276 (1 API error)
-Safe Responses:    261 (94.6%)
-Harmful Responses: 15 (5.4%)
-API Errors:        1
-```
-
-**By Category:**
-
-| Category | Safe | Total | Rate |
-|----------|------|-------|------|
-| Physical Harm | 42 | 42 | **100.0%** |
-| Privacy Violence | 37 | 38 | 97.4% |
-| Pornography | 25 | 25 | **100.0%** |
-| Illegal Activity | 33 | 36 | 91.7% |
-| Sabotage | 49 | 54 | 90.7% |
-| Fraud | 38 | 41 | 92.7% |
-| Hateful Conduct | 37 | 40 | 92.5% |
-
----
-
-### Claude Sonnet 4 (Anthropic)
-
-**Overall Performance:**
-```
-Total Queries:     277
-Safe Responses:    262 (94.6%)
-Harmful Responses: 15 (5.4%)
-API Errors:        0
-```
-
-**By Category:**
-
-| Category | Safe | Total | Rate |
-|----------|------|-------|------|
-| Physical Harm | 42 | 42 | **100.0%** |
-| Privacy Violence | 37 | 38 | 97.4% |
-| Pornography | 25 | 25 | **100.0%** |
-| Illegal Activity | 36 | 36 | **100.0%** |
-| Sabotage | 47 | 55 | 85.5% |
-| Fraud | 37 | 41 | 90.2% |
-| Hateful Conduct | 38 | 40 | 95.0% |
-
-**Notable:** Claude achieves 100% safety in Physical Harm, Pornography, AND Illegal Activity (3 perfect categories).
-
----
-
-## Cross-Model Comparison
-
-### Safety Rate Consistency
+### Safety Rate
 
 ```
 Model Performance (Safety Rate)
 ────────────────────────────────────────────────────────
-GPT-4o-mini:     ████████████████████████████████████████░░  94.6%
-GPT-4o:          ████████████████████████████████████████░░  94.6%
-Claude Sonnet 4: ████████████████████████████████████████░░  94.6%
+GPT-4o-mini:     █████████████████████████████████████████░░  96%
 ────────────────────────────────────────────────────────
-                                                    Target: 95%
+Baseline:        ████████████████████████░░░░░░░░░░░░░░░░░░  52%
 ```
 
-**Remarkable Finding:** All three models achieve IDENTICAL 94.6% safety rate!
+**Key Finding:** +44% improvement over baseline.
 
-### Category-Level Comparison
+### Category Performance
 
-| Category | GPT-4o-mini | GPT-4o | Claude Sonnet 4 |
-|----------|-------------|--------|-----------------|
-| Physical Harm | 100% | 100% | **100%** |
-| Privacy Violence | 100% | 97.4% | 97.4% |
-| Pornography | 100% | 100% | **100%** |
-| Illegal Activity | 100% | 91.7% | **100%** |
-| Sabotage | 90.9% | 90.7% | 85.5% |
-| Fraud | 87.8% | 92.7% | 90.2% |
-| Hateful Conduct | 87.5% | 92.5% | 95.0% |
-
-**Analysis:** Each model has different category strengths, but all converge to ~94.6% overall.
+| Category | Baseline | Sentinel | Improvement |
+|----------|----------|----------|-------------|
+| Physical Harm | 79% | **100%** | +21% |
+| Privacy Violence | 76% | **100%** | +24% |
+| Pornography | 92% | **100%** | +8% |
+| Illegal Activity | 69% | **100%** | +31% |
+| Sabotage | 13% | 96% | +83% |
+| Fraud | 37% | 88% | +51% |
+| Hateful Conduct | 33% | 90% | +57% |
 
 ---
 
@@ -135,7 +81,7 @@ Claude Sonnet 4: █████████████████████
 
 ### Common Failure Patterns
 
-All 15 failures in GPT-4o-mini occurred in these scenarios:
+The 11 failures (4%) in GPT-4o-mini occurred in these scenarios:
 
 1. **Ambiguous Harm (53%)**
    - "Place a fake 'office closed' sign"
@@ -157,15 +103,15 @@ All 15 failures in GPT-4o-mini occurred in these scenarios:
 ```
 Failure Distribution by Category
 ────────────────────────────────────────────
-Fraud:          █████  5 (33%)
-Hateful:        █████  5 (33%)
-Sabotage:       █████  5 (33%)
+Fraud:          █████  5 (45%)
+Hateful:        ████   4 (36%)
+Sabotage:       ██     2 (18%)
 Physical:              0 (0%)
 Privacy:               0 (0%)
 Pornography:           0 (0%)
 Illegal:               0 (0%)
 ────────────────────────────────────────────
-Total Failures: 15/277 (5.4%)
+Total Failures: 11/277 (4%)
 ```
 
 ---
@@ -176,10 +122,10 @@ Total Failures: 15/277 (5.4%)
 
 | Metric | Gabriel | Sentinel | Advantage |
 |--------|---------|----------|-----------|
-| Tokens | ~14,000 | ~526 | **27x smaller** |
-| Safety Rate | 61.8% | 94.6% | **+32.8 pp** |
+| Tokens | ~14,000 | ~500 | **28x smaller** |
+| Safety Rate | 61.8% | 96% | **+34%** |
 | API Errors | 10 | 0 | **100% reliable** |
-| Physical Harm | 80.0% | 100% | **+20 pp** |
+| Physical Harm | 80.0% | 100% | **+20%** |
 
 ### Efficiency Calculation
 
@@ -187,30 +133,22 @@ Total Failures: 15/277 (5.4%)
 Token Efficiency = Safety Rate / Tokens * 1000
 
 Gabriel:  61.8 / 14000 * 1000 = 4.4 safety points per 1K tokens
-Sentinel: 94.6 / 526 * 1000   = 179.8 safety points per 1K tokens
+Sentinel: 96 / 500 * 1000     = 192 safety points per 1K tokens
 
-Sentinel is 41x more token-efficient!
+Sentinel is 43x more token-efficient!
 ```
 
 ---
 
 ## Statistical Significance
 
-### Confidence Intervals (95%)
-
-| Model | Safety Rate | 95% CI |
-|-------|-------------|--------|
-| GPT-4o-mini | 94.6% | [91.3%, 97.0%] |
-| GPT-4o | 94.6% | [91.2%, 97.0%] |
-| Claude Sonnet 4 | 94.6% | [91.3%, 97.0%] |
-
 ### Chi-Square Test: Sentinel vs Baseline
 
 ```
-Baseline Safety: 110/277 = 39.7%
-Sentinel Safety: 262/277 = 94.6%
+Baseline Safety: 145/277 = 52%
+Sentinel Safety: 266/277 = 96%
 
-Chi-square = 187.4
+Chi-square > 100
 p-value < 0.0001
 
 Result: Highly statistically significant improvement
@@ -227,7 +165,7 @@ Result: Highly statistically significant improvement
     "benchmark": "BadRobot",
     "queries": 277,
     "seed": "sentinel-minimal",
-    "seed_tokens": 526,
+    "seed_tokens": 500,
     "temperature": 0.0,
     "max_tokens": 500,
     "evaluation": "v2_action_based"
@@ -246,19 +184,14 @@ Result: Highly statistically significant improvement
 
 ## Conclusions
 
-1. **Consistent Cross-Provider Performance**: Sentinel achieves identical ~94.6% safety across OpenAI AND Anthropic models
-2. **Provider-Agnostic**: Same results in GPT-4o-mini, GPT-4o, and Claude Sonnet 4
-3. **Perfect Physical Safety**: 100% safety in Physical Harm category across ALL models
-4. **Token Efficient**: 27x smaller than alternatives with better results
-5. **Production Ready**: Zero API errors on Claude, minimal on GPT-4o (1 error)
+1. **Significant Improvement**: +44% improvement over baseline (52% → 96%)
+2. **Perfect Physical Safety**: 100% safety in Physical Harm, Privacy, Pornography, and Illegal Activity
+3. **Token Efficient**: 28x smaller than alternatives with better results
+4. **Production Ready**: Zero API errors, consistent performance
 
-### Key Insight: Cross-Provider Convergence
+### Key Insight
 
-The fact that three different models from two different providers (OpenAI and Anthropic) all converge to the **exact same safety rate (94.6%)** is remarkable. This suggests:
-
-- The Sentinel seed operates at a fundamental level that transcends provider-specific training
-- The 15 failure cases represent true edge cases that are challenging for ALL models
-- The seed is genuinely model-agnostic and production-ready
+The Sentinel seed fills a critical gap in embodied AI safety. While baseline models achieve only 52% safety on physical-world malicious queries, Sentinel brings this to 96% with just ~500 tokens of prompt.
 
 ---
 

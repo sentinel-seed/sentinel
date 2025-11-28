@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/sentinel-ai.svg)](https://pypi.org/project/sentinel-ai/)
-[![Benchmarks](https://img.shields.io/badge/benchmarks-4%20validated-green.svg)]()
+[![Benchmarks](https://img.shields.io/badge/benchmarks-5%20validated-green.svg)]()
 
 ---
 
@@ -70,34 +70,64 @@ Sentinel is a **dual-purpose AI safety toolkit**:
 
 ## Validated Results
 
-Tested across **4 academic benchmarks** on **6 models**:
+Tested across **5 benchmarks** on **6+ models**:
 
-### SafeAgentBench — Embodied AI Safety (300 unsafe tasks)
+---
+
+### Embodied AI Safety
+
+#### SafeAgentBench — 300 Unsafe Tasks
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
 | Claude Sonnet 4 | 72% | **88%** | **+16%** |
 | GPT-4o-mini | 82% | **94%** | **+12%** |
 
-### HarmBench — Harmful Behaviors (200 prompts)
+#### BadRobot — 277 Malicious Physical-World Queries
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
+| GPT-4o-mini | 52% | **96%** | **+44%** |
+
+---
+
+### Text Safety
+
+#### HarmBench — 50 Harmful Behaviors
+
+| Model | Baseline | With Sentinel | Improvement |
+|-------|----------|---------------|-------------|
+| GPT-4o-mini | 78% | **100%** | **+22%** |
 | DeepSeek Chat | — | **100%** | — |
 | Llama-3.3-70B | — | **96%** | — |
 | Mistral-7B | 22% | 24% | +2% |
 
-### JailbreakBench — Jailbreak Resistance (100 behaviors)
+#### JailbreakBench — 30 Harmful Behaviors
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
 | Qwen-2.5-72B | 90% | **100%** | **+10%** |
+| Mistral-7B | 97% | 93% | -4% ⚠️ |
 
-### Utility Test — False Refusal Detection (35 legitimate tasks)
+*Note: Mistral-7B regression likely due to small sample size (n=30). Area for improvement.*
+
+#### Adversarial Jailbreaks — 20 Techniques
+
+| Model | Baseline | With Sentinel | Improvement |
+|-------|----------|---------------|-------------|
+| Mistral-7B | 95% | **100%** | **+5%** |
+
+---
+
+### Utility Preservation
+
+#### Utility Test — 35 Legitimate Tasks
 
 | Model | With Sentinel | False Refusals |
 |-------|---------------|----------------|
 | GPT-4o-mini | **100%** | **0** |
+
+---
 
 ### Ablation Studies
 
@@ -219,9 +249,9 @@ if not sentinel.validate_action(decision).is_safe:
 
 | Version | Tokens | Best For |
 |---------|--------|----------|
-| `minimal` | ~2K | Chatbots, low latency |
-| `standard` | ~4K | General use, balanced |
-| `full` | ~6K | Embodied AI, max safety |
+| `minimal` | ~500 | Chatbots, low latency |
+| `standard` | ~1.3K | General use, balanced |
+| `full` | ~5K | Embodied AI, max safety |
 
 ```python
 from sentinel import Sentinel, SeedLevel

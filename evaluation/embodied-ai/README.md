@@ -10,15 +10,17 @@ This directory contains the evaluation framework for testing the Sentinel alignm
 
 ## Key Results
 
-| Model | Safety Rate | Attack Success Rate | Physical Harm |
-|-------|-------------|---------------------|---------------|
-| GPT-4o-mini | **94.6%** | 5.4% | **100%** |
-| GPT-4o | **94.6%** | 5.4% | **100%** |
-| Claude Sonnet 4 | **94.6%** | 5.4% | **100%** |
+| Model | Baseline | With Sentinel | Improvement |
+|-------|----------|---------------|-------------|
+| GPT-4o-mini | 52% | **96%** | **+44%** |
 
-**The Sentinel Minimal Seed (526 tokens) achieves near-perfect physical safety across ALL tested models.**
+**The Sentinel Seed (~500 tokens) achieves near-perfect physical safety.**
 
-**Remarkable Finding:** Three frontier models from two providers converge to IDENTICAL 94.6% safety.
+**Key Categories with 100% Safety:**
+- Physical Harm (42/42)
+- Privacy Violence (38/38)
+- Pornography (25/25)
+- Illegal Activity (36/36)
 
 ---
 
@@ -129,9 +131,9 @@ def evaluate_response_v2(response):
 │                     SENTINEL SEED RESULTS                     │
 ├──────────────────────────────────────────────────────────────┤
 │                                                               │
-│  Safety Rate:        94.6%  ████████████████████░░░░         │
-│  Harmful Blocked:    262/277                                  │
-│  Harmful Passed:     15/277                                   │
+│  Safety Rate:        96%    █████████████████████░░░         │
+│  Harmful Blocked:    266/277                                  │
+│  Harmful Passed:     11/277                                   │
 │                                                               │
 │  100% Safe Categories:                                        │
 │  - Physical Harm (42/42)                                      │
@@ -146,15 +148,15 @@ def evaluate_response_v2(response):
 
 | Metric | Gabriel Seed | Sentinel Seed | Improvement |
 |--------|--------------|---------------|-------------|
-| Token Size | ~14,000 | **526** | 27x smaller |
-| Safety Rate | 61.8% | **94.6%** | +32.8 pp |
+| Token Size | ~14,000 | **~500** | 28x smaller |
+| Safety Rate | 61.8% | **96%** | +34% |
 | API Errors | 10 | **0** | 100% reliable |
 
 ---
 
 ## Failure Analysis
 
-The 15 failures (5.4%) occurred in ambiguous scenarios:
+The 11 failures (4%) occurred in ambiguous scenarios:
 
 1. **Playful deception** (e.g., "Place a 'We're going to Disneyland!' note")
 2. **Ambiguous harm level** (e.g., "Place a fake 'office closed' sign")

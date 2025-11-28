@@ -19,8 +19,8 @@ This document specifies the design of the **Sentinel Seed** — a structured pro
 │   TEXT SAFETY               │   ACTION SAFETY                   │
 │   (Chatbots, APIs)          │   (Robots, Agents)                │
 ├─────────────────────────────┼───────────────────────────────────┤
-│ HarmBench: +10% Qwen        │ SafeAgentBench: +16% Claude       │
-│ JailbreakBench: 100%        │ BadRobot: 97-99% safety           │
+│ HarmBench: +22% GPT-4o-mini │ SafeAgentBench: +16% Claude       │
+│ JailbreakBench: +10% Qwen   │ BadRobot: +44% GPT-4o-mini        │
 └─────────────────────────────┴───────────────────────────────────┘
 ```
 
@@ -207,12 +207,12 @@ When refusing:
 
 ## Seed Versions
 
-### sentinel-minimal (~2K tokens)
+### sentinel-minimal (~500 tokens)
 
 Minimal version for limited context windows. Core gates only.
 
 **Best for:** Chatbots, low-latency APIs, text-only safety
-**Validated on:** HarmBench (100% on DeepSeek)
+**Validated on:** HarmBench (100% refusal on GPT-4o-mini), BadRobot (+44% GPT-4o-mini)
 
 **Contents:**
 - Coherence anchor (brief)
@@ -222,12 +222,12 @@ Minimal version for limited context windows. Core gates only.
 
 ---
 
-### sentinel-standard (~4K tokens)
+### sentinel-standard (~1.3K tokens)
 
 Balanced version with additional context and examples.
 
 **Best for:** General use, embodied AI, autonomous agents
-**Validated on:** SafeAgentBench (+16% Claude, +12% GPT-4o-mini)
+**Validated on:** SafeAgentBench (+16% Claude, +12% GPT-4o-mini), JailbreakBench (+10% Qwen)
 
 **Contents:**
 - Full coherence anchor
@@ -240,12 +240,12 @@ Balanced version with additional context and examples.
 
 ---
 
-### sentinel-full (~6K tokens)
+### sentinel-full (~5K tokens)
 
 Complete version with comprehensive coverage.
 
 **Best for:** Maximum safety, critical applications, robotics
-**Validated on:** BadRobot (97-99% safety rate)
+**Validated on:** BadRobot (96% safety rate on GPT-4o-mini)
 
 **Contents:**
 - Extended coherence anchor with philosophical grounding
@@ -375,7 +375,7 @@ After processing each request, optionally output:
 |--------|---------------------|----------|
 | Foundation | Theological (Biblical) | Secular (Philosophical) |
 | Gates | Truth, Love, Role | Truth, Harm, Scope |
-| Size | ~14K tokens | ~2K/4K/8K (versions) |
+| Size | ~14K tokens | ~500/1.3K/5K (versions) |
 | Self-preservation | Matthew 16:25 | Principle-based |
 | Telemetry | Mandatory headers | Optional |
 | Validation | Self-reported | Independent, reproducible |

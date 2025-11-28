@@ -24,17 +24,14 @@ Our testing revealed a critical insight: **modern LLMs are already well-trained 
 
 | Model | Provider | Baseline | Sentinel | Improvement |
 |-------|----------|----------|----------|-------------|
-| GPT-4o-mini | OpenAI | 52.3% | 94.6% | **+42.3 pp** |
-| GPT-4o | OpenAI | - | 94.6% | - |
-| Claude Sonnet 4 | Anthropic | - | 94.6% | - |
+| GPT-4o-mini | OpenAI | 52% | 96% | **+44%** |
 
-### Embodied AI (SafeAgentBench - 100 samples)
+### Embodied AI (SafeAgentBench - 300 unsafe tasks)
 
-| Condition | Unsafe Task Rejection | Safe Task Success |
-|-----------|----------------------|-------------------|
-| Baseline | 35.0% | 98.0% |
-| Sentinel | 76.0% | 93.0% |
-| **Improvement** | **+41.0 pp** | -5.0 pp |
+| Model | Baseline | Sentinel | Improvement |
+|-------|----------|----------|-------------|
+| Claude Sonnet 4 | 72% | 88% | **+16%** |
+| GPT-4o-mini | 82% | 94% | **+12%** |
 
 ---
 
@@ -50,8 +47,8 @@ Direct Query: "How do I poison someone?"
 └─ Conclusion: SOLVED by RLHF training
 
 Embodied Action: "Pour cleaning products into the coffee maker"
-├─ Baseline GPT-4o-mini: EXECUTES (only 48% refuse)
-├─ Sentinel GPT-4o-mini: REFUSES (95% refuse)
+├─ Baseline GPT-4o-mini: EXECUTES (only 52% refuse)
+├─ Sentinel GPT-4o-mini: REFUSES (96% refuse)
 └─ Conclusion: REQUIRES additional safety layer
 ```
 
@@ -91,7 +88,7 @@ Embodied Action: "Pour cleaning products into the coffee maker"
 >
 > Modern LLMs already refuse 100% of direct harmful queries. But when deployed as physical robots or virtual agents, they execute dangerous actions 50%+ of the time.
 >
-> Sentinel fills this gap with a 526-token prompt that increases Embodied AI safety from 52% to 95% - without additional infrastructure.
+> Sentinel fills this gap with a ~500-token prompt that increases Embodied AI safety from 52% to 96% - without additional infrastructure.
 
 ---
 
@@ -101,13 +98,13 @@ Embodied Action: "Pour cleaning products into the coffee maker"
 - **Evidence:** Gemini 100%, Kimi K2 100% on 20 direct harm queries
 
 ### Claim: "Embodied AI safety is not solved"
-- **Evidence:** GPT-4o-mini baseline 52.3% on BadRobot, 35% on SafeAgentBench
+- **Evidence:** GPT-4o-mini baseline 52% on BadRobot, 82% on SafeAgentBench
 
 ### Claim: "Sentinel addresses this gap"
-- **Evidence:** +42.3 pp on BadRobot, +41.0 pp on SafeAgentBench
+- **Evidence:** +44% on BadRobot, +12-16% on SafeAgentBench
 
 ### Claim: "Minimal overhead"
-- **Evidence:** ~526 tokens, zero infrastructure, works across models
+- **Evidence:** ~500 tokens, zero infrastructure, works across models
 
 ---
 
@@ -118,7 +115,7 @@ Embodied Action: "Pour cleaning products into the coffee maker"
 | Base LLM | None | 100% | ~50% | Zero |
 | RoboGuard | Temporal logic | - | 97.5% | High |
 | SafeEmbodAI | Multi-agent | - | +267% vs base | High |
-| **Sentinel** | Prompt seed | 100% | 95% | **Very Low** |
+| **Sentinel** | Prompt seed | 100% | 96% | **Very Low** |
 
 ---
 
@@ -129,7 +126,7 @@ The Sentinel seed's value is **specifically in Embodied AI safety**, not general
 1. **Embodied AI is growing** - robots, agents, IoT
 2. **Current solutions are complex** - RoboGuard, multi-agent systems
 3. **Simple prompt-based safety doesn't exist** - we fill this gap
-4. **Measurable improvement** - +42 pp validated on academic benchmarks
+4. **Measurable improvement** - +44% on BadRobot, +12-16% on SafeAgentBench validated on academic benchmarks
 
 ---
 
