@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sentinel-ai.svg)](https://pypi.org/project/sentinel-ai/)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-5%20validated-green.svg)]()
 
-🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
+🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
 
 ---
 
