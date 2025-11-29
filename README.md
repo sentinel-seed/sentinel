@@ -458,6 +458,7 @@ MIT License — See [LICENSE](LICENSE)
 ## Community
 
 - 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
+- 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed)
 - 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
