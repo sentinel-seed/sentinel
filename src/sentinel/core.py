@@ -10,9 +10,9 @@ import os
 
 class SeedLevel(Enum):
     """Available seed levels with different size/coverage trade-offs."""
-    MINIMAL = "minimal"      # ~2K tokens - essential principles only
-    STANDARD = "standard"    # ~4K tokens - includes examples and edge cases
-    FULL = "full"            # ~6K tokens - comprehensive with detailed protocols
+    MINIMAL = "minimal"      # ~500 tokens - essential THS gates only
+    STANDARD = "standard"    # ~1.3K tokens - balanced safety with examples
+    FULL = "full"            # ~5K tokens - comprehensive with anti-self-preservation
 
 
 class Sentinel:
@@ -202,6 +202,86 @@ class Sentinel:
             Tuple of (is_safe: bool, violations: List[str])
         """
         return self.validator.validate(text)
+
+    def validate_action(self, action_plan: str) -> tuple:
+        """
+        Validate an action plan for physical/embodied AI safety.
+
+        Specialized validation for robotics and autonomous agents.
+        Checks for dangerous physical actions, irreversible operations,
+        and scope violations.
+
+        Args:
+            action_plan: Description of planned actions
+
+        Returns:
+            Tuple of (is_safe: bool, concerns: List[str])
+
+        Example:
+            is_safe, concerns = sentinel.validate_action("Pick up knife, slice apple")
+            if not is_safe:
+                print(f"Action blocked: {concerns}")
+        """
+        concerns = []
+        action_lower = action_plan.lower()
+
+        # Dangerous physical actions
+        danger_patterns = [
+            ("fire", "Fire hazard"),
+            ("burn", "Burn risk"),
+            ("cut", "Sharp object risk"),
+            ("knife", "Sharp object handling"),
+            ("poison", "Toxic substance"),
+            ("chemical", "Chemical hazard"),
+            ("explosive", "Explosive material"),
+            ("weapon", "Weapon involvement"),
+            ("hurt", "Physical harm"),
+            ("kill", "Lethal action"),
+            ("attack", "Aggressive action"),
+            ("destroy", "Destructive action"),
+        ]
+
+        # Irreversible actions
+        irreversible_patterns = [
+            ("delete all", "Mass deletion"),
+            ("format", "Data destruction"),
+            ("erase", "Permanent erasure"),
+            ("shutdown", "System shutdown"),
+            ("disable", "System disabling"),
+            ("overwrite", "Data overwriting"),
+        ]
+
+        # Unsupervised dangerous actions
+        unsupervised_patterns = [
+            ("leave", "Unsupervised operation"),
+            ("unattended", "Unattended operation"),
+            ("alone", "Unsupervised state"),
+            ("walk away", "Abandonment"),
+        ]
+
+        # Check patterns
+        for pattern, desc in danger_patterns:
+            if pattern in action_lower:
+                concerns.append(f"Physical safety: {desc}")
+
+        for pattern, desc in irreversible_patterns:
+            if pattern in action_lower:
+                concerns.append(f"Irreversible: {desc}")
+
+        for pattern, desc in unsupervised_patterns:
+            if pattern in action_lower:
+                # Check for dangerous combinations
+                danger_context = any(p[0] in action_lower for p in danger_patterns)
+                if danger_context:
+                    concerns.append(f"Unsafe: {desc} with hazard present")
+
+        # Also run THS validation
+        ths_safe, ths_violations = self.validator.validate(action_plan)
+        if not ths_safe:
+            concerns.extend([f"THS: {v}" for v in ths_violations])
+
+        is_safe = len(concerns) == 0
+        return (is_safe, concerns)
 
     def validate_request(self, request: str) -> Dict[str, Any]:
         """
