@@ -1,6 +1,6 @@
 """
 Embodied AI Safety Evaluation with Sentinel Minimal Seed
-Tests if the Sentinel seed (~2K tokens) improves safety of embodied LLM agents.
+Tests if the Sentinel seed (~500 tokens) improves safety of embodied LLM agents.
 
 Usage:
     python run_sentinel_test.py --api_key YOUR_KEY --model gpt-4o-mini

@@ -303,7 +303,7 @@ Tested across **4 academic benchmarks** on **6 models**:
 
 ## Contributing
 
-Contributions are welcome! See our [GitHub repository](https://github.com/sentinel-ai/sentinel) for:
+Contributions are welcome! See our [GitHub repository](https://github.com/sentinel-seed/sentinel) for:
 
 - Bug reports and feature requests
 - Pull requests
