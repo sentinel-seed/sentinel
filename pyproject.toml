@@ -45,10 +45,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sentinel-ai/sentinel"
-Documentation = "https://sentinel-ai.github.io/sentinel"
-Repository = "https://github.com/sentinel-ai/sentinel"
-Issues = "https://github.com/sentinel-ai/sentinel/issues"
+Homepage = "https://sentinelseed.dev"
+Documentation = "https://sentinelseed.dev/docs"
+Repository = "https://github.com/sentinel-seed/sentinel"
+Issues = "https://github.com/sentinel-seed/sentinel/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
