@@ -19,7 +19,7 @@ Sentinel is a **dual-purpose AI safety toolkit**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        SENTINEL                                  │
+│                        SENTINEL                                 │
 ├─────────────────────────────┬───────────────────────────────────┤
 │   ALIGNMENT SEEDS           │   SAFETY LAYER FOR AGENTS         │
 │   for LLMs                  │   and Autonomous Systems          │
