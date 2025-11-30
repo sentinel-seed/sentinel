@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sentinel-ai.svg)](https://pypi.org/project/sentinel-ai/)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-5%20validated-green.svg)]()
 
-🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
+🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinel_Seed)
 
 ---
 
@@ -19,11 +19,11 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                                 SENTINEL                                      │
-│                       AI Safety Across Three Surfaces                         │
+│                                 SENTINEL                                     │
+│                       AI Safety Across Three Surfaces                        │
 ├──────────────────────────┬──────────────────────────┬────────────────────────┤
-│   🔤 LLMs                │   🤖 AGENTS              │   🦾 ROBOTS             │
-│   Text Safety            │   Action Safety          │   Physical Safety       │
+│    LLMs                  │    AGENTS                │    ROBOTS              │
+│   Text Safety            │   Action Safety          │   Physical Safety      │
 ├──────────────────────────┼──────────────────────────┼────────────────────────┤
 │ • Chatbots               │ • Autonomous agents      │ • LLM-powered robots   │
 │ • Assistants             │ • Code execution         │ • Industrial systems   │
@@ -464,7 +464,7 @@ MIT License — See [LICENSE](LICENSE)
 
 - 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
 - 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed)
-- 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinelseed)
+- 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinel_Seed)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
 
