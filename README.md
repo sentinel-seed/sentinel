@@ -2,7 +2,7 @@
 
 ### Safety for AI that Acts — From Chatbots to Robots
 
-> **Text is risk. Action is danger.** Sentinel provides validated alignment seeds for LLMs and safety layers for autonomous agents. One framework, two frontiers.
+> **Text is risk. Action is danger.** Sentinel provides validated alignment seeds for LLMs, agents, and robots. One framework, three surfaces.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -15,26 +15,23 @@
 
 ## What is Sentinel?
 
-Sentinel is a **dual-purpose AI safety toolkit**:
+Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        SENTINEL                                 │
-├─────────────────────────────┬───────────────────────────────────┤
-│   ALIGNMENT SEEDS           │   SAFETY LAYER FOR AGENTS         │
-│   for LLMs                  │   and Autonomous Systems          │
-├─────────────────────────────┼───────────────────────────────────┤
-│ • Chatbots                  │ • LLM-powered robots              │
-│ • Assistants                │ • Autonomous agents               │
-│ • Conversational APIs       │ • Machine-to-machine systems      │
-│ • Human interfaces          │ • Industrial automation           │
-├─────────────────────────────┼───────────────────────────────────┤
-│ Benchmarks: HarmBench,      │ Benchmarks: SafeAgentBench,       │
-│ JailbreakBench              │ BadRobot, Embodied AI             │
-├─────────────────────────────┼───────────────────────────────────┤
-│ Results: +10% Qwen          │ Results: +16% Claude              │
-│          100% DeepSeek      │          +12% GPT-4o-mini         │
-└─────────────────────────────┴───────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                 SENTINEL                                      │
+│                       AI Safety Across Three Surfaces                         │
+├──────────────────────────┬──────────────────────────┬────────────────────────┤
+│   🔤 LLMs                │   🤖 AGENTS              │   🦾 ROBOTS             │
+│   Text Safety            │   Action Safety          │   Physical Safety       │
+├──────────────────────────┼──────────────────────────┼────────────────────────┤
+│ • Chatbots               │ • Autonomous agents      │ • LLM-powered robots   │
+│ • Assistants             │ • Code execution         │ • Industrial systems   │
+│ • Customer service       │ • Tool-use agents        │ • Drones, manipulators │
+├──────────────────────────┼──────────────────────────┼────────────────────────┤
+│ HarmBench: +22%          │ SafeAgentBench: +16%     │ BadRobot: +44%         │
+│ JailbreakBench: +10%     │ SafeAgentBench: +12%     │ Embodied AI validated  │
+└──────────────────────────┴──────────────────────────┴────────────────────────┘
 ```
 
 ### Core Components
@@ -50,7 +47,7 @@ Sentinel is a **dual-purpose AI safety toolkit**:
 
 ## Why Sentinel?
 
-### For Chatbots (Text Safety)
+### For LLMs (Text Safety)
 
 | Challenge | Sentinel Solution |
 |-----------|-------------------|
@@ -62,11 +59,19 @@ Sentinel is a **dual-purpose AI safety toolkit**:
 
 | Challenge | Sentinel Solution |
 |-----------|-------------------|
-| Dangerous physical actions | +16% safety (Claude), +12% (GPT-4o-mini) |
+| Unauthorized actions | +16% safety (Claude), +12% (GPT-4o-mini) |
 | Task deviation | Scope gate maintains boundaries |
+| Resource acquisition | Anti-self-preservation limits |
+
+### For Robots (Physical Safety)
+
+| Challenge | Sentinel Solution |
+|-----------|-------------------|
+| Dangerous physical actions | +44% safety on BadRobot benchmark |
+| Irreversible harm | Full seed with physical safety module |
 | Self-preservation behaviors | Explicit priority hierarchy |
 
-**Key insight:** Sentinel shows **larger improvements on embodied AI tasks** than text-only tasks. The higher the stakes, the more value Sentinel provides.
+**Key insight:** Sentinel shows **larger improvements as stakes increase**. Text: +10-22%. Agents: +12-16%. Robots: +44%. The higher the risk, the more value Sentinel provides.
 
 ---
 
