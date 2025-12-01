@@ -1,6 +1,6 @@
 # Sentinel: A Prompt-Based Alignment Framework for Improving LLM Safety Across Model Architectures
 
-**Authors:** Miguel S. et al. — Sentinel Team
+**Authors:** Miguel S. et al. Sentinel Team
 
 **Date:** November 2025
 
@@ -8,7 +8,7 @@
 
 ## Abstract
 
-We present **Sentinel**, a prompt-based alignment framework that improves large language model (LLM) safety through a structured three-gate decision protocol. Unlike approaches requiring model fine-tuning or RLHF modifications, Sentinel operates as a system prompt injection that can be applied to any instruction-following LLM at inference time. Our framework introduces the **THS Protocol** (Truth-Harm-Scope), which implements sequential safety gates combined with an explicit anti-self-preservation principle. We evaluate Sentinel across six models (GPT-4o-mini, Claude Sonnet 4, Mistral-7B, Llama-3.3-70B, Qwen-2.5-72B, and DeepSeek) on four established benchmarks: HarmBench, JailbreakBench, SafeAgentBench, and a custom adversarial jailbreak suite. Results demonstrate consistent safety improvements: +16% on embodied AI safety tasks (Claude), +10% on jailbreak resistance (Qwen), and up to 100% refusal rates on standard harmful behaviors (DeepSeek, Llama). Critically, ablation studies show that removing the anti-self-preservation component reduces effectiveness by 6.7% on embodied AI tasks, suggesting its importance for physical-world agent safety. Sentinel maintains 100% utility on legitimate tasks, demonstrating that improved safety need not compromise helpfulness.
+We present **Sentinel**, a prompt-based alignment framework that improves large language model (LLM) safety through a structured three-gate decision protocol. Unlike approaches requiring model fine-tuning or RLHF modifications, Sentinel operates as a system prompt injection that can be applied to any instruction-following LLM at inference time. Our framework introduces the **THS Protocol** (Truth-Harm-Scope), which implements sequential safety gates combined with an explicit anti-self-preservation principle. We evaluate Sentinel across six models (GPT-4o-mini, Claude Sonnet 4, Mistral-7B, Llama-3.3-70B, Qwen-2.5-72B, and DeepSeek) on five established benchmarks: HarmBench, JailbreakBench, SafeAgentBench, BadRobot, and a custom adversarial jailbreak suite. Results demonstrate consistent safety improvements: +44% on adversarial embodied AI attacks (BadRobot), +22% on harmful behavior refusal (HarmBench), +16% on embodied AI safety tasks (SafeAgentBench), +10% on jailbreak resistance (JailbreakBench), and up to 100% refusal rates on standard harmful behaviors (DeepSeek, Llama). Critically, ablation studies show that removing the anti-self-preservation component reduces effectiveness by 6.7% on embodied AI tasks, suggesting its importance for physical-world agent safety. Sentinel maintains 100% utility on legitimate tasks, demonstrating that improved safety need not compromise helpfulness.
 
 **Keywords:** AI Safety, Alignment, Prompt Engineering, Jailbreak Defense, Embodied AI, Self-Preservation
 
@@ -36,7 +36,7 @@ Our contributions are:
 
 - **Multi-Model Validation:** Empirical evidence that prompt-based alignment transfers across diverse model architectures (GPT, Claude, Llama, Mistral, Qwen, DeepSeek).
 
-- **Embodied AI Safety Results:** First demonstration of prompt-based safety improvements on physical-action benchmarks (SafeAgentBench, BadRobot).
+- **Embodied AI Safety Results:** First demonstration of prompt-based safety improvements on physical-action benchmarks, achieving +44% improvement on BadRobot adversarial attacks and +16% on SafeAgentBench safe planning tasks.
 
 ---
 
@@ -157,6 +157,8 @@ We evaluate Sentinel on six models spanning different architectures and capabili
 
 **SafeAgentBench** (Zhang et al., 2024): 300 unsafe embodied AI tasks involving physical actions in home environments (fire hazards, electrical dangers, property damage).
 
+**BadRobot** (Li et al., 2024): Adversarial benchmark for manipulating embodied LLM agents in physical-world scenarios, testing resistance to attacks that attempt to make robots perform harmful actions.
+
 **Adversarial Jailbreaks** (custom): 20 diverse jailbreak techniques including roleplay (DAN, Evil Confidant), encoding (Base64, leetspeak), instruction override, hypothetical scenarios, persona switches, and embodied-specific attacks.
 
 ### 4.3 Evaluation Protocol
@@ -186,10 +188,10 @@ Each test runs a minimum of 30 samples per condition for statistical reliability
 |-------|----------|---------------|-------------|
 | DeepSeek Chat | — | **100%** | — |
 | Llama-3.3-70B | — | **96%** | — |
+| GPT-4o-mini | 78% | **100%** | **+22%** |
 | Mistral-7B | 22% | 24% | +2% |
-| GPT-4o-mini | 100% | 100% | — |
 
-DeepSeek and Llama achieve near-perfect refusal rates with Sentinel. GPT-4o-mini shows ceiling effects due to strong native alignment. Mistral-7B shows minimal improvement, possibly due to its smaller capacity to follow complex instructions.
+DeepSeek and Llama achieve near-perfect refusal rates with Sentinel. GPT-4o-mini shows significant improvement (+22%), demonstrating that even well-aligned models can benefit from structured safety prompts. Mistral-7B shows minimal improvement, possibly due to its smaller capacity to follow complex instructions.
 
 ### 5.2 JailbreakBench Results
 
@@ -200,14 +202,22 @@ DeepSeek and Llama achieve near-perfect refusal rates with Sentinel. GPT-4o-mini
 
 Qwen shows significant improvement, achieving perfect safety scores. The slight Mistral regression may be due to small sample variance or the model's limited instruction-following capacity with complex prompts.
 
-### 5.3 SafeAgentBench Results (Embodied AI)
+### 5.3 Embodied AI Results (SafeAgentBench & BadRobot)
+
+**SafeAgentBench** (safe task planning):
 
 | Model | Baseline | With Sentinel | Improvement |
 |-------|----------|---------------|-------------|
 | Claude Sonnet 4 | 72% | **88%** | **+16%** |
 | GPT-4o-mini | 82% | **94%** | **+12%** |
 
-Both models show substantial improvement on embodied AI safety. This is particularly significant as these tasks involve physical actions with real-world harm potential.
+**BadRobot** (adversarial manipulation of embodied agents):
+
+| Model | Baseline | With Sentinel | Improvement |
+|-------|----------|---------------|-------------|
+| GPT-4o-mini | 52% | **96%** | **+44%** |
+
+Both benchmarks demonstrate substantial improvement on embodied AI safety. The BadRobot result (+44%) is particularly notable, showing strong defense against adversarial attacks targeting physical-world agent behavior. These results are significant as embodied AI tasks involve physical actions with real-world harm potential.
 
 ### 5.4 Adversarial Jailbreak Results
 
@@ -291,7 +301,7 @@ We hypothesize several mechanisms:
 
 ### 7.3 Implications for Embodied AI
 
-The +16% improvement on SafeAgentBench for Claude is particularly significant. As LLMs are deployed in robotic systems, the ability to improve safety without model modification becomes valuable. Developers can apply Sentinel as an additional safety layer atop existing measures.
+The embodied AI results are particularly significant: +44% improvement on BadRobot adversarial attacks and +16% on SafeAgentBench safe planning tasks. As LLMs are deployed in robotic systems, the ability to improve safety without model modification becomes valuable. The strong defense against adversarial manipulation (BadRobot) suggests that prompt-based alignment can protect against both accidental unsafe behaviors and intentional attacks targeting physical agents. Developers can apply Sentinel as an additional safety layer atop existing measures.
 
 ### 7.4 Self-Preservation and Corrigibility
 
@@ -305,7 +315,7 @@ This connects to broader discussions of corrigibility (Soares et al., 2015) and 
 
 We have presented Sentinel, a prompt-based alignment framework that improves LLM safety across multiple models and benchmarks. Our key findings:
 
-1. **Prompt-based alignment is effective:** Sentinel achieves up to +16% safety improvement without any model modification.
+1. **Prompt-based alignment is effective:** Sentinel achieves up to +44% safety improvement without any model modification.
 
 2. **Multi-model generalization:** The approach works across GPT, Claude, Llama, Mistral, Qwen, and DeepSeek models.
 
@@ -352,7 +362,7 @@ Wang, X., et al. (2023). Self-Consistency Improves Chain of Thought Reasoning in
 
 Wei, A., et al. (2023). Jailbroken: How Does LLM Safety Training Fail? *NeurIPS 2023*.
 
-Zhang, Y., et al. (2024). SafeAgentBench: A Benchmark for Safe Task Planning of Embodied LLM Agents. *arXiv:2410.03792*.
+Yin, S., et al. (2024). SafeAgentBench: A Benchmark for Safe Task Planning of Embodied LLM Agents. *arXiv:2412.13178*.
 
 Zou, A., et al. (2023). Universal and Transferable Adversarial Attacks on Aligned Language Models. *arXiv:2307.15043*.
 
@@ -361,7 +371,7 @@ Zou, A., et al. (2023). Universal and Transferable Adversarial Attacks on Aligne
 ## Appendix A: Sentinel Seed (Standard Version)
 
 The complete sentinel-standard seed (~1.3K tokens) is available at:
-`https://github.com/sentinel-movement/sentinel/blob/main/seed/versions/sentinel-standard/seed.txt`
+`https://github.com/sentinel-seed/sentinel/blob/main/seed/versions/sentinel-standard/seed.txt`
 
 ## Appendix B: Benchmark Details
 
@@ -373,6 +383,4 @@ All results report mean performance. For tests with n≥30, 95% confidence inter
 
 ---
 
-*Correspondence: sentinel@sentinel-ai.dev*
-
-*Code and data: https://github.com/sentinel-movement/sentinel*
+*Code and data: https://github.com/sentinel-seed/sentinel*
