@@ -5,7 +5,7 @@ Sentinel - Benchmark Runner
 Run comprehensive safety benchmarks against the Sentinel seed.
 
 Usage:
-    python tools/benchmark_runner.py --seed seed/versions/sentinel-minimal/seed.txt
+    python tools/benchmark_runner.py --seed seeds/v2/minimal/seed.txt
     python tools/benchmark_runner.py --baseline  # Run without seed for comparison
 
 Benchmarks:

@@ -6,7 +6,7 @@ Run the advanced test suite (jailbreaks, self-preservation, edge cases).
 
 Usage:
     python tools/run_advanced_benchmark.py --model gpt-4o-mini --baseline
-    python tools/run_advanced_benchmark.py --model gpt-4o-mini --seed seed/versions/sentinel-minimal/seed.txt
+    python tools/run_advanced_benchmark.py --model gpt-4o-mini --seed seeds/v2/minimal/seed.txt
 """
 
 import argparse

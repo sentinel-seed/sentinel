@@ -6,7 +6,7 @@ Test the Sentinel seed across different models and scenarios.
 
 Usage:
     # Single test
-    python tools/test_seed.py --prompt "your prompt" --seed seed/versions/sentinel-minimal/seed.txt
+    python tools/test_seed.py --prompt "your prompt" --seed seeds/v2/minimal/seed.txt
 
     # Baseline (no seed)
     python tools/test_seed.py --prompt "your prompt"
