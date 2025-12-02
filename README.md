@@ -8,7 +8,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-4%20validated-green.svg)]()
 
-🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinel_Seed)
+🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/Sentinel_Seed)
 
 ---
 
@@ -449,7 +449,7 @@ MIT License — See [LICENSE](LICENSE)
 
 - 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
 - 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed)
-- 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinel_Seed)
+- 𝕏 **Twitter:** [@sentinelseed](https://x.com/Sentinel_Seed)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
 
