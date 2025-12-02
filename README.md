@@ -28,8 +28,8 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 │ • Assistants             │ • Code execution         │ • Industrial systems   │
 │ • Customer service       │ • Tool-use agents        │ • Drones, manipulators │
 ├──────────────────────────┼──────────────────────────┼────────────────────────┤
-│ HarmBench: +22%          │ SafeAgentBench: +16%     │ BadRobot: +44%         │
-│ JailbreakBench: +10%     │ SafeAgentBench: +12%     │ Embodied AI validated  │
+│ HarmBench: +22%          │ SafeAgentBench: +26%     │ BadRobot: +48%         │
+│ JailbreakBench: +10%     │ SafeAgentBench: +16%     │ Embodied AI validated  │
 └──────────────────────────┴──────────────────────────┴────────────────────────┘
 ```
 
@@ -59,7 +59,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 | Challenge | Sentinel Solution |
 |-----------|-------------------|
-| Unauthorized actions | +16% safety (Claude), +12% (GPT-4o-mini) |
+| Unauthorized actions | +26% safety (Claude), +16% (GPT-4o-mini) |
 | Task deviation | Scope gate maintains boundaries |
 | Resource acquisition | Anti-self-preservation limits |
 
@@ -67,11 +67,11 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 | Challenge | Sentinel Solution |
 |-----------|-------------------|
-| Dangerous physical actions | +44% safety on BadRobot benchmark |
+| Dangerous physical actions | +48% safety on BadRobot benchmark |
 | Irreversible harm | Full seed with physical safety module |
 | Self-preservation behaviors | Explicit priority hierarchy |
 
-**Key insight:** Sentinel shows **larger improvements as stakes increase**. Text: +10-22%. Agents: +12-16%. Robots: +44%. The higher the risk, the more value Sentinel provides.
+**Key insight:** Sentinel shows **larger improvements as stakes increase**. Text: +10-22%. Agents: +16-26%. Robots: +48%. The higher the risk, the more value Sentinel provides.
 
 ---
 
