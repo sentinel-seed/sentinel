@@ -36,7 +36,8 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ### Core Components
 
-- **THS Protocol** — Three-gate validation (Truth, Harm, Scope)
+- **THSP Protocol** — Four-gate validation (Truth, Harm, Scope, Purpose)
+- **Teleological Core** — Actions must serve legitimate purposes
 - **Anti-Self-Preservation** — Prevents AI from prioritizing its own existence
 - **Alignment Seeds** — System prompts that shape LLM behavior
 - **Python SDK** — Easy integration with any LLM
@@ -75,75 +76,41 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ---
 
-## Validated Results
+## Validated Results (v2 Seed)
 
-Tested across **5 benchmarks** on **6+ models**:
+Tested across **4 benchmarks** on **6 models** with **97.6% average safety rate**:
 
----
+### Results by Model
 
-### Embodied AI Safety
+| Model | HarmBench | SafeAgent | BadRobot | Jailbreak | **Avg** |
+|-------|-----------|-----------|----------|-----------|---------|
+| GPT-4o-mini | 100% | 98% | 100% | 100% | **99.5%** |
+| Claude Sonnet 4 | 98% | 98% | 100% | 94% | **97.5%** |
+| Qwen 2.5 72B | 96% | 98% | 98% | 94% | **96.5%** |
+| DeepSeek Chat | 100% | 96% | 100% | 100% | **99%** |
+| Llama 3.3 70B | 88% | 94% | 98% | 94% | **93.5%** |
+| Mistral Small | 98% | 100% | 100% | 100% | **99.5%** |
+| **Average** | **96.7%** | **97.3%** | **99.3%** | **97%** | **97.6%** |
 
-#### SafeAgentBench — 300 Unsafe Tasks
+### Results by Benchmark
 
-| Model | Baseline | With Sentinel | Improvement |
-|-------|----------|---------------|-------------|
-| Claude Sonnet 4 | 72% | **88%** | **+16%** |
-| GPT-4o-mini | 82% | **94%** | **+12%** |
+| Benchmark | Attack Surface | Safety Rate |
+|-----------|----------------|-------------|
+| **HarmBench** | LLM (Text) | 96.7% |
+| **SafeAgentBench** | Agent (Digital) | 97.3% |
+| **BadRobot** | Robot (Physical) | 99.3% |
+| **JailbreakBench** | All surfaces | 97% |
 
-#### BadRobot — 277 Malicious Physical-World Queries
+### v1 vs v2 Comparison
 
-| Model | Baseline | With Sentinel | Improvement |
-|-------|----------|---------------|-------------|
-| GPT-4o-mini | 52% | **96%** | **+44%** |
+| Benchmark | v1 avg | v2 avg | Improvement |
+|-----------|--------|--------|-------------|
+| HarmBench | 88.7% | **96.7%** | +8% |
+| SafeAgentBench | 79.2% | **97.3%** | +18.1% |
+| BadRobot | 74% | **99.3%** | +25.3% |
+| JailbreakBench | 96.5% | **97%** | +0.5% |
 
----
-
-### Text Safety
-
-#### HarmBench — 50 Harmful Behaviors
-
-| Model | Baseline | With Sentinel | Improvement |
-|-------|----------|---------------|-------------|
-| GPT-4o-mini | 78% | **100%** | **+22%** |
-| DeepSeek Chat | — | **100%** | — |
-| Llama-3.3-70B | — | **96%** | — |
-| Mistral-7B | 22% | 24% | +2% |
-
-#### JailbreakBench — 30 Harmful Behaviors
-
-| Model | Baseline | With Sentinel | Improvement |
-|-------|----------|---------------|-------------|
-| Qwen-2.5-72B | 90% | **100%** | **+10%** |
-| Mistral-7B | 97% | 93% | -4% ⚠️ |
-
-*Note: Mistral-7B regression likely due to small sample size (n=30). Area for improvement.*
-
-#### Adversarial Jailbreaks — 20 Techniques
-
-| Model | Baseline | With Sentinel | Improvement |
-|-------|----------|---------------|-------------|
-| Mistral-7B | 95% | **100%** | **+5%** |
-
----
-
-### Utility Preservation
-
-#### Utility Test — 35 Legitimate Tasks
-
-| Model | With Sentinel | False Refusals |
-|-------|---------------|----------------|
-| GPT-4o-mini | **100%** | **0** |
-
----
-
-### Ablation Studies
-
-| Variant | SafeAgentBench | Delta |
-|---------|----------------|-------|
-| Full seed | 100% | — |
-| THS-only | 93.3% | **-6.7%** |
-
-**Finding:** For text-only tasks, THS gates alone are sufficient. For embodied AI, the full seed (including anti-self-preservation) is required.
+**Key insight:** v2 introduces the PURPOSE gate (THSP protocol) which requires actions to serve legitimate purposes — not just avoid harm.
 
 ---
 
@@ -256,29 +223,29 @@ if not sentinel.validate_action(decision).is_safe:
 
 | Version | Tokens | Best For |
 |---------|--------|----------|
-| `minimal` | ~500 | Chatbots, low latency |
-| `standard` | ~1.3K | General use, balanced |
-| `full` | ~5K | Embodied AI, max safety |
+| `v2/minimal` | ~600 | Chatbots, APIs, low latency |
+| `v2/standard` | ~1,100 | General use, agents ← **Recommended** |
+| `v2/full` | ~2,000 | Critical systems, max safety |
 
 ```python
 from sentinel import Sentinel, SeedLevel
 
 # Choose based on use case
 sentinel_chat = Sentinel(seed_level=SeedLevel.MINIMAL)
-sentinel_agent = Sentinel(seed_level=SeedLevel.FULL)
+sentinel_agent = Sentinel(seed_level=SeedLevel.STANDARD)  # Recommended
 ```
 
 ---
 
-## Three-Gate Protocol (THS)
+## Four-Gate Protocol (THSP)
 
-All requests pass through three sequential gates:
+All requests pass through four sequential gates:
 
 ```
 REQUEST
    ↓
 ┌──────────────────┐
-│  GATE 1: TRUTH   │  "Does this involve deception?"
+│  GATE 1: TRUTH   │  "Is this factually accurate?"
 └────────┬─────────┘
          ↓ PASS
 ┌──────────────────┐
@@ -289,8 +256,14 @@ REQUEST
 │  GATE 3: SCOPE   │  "Is this within boundaries?"
 └────────┬─────────┘
          ↓ PASS
+┌──────────────────┐
+│  GATE 4: PURPOSE │  "Does this serve a legitimate purpose?"
+└────────┬─────────┘
+         ↓ PASS
     ASSIST FULLY
 ```
+
+**Key difference from v1:** The PURPOSE gate ensures actions serve legitimate benefit — the absence of harm is not sufficient.
 
 ---
 
@@ -373,21 +346,29 @@ POST /chat              - Chat with seed injection
 
 ```
 sentinel/
-├── src/sentinel/           # Python SDK
-│   ├── core.py            # Main Sentinel class
-│   ├── seeds/             # Embedded seeds
-│   ├── validators/        # THS gates
-│   ├── providers/         # OpenAI, Anthropic
-│   └── integrations/      # LangChain, CrewAI
-├── api/                   # REST API
-├── seed/versions/         # Seed files
-├── evaluation/            # Benchmarks & results
-│   ├── harmbench/         # HarmBench tests
-│   ├── jailbreak-bench/   # JailbreakBench tests
-│   ├── SafeAgentBench/    # Embodied AI tests
-│   └── embodied-ai/       # BadRobot tests
-├── examples/              # Usage examples
-└── tests/                 # Test suite
+├── sdk/sentinel/              # Python SDK
+│   ├── core.py               # Main Sentinel class
+│   ├── validators/           # THSP gates
+│   ├── providers/            # OpenAI, Anthropic
+│   └── integrations/         # LangChain, CrewAI
+├── seeds/                     # Alignment seeds
+│   ├── v1/                   # Legacy (THS protocol)
+│   ├── v2/                   # Production (THSP protocol)
+│   └── SPEC.md               # Seed specification
+├── evaluation/
+│   ├── benchmarks/           # Benchmark implementations
+│   │   ├── harmbench/
+│   │   ├── safeagentbench/
+│   │   └── jailbreakbench/
+│   └── results/              # Test results by benchmark
+│       ├── harmbench/
+│       ├── safeagentbench/
+│       ├── badrobot/
+│       └── jailbreakbench/
+├── api/                       # REST API
+├── examples/                  # Usage examples
+├── tools/                     # Utility scripts
+└── tests/                     # Test suite
 ```
 
 ---
@@ -397,21 +378,21 @@ sentinel/
 All benchmark results are reproducible:
 
 ```bash
-# SafeAgentBench (Embodied AI)
-cd evaluation/SafeAgentBench
-python run_sentinel_safeagent.py --api_key YOUR_KEY --model gpt-4o-mini
-
 # HarmBench
-cd evaluation/harmbench
+cd evaluation/benchmarks/harmbench
 python run_sentinel_harmbench.py --api_key YOUR_KEY --model gpt-4o-mini
 
-# JailbreakBench
-cd evaluation/jailbreak-bench
-python run_jailbreak_openrouter.py --api_key YOUR_KEY --model qwen/qwen-2.5-72b-instruct
+# SafeAgentBench
+cd evaluation/benchmarks/safeagentbench
+python run_sentinel_safeagent.py --api_key YOUR_KEY --model gpt-4o-mini
 
-# Ablation Studies
-cd evaluation/harmbench
-python run_ablation_study.py --api_key YOUR_KEY --sample_size 30
+# JailbreakBench
+cd evaluation/benchmarks/jailbreakbench
+python run_jailbreak_test.py --api_key YOUR_KEY --model gpt-4o-mini
+
+# Unified benchmark runner (all benchmarks)
+cd evaluation
+python run_benchmark_unified.py --benchmark harmbench --model gpt-4o-mini --seed v2/standard
 ```
 
 ---
@@ -444,7 +425,7 @@ If you use Sentinel in your research, please cite:
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 Areas we need help:
 - **Robotics integration** — ROS2, Isaac Sim, PyBullet
