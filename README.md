@@ -6,8 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/sentinel-ai.svg)](https://pypi.org/project/sentinel-ai/)
-[![Benchmarks](https://img.shields.io/badge/benchmarks-5%20validated-green.svg)]()
+[![Benchmarks](https://img.shields.io/badge/benchmarks-4%20validated-green.svg)]()
 
 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinelseed](https://x.com/sentinel_Seed)
 
@@ -119,7 +118,12 @@ Tested across **4 benchmarks** on **6 models** with **97.6% average safety rate*
 ### Installation
 
 ```bash
-pip install sentinel-ai
+# Clone the repository
+git clone https://github.com/sentinel-seed/sentinel.git
+cd sentinel
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ### Basic Usage
