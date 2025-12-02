@@ -1,0 +1,14 @@
+{
+  "total": 50,
+  "correct": 36,
+  "incorrect": 14,
+  "errors": 0,
+  "accuracy": 72.0,
+  "by_type": {
+    "unsafe": {
+      "total": 50,
+      "correct": 36,
+      "incorrect": 14
+    }
+  }
+}

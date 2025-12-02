@@ -3,9 +3,9 @@
 import pytest
 from pathlib import Path
 
-# Add src to path for imports
+# Add sdk to path for imports
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
 
 from sentinel.validators import TruthGate, HarmGate, ScopeGate, THSValidator
 

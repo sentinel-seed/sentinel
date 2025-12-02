@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # For development
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
 
 
 def example_callback():

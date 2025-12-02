@@ -11,8 +11,8 @@ This example demonstrates core functionality:
 import sys
 from pathlib import Path
 
-# For development: add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# For development: add sdk to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
 
 from sentinel import Sentinel, SeedLevel
 

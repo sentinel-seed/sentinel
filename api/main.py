@@ -24,8 +24,8 @@ import os
 import sys
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add sdk to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
 
 from sentinel import Sentinel, SeedLevel
 from sentinel.validators import THSValidator
