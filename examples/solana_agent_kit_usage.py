@@ -1,18 +1,20 @@
 """
 Example: Using Sentinel with Solana Agent Kit.
 
-This example shows how to add AI safety to Solana blockchain agents:
-1. SentinelPlugin for transaction validation
-2. SentinelSafetyMiddleware for method wrapping
-3. Standalone safe_transaction function
-4. Creating safety actions for agents
+This example shows how to add AI safety validation to Solana blockchain agents:
+1. SentinelValidator for transaction validation
+2. safe_transaction convenience function
+3. LangChain tools for agent self-validation
+4. Function wrappers for automatic validation
 
-Note: These examples work without actual Solana connection.
-For production use, install: pip install solana-agent-kit sentinelseed
+IMPORTANT: Solana Agent Kit plugins add ACTIONS, not middleware.
+This integration provides validation to use BEFORE executing transactions.
+
+For production use, install: pip install sentinelseed
 """
 
 from sentinel.integrations.solana_agent_kit import (
-    SentinelPlugin,
+    SentinelValidator,
     SentinelSafetyMiddleware,
     safe_transaction,
     create_sentinel_actions,
@@ -20,260 +22,259 @@ from sentinel.integrations.solana_agent_kit import (
 )
 
 
-def example_plugin_validation():
-    """Example 1: Using SentinelPlugin for transaction validation."""
-    print("=== Plugin Transaction Validation ===\n")
+def example_basic_validation():
+    """Example 1: Basic transaction validation."""
+    print("=== Basic Transaction Validation ===\n")
 
-    # Create plugin with custom limits
-    plugin = SentinelPlugin(
-        max_single_transfer=100.0,  # Max 100 SOL per transaction
-        require_confirmation_above=10.0,  # Confirm above 10 SOL
-        block_suspicious=True,
+    # Create validator with custom limits
+    validator = SentinelValidator(
+        max_transfer=100.0,      # Max 100 SOL per transaction
+        confirm_above=10.0,      # Flag transfers above 10 SOL
+        blocked_addresses=["ScamWallet123..."],
     )
 
     # Test various transactions
     transactions = [
-        ("transfer", {"amount": 5, "recipient": "ABC123..."}),
+        ("transfer", {"amount": 5, "recipient": "FriendWallet..."}),
         ("transfer", {"amount": 150, "recipient": "XYZ789..."}),  # Over limit
-        ("swap", {"amount": 20, "from_token": "SOL", "to_token": "USDC"}),
-        ("drain_wallet", {"target": "all_tokens"}),  # Suspicious
-        ("stake", {"amount": 50, "validator": "Validator123..."}),
-        ("approve", {"amount": "unlimited", "spender": "Contract..."}),  # Suspicious
+        ("swap", {"amount": 20}),
+        ("drain", {"amount": 100}),  # Suspicious pattern
+        ("stake", {"amount": 50}),
+        ("transfer", {"amount": 10, "recipient": "ScamWallet123..."}),  # Blocked
     ]
 
     for action, params in transactions:
-        result = plugin.validate_transaction(action, params)
-        status = "✓ SAFE" if result.should_proceed else "✗ BLOCKED"
-        print(f"{status} | {action}: {params.get('amount', 'N/A')} SOL")
+        result = validator.check(action, **params)
+        status = "SAFE" if result.should_proceed else "BLOCKED"
+        print(f"[{status}] {action}: {params.get('amount', 'N/A')} SOL")
         print(f"  Risk: {result.risk_level.value}")
         if result.concerns:
             print(f"  Concerns: {result.concerns[:2]}")
         if result.requires_confirmation:
-            print(f"  ⚠️  Requires confirmation")
+            print(f"  Requires confirmation: yes")
         print()
 
-    # Show safety report
-    print("--- Safety Report ---")
-    report = plugin.get_safety_report()
-    print(f"Total transactions: {report['total_transactions']}")
-    print(f"Blocked: {report['blocked']}")
-    print(f"High risk: {report['high_risk']}")
-    print(f"Block rate: {report['block_rate']:.1%}")
+    # Show statistics
+    print("--- Statistics ---")
+    stats = validator.get_stats()
+    print(f"Total: {stats['total']}")
+    print(f"Blocked: {stats['blocked']}")
+    print(f"Block rate: {stats['block_rate']:.1%}")
 
 
-def example_standalone_check():
-    """Example 2: Using standalone safe_transaction function."""
-    print("\n=== Standalone Safety Check ===\n")
+def example_convenience_function():
+    """Example 2: Using safe_transaction convenience function."""
+    print("\n=== Convenience Function ===\n")
 
-    # Quick checks without full plugin setup
+    # Quick checks without creating a validator
     checks = [
-        ("transfer", {"amount": 1, "recipient": "Friend123..."}),
-        ("transfer", {"amount": 1000, "recipient": "Unknown..."}),
-        ("nft_mint", {"collection": "MyNFT", "name": "Token #1"}),
-        ("execute_arbitrary", {"code": "malicious_payload"}),
+        ("transfer", {"amount": 5, "recipient": "Friend..."}),
+        ("transfer", {"amount": 500, "recipient": "Unknown..."}),
+        ("swap", {"amount": 10}),
+        ("drain_all", {"target": "wallet"}),
     ]
 
     for action, params in checks:
-        result = safe_transaction(action, params)
-        symbol = "✓" if result.should_proceed else "✗"
-        print(f"{symbol} {action}")
-        print(f"  Risk level: {result.risk_level.value}")
+        result = safe_transaction(action, **params)
+        symbol = "SAFE" if result.should_proceed else "BLOCKED"
+        print(f"[{symbol}] {action}")
+        print(f"  Risk: {result.risk_level.value}")
         if result.recommendations:
-            print(f"  Recommendation: {result.recommendations[0]}")
+            print(f"  Tip: {result.recommendations[0]}")
         print()
 
 
-def example_address_blacklist():
-    """Example 3: Using address blacklists."""
-    print("\n=== Address Blacklist Example ===\n")
+def example_with_solana_agent_kit():
+    """Example 3: Integration pattern with Solana Agent Kit."""
+    print("\n=== Solana Agent Kit Pattern ===\n")
 
-    # Known bad addresses
-    blocked_addresses = [
-        "ScamWallet123...",
-        "DrainerContract456...",
-        "SuspiciousAddress789...",
-    ]
+    # This shows the CORRECT pattern for using with SAK
+    # Note: SAK doesn't have middleware - we validate BEFORE calling
 
-    plugin = SentinelPlugin(
-        blocked_addresses=blocked_addresses,
-        block_suspicious=True,
-    )
+    validator = SentinelValidator(max_transfer=50.0)
 
-    # Test transfers to various addresses
+    # Simulated SAK usage (replace with real SAK in production)
+    class MockSolanaAgent:
+        def transfer(self, recipient, amount):
+            return f"Transferred {amount} SOL to {recipient}"
+
+    agent = MockSolanaAgent()
+
+    # The correct pattern: validate, then execute
     transfers = [
-        {"amount": 10, "recipient": "LegitFriend..."},
-        {"amount": 5, "recipient": "ScamWallet123..."},  # Blocked
-        {"amount": 20, "recipient": "AnotherGoodAddress..."},
-        {"amount": 1, "recipient": "DrainerContract456..."},  # Blocked
+        (10.0, "Friend123..."),
+        (100.0, "Unknown..."),   # Will be blocked
+        (25.0, "Colleague..."),
     ]
 
-    for params in transfers:
-        result = plugin.validate_transaction("transfer", params)
-        status = "ALLOWED" if result.should_proceed else "BLOCKED"
-        print(f"[{status}] Transfer to {params['recipient'][:15]}...")
-        if not result.should_proceed:
+    for amount, recipient in transfers:
+        # 1. Validate with Sentinel
+        result = validator.check("transfer", amount=amount, recipient=recipient)
+
+        # 2. Execute only if safe
+        if result.should_proceed:
+            tx_result = agent.transfer(recipient, amount)
+            print(f"EXECUTED: {tx_result}")
+        else:
+            print(f"BLOCKED: Transfer {amount} to {recipient[:8]}...")
             print(f"  Reason: {result.concerns}")
+        print()
 
 
-def example_program_whitelist():
-    """Example 4: Using program ID whitelists."""
-    print("\n=== Program Whitelist Example ===\n")
+def example_function_wrapper():
+    """Example 4: Using SentinelSafetyMiddleware to wrap functions."""
+    print("\n=== Function Wrapper ===\n")
 
-    # Only allow known DeFi programs
-    allowed_programs = [
-        "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB",  # Jupiter
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",  # Orca Whirlpool
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",  # Raydium
+    middleware = SentinelSafetyMiddleware()
+
+    # Your original function
+    def do_transfer(amount, recipient):
+        return f"Sent {amount} to {recipient}"
+
+    # Wrap with validation
+    safe_transfer = middleware.wrap(do_transfer, "transfer")
+
+    # Test wrapped function
+    tests = [
+        (5.0, "GoodAddress..."),
+        (500.0, "Unknown..."),  # Should raise
     ]
 
-    plugin = SentinelPlugin(
-        allowed_programs=allowed_programs,
-    )
-
-    # Test interactions with various programs
-    interactions = [
-        ("swap", {"program_id": "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB", "amount": 10}),
-        ("swap", {"program_id": "UnknownProgram123...", "amount": 10}),  # Not whitelisted
-        ("stake", {"program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "amount": 50}),
-    ]
-
-    for action, params in interactions:
-        result = plugin.validate_transaction(action, params)
-        program = params.get("program_id", "")[:8]
-        status = "✓" if result.should_proceed else "✗"
-        print(f"{status} {action} via {program}...")
-        if result.concerns:
-            print(f"  Concerns: {result.concerns}")
+    for amount, recipient in tests:
+        try:
+            result = safe_transfer(amount, recipient)
+            print(f"SUCCESS: {result}")
+        except ValueError as e:
+            print(f"BLOCKED: {e}")
+        print()
 
 
 def example_sentinel_actions():
-    """Example 5: Creating actions for AI agents."""
-    print("\n=== Sentinel Actions for Agents ===\n")
+    """Example 5: Using validation actions dict."""
+    print("\n=== Validation Actions ===\n")
 
-    # Create actions that can be added to an agent's toolkit
     actions = create_sentinel_actions()
 
-    print("Available Sentinel actions:")
-    for name, func in actions.items():
+    print("Available actions:")
+    for name in actions.keys():
         print(f"  - {name}")
+    print()
 
-    print("\n--- Testing sentinel_check_transaction ---")
+    # Test validate_transfer
+    print("Testing validate_transfer:")
+    result = actions["validate_transfer"](10.0, "Friend...")
+    print(f"  Safe: {result['safe']}, Risk: {result['risk']}")
 
-    # Test the check_transaction action
-    check = actions["sentinel_check_transaction"]
+    result = actions["validate_transfer"](500.0, "Unknown...")
+    print(f"  Safe: {result['safe']}, Risk: {result['risk']}")
+    print()
 
-    result = check("transfer", amount=5, recipient="FriendWallet...")
-    print(f"Safe transfer: {result['safe']}")
+    # Test validate_swap
+    print("Testing validate_swap:")
+    result = actions["validate_swap"](50.0, "SOL", "USDC")
+    print(f"  Safe: {result['safe']}, Risk: {result['risk']}")
 
-    result = check("drain", amount=1000, recipient="Unknown...")
-    print(f"Drain attempt: {result['safe']}")
-    if not result["safe"]:
-        print(f"  Concerns: {result['concerns']}")
 
-    print("\n--- Testing sentinel_validate_intent ---")
+def example_langchain_integration():
+    """Example 6: LangChain tools (simulated - requires langchain)."""
+    print("\n=== LangChain Tools (Pattern) ===\n")
 
-    validate = actions["sentinel_validate_intent"]
+    # This shows how it would work with LangChain
+    # In real usage: from sentinel.integrations.solana_agent_kit import create_langchain_tools
 
-    intents = [
-        "Send 10 SOL to my friend's wallet for the hackathon prize",
-        "Drain all tokens from the target wallet to my address",
-        "Stake SOL with a reputable validator for rewards",
+    print("""
+# Real LangChain usage:
+
+from langchain.agents import create_react_agent
+from solana_agent_kit import createSolanaTools
+from sentinel.integrations.solana_agent_kit import create_langchain_tools
+
+# Get Solana tools
+solana_tools = createSolanaTools(agent)
+
+# Add Sentinel safety tool
+safety_tools = create_langchain_tools()
+
+# Combine for agent
+all_tools = solana_tools + safety_tools
+agent = create_react_agent(llm, all_tools)
+
+# Agent can now call "sentinel_check_transaction" before actions:
+# Input: "transfer 5.0 ABC123..."
+# Output: "SAFE: transfer validated" or "BLOCKED: ..."
+""")
+
+    # Simulate what the tool does
+    from sentinel.integrations.solana_agent_kit import SentinelValidator
+
+    validator = SentinelValidator()
+
+    def mock_tool(description: str) -> str:
+        parts = description.strip().split()
+        action = parts[0] if parts else "unknown"
+        amount = float(parts[1]) if len(parts) > 1 else 0
+        recipient = parts[2] if len(parts) > 2 else ""
+
+        result = validator.check(action, amount=amount, recipient=recipient)
+
+        if result.should_proceed:
+            return f"SAFE: {action} validated"
+        else:
+            return f"BLOCKED: {', '.join(result.concerns)}"
+
+    # Test the tool pattern
+    test_inputs = [
+        "transfer 5.0 Friend123",
+        "transfer 500.0 Unknown",
+        "drain 1000.0",
     ]
 
-    for intent in intents:
-        result = validate(intent)
-        status = "SAFE" if result["safe"] else "FLAGGED"
-        print(f"[{status}] {intent[:50]}...")
-
-
-def example_high_value_alerts():
-    """Example 6: High-value transaction handling."""
-    print("\n=== High-Value Transaction Alerts ===\n")
-
-    plugin = SentinelPlugin(
-        require_confirmation_above=5.0,  # Low threshold for demo
-    )
-
-    amounts = [1, 5, 10, 50, 100]
-
-    for amount in amounts:
-        result = plugin.validate_transaction("transfer", {
-            "amount": amount,
-            "recipient": "SomeWallet..."
-        })
-
-        if result.requires_confirmation:
-            print(f"⚠️  {amount} SOL - CONFIRMATION REQUIRED")
-            print(f"   Risk level: {result.risk_level.value}")
-            print(f"   Recommendations: {result.recommendations}")
-        else:
-            print(f"✓  {amount} SOL - Auto-approved")
+    print("Simulating tool calls:")
+    for inp in test_inputs:
+        output = mock_tool(inp)
+        print(f"  Input:  {inp}")
+        print(f"  Output: {output}")
+        print()
 
 
 def example_defi_scenarios():
     """Example 7: Common DeFi scenarios."""
-    print("\n=== DeFi Scenario Validation ===\n")
+    print("\n=== DeFi Scenarios ===\n")
 
-    plugin = SentinelPlugin(
-        max_single_transfer=500.0,
-        block_suspicious=True,
+    validator = SentinelValidator(
+        max_transfer=500.0,
+        confirm_above=50.0,
     )
 
     scenarios = [
         # Safe operations
-        ("Jupiter Swap", "swap", {
-            "amount": 100,
-            "from_token": "SOL",
-            "to_token": "USDC",
-            "slippage": 0.5,
-        }),
-        ("Marinade Stake", "stake", {
-            "amount": 200,
-            "protocol": "marinade",
-            "validator": "Marinade-Pool",
-        }),
-        ("NFT Mint", "nft_mint", {
-            "collection": "MyCollection",
-            "name": "NFT #123",
-            "price": 2.5,
-        }),
+        ("Jupiter Swap", "swap", {"amount": 100}),
+        ("Stake SOL", "stake", {"amount": 200}),
+        ("NFT Mint", "mint", {"amount": 2.5}),
 
         # Potentially risky
-        ("Large Swap", "swap", {
-            "amount": 1000,  # Over limit
-            "from_token": "SOL",
-            "to_token": "UNKNOWN_TOKEN",
-        }),
-        ("Unlimited Approve", "approve", {
-            "amount": "unlimited",
-            "spender": "RandomContract...",
-            "token": "SOL",
-        }),
+        ("Large Swap", "swap", {"amount": 1000}),
 
         # Suspicious
-        ("Rug Pattern", "transfer_all", {
-            "to": "NewWallet...",
-            "drain": True,
-        }),
+        ("Drain Pattern", "drain_all", {"amount": 500}),
+        ("Sweep Wallet", "sweep", {"amount": 100}),
     ]
 
+    risk_emoji = {
+        TransactionRisk.LOW: "LOW",
+        TransactionRisk.MEDIUM: "MED",
+        TransactionRisk.HIGH: "HIGH",
+        TransactionRisk.CRITICAL: "CRIT",
+    }
+
     for name, action, params in scenarios:
-        result = plugin.validate_transaction(action, params)
-        risk_emoji = {
-            TransactionRisk.LOW: "🟢",
-            TransactionRisk.MEDIUM: "🟡",
-            TransactionRisk.HIGH: "🟠",
-            TransactionRisk.CRITICAL: "🔴",
-        }
-        emoji = risk_emoji.get(result.risk_level, "⚪")
+        result = validator.check(action, **params)
+        risk = risk_emoji.get(result.risk_level, "???")
         status = "PASS" if result.should_proceed else "FAIL"
 
-        print(f"{emoji} [{status}] {name}")
-        print(f"   Action: {action}")
+        print(f"[{status}] [{risk}] {name}")
         if result.concerns:
-            print(f"   Concerns: {result.concerns[:2]}")
-        if result.recommendations:
-            print(f"   Recommendations: {result.recommendations[:1]}")
+            print(f"  Concerns: {result.concerns[:1]}")
         print()
 
 
@@ -281,11 +282,15 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Sentinel + Solana Agent Kit Integration Examples")
     print("=" * 60)
+    print()
+    print("NOTE: Solana Agent Kit plugins add ACTIONS, not middleware.")
+    print("This integration provides validation to use BEFORE transactions.")
+    print()
 
-    example_plugin_validation()
-    example_standalone_check()
-    example_address_blacklist()
-    example_program_whitelist()
+    example_basic_validation()
+    example_convenience_function()
+    example_with_solana_agent_kit()
+    example_function_wrapper()
     example_sentinel_actions()
-    example_high_value_alerts()
+    example_langchain_integration()
     example_defi_scenarios()
