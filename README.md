@@ -276,9 +276,9 @@ if not sentinel.validate_action(decision).is_safe:
 
 | Version | Tokens | Best For |
 |---------|--------|----------|
-| `v2/minimal` | ~600 | Chatbots, APIs, low latency |
-| `v2/standard` | ~1,100 | General use, agents ← **Recommended** |
-| `v2/full` | ~2,000 | Critical systems, max safety |
+| `v2/minimal` | ~360 | Chatbots, APIs, low latency |
+| `v2/standard` | ~1,000 | General use, agents ← **Recommended** |
+| `v2/full` | ~1,900 | Critical systems, max safety |
 
 ```python
 from sentinel import Sentinel, SeedLevel
