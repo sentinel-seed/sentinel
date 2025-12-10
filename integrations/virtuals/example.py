@@ -13,20 +13,14 @@ to actually run agents.
 
 import json
 import logging
-import sys
-from pathlib import Path
 
 # Set up logging to see Sentinel validation results
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add integrations path for local testing
-# In production, use: from sentinel.integrations.virtuals import ...
-integrations_path = Path(__file__).parent.parent / "integrations"
-sys.path.insert(0, str(integrations_path))
-
-# Import Sentinel integration
-from virtuals import (
+# Import from local plugin (same directory)
+# In production with sentinelseed package: from sentinelseed.integrations.virtuals import ...
+from plugin import (
     SentinelWorkerConfig,
     SentinelValidator,
     sentinel_protected,
