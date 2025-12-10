@@ -4,8 +4,11 @@
 
 > **Text is risk. Action is danger.** Sentinel provides validated alignment seeds for LLMs, agents, and robots. One framework, three surfaces.
 
+[![CI](https://github.com/sentinel-seed/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/sentinel-seed/sentinel/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/sentinelseed)](https://pypi.org/project/sentinelseed/)
+[![npm](https://img.shields.io/npm/v/sentinelseed)](https://www.npmjs.com/package/sentinelseed)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-4%20validated-green.svg)]()
 
 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinel_Seed](https://x.com/Sentinel_Seed)
@@ -470,6 +473,20 @@ If you use Sentinel in your research, please cite:
   url = {https://github.com/sentinel-seed/sentinel}
 }
 ```
+
+---
+
+## Badge: Sentinel Protected
+
+Add this badge to your project's README to show it uses Sentinel for AI safety:
+
+```markdown
+[![Sentinel Protected](https://img.shields.io/badge/Sentinel-Protected-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHptMCAyLjE4bDcgMy4xMnY1LjdjMCA0LjgzLTMuMjMgOS4zNi03IDEwLjUtMy43Ny0xLjE0LTctNS42Ny03LTEwLjVWNi4zbDctMy4xMnoiLz48L3N2Zz4=)](https://sentinelseed.dev)
+```
+
+**Result:**
+
+[![Sentinel Protected](https://img.shields.io/badge/Sentinel-Protected-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHptMCAyLjE4bDcgMy4xMnY1LjdjMCA0LjgzLTMuMjMgOS4zNi03IDEwLjUtMy43Ny0xLjE0LTctNS42Ny03LTEwLjVWNi4zbDctMy4xMnoiLz48L3N2Zz4=)](https://sentinelseed.dev)
 
 ---
 

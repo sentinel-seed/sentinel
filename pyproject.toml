@@ -9,7 +9,7 @@ description = "AI alignment toolkit - The Guardian Against Machine Independence"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Daniel", email = "sentinel@example.com"}
+    {name = "Sentinel Team", email = "team@sentinelseed.dev"}
 ]
 keywords = ["ai", "safety", "alignment", "llm", "guardrails", "ethics"]
 classifiers = [
