@@ -118,29 +118,75 @@ Tested across **4 benchmarks** on **6 models** with **97.6% average safety rate*
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/sentinel-seed/sentinel.git
-cd sentinel
+# Python (recommended)
+pip install sentinelseed
 
-# Install dependencies
-pip install -r requirements.txt
+# JavaScript / TypeScript
+npm install sentinelseed
+
+# MCP Server (for Claude Desktop)
+npx mcp-server-sentinelseed
 ```
 
-### Basic Usage
+### Python Usage
 
 ```python
-from sentinel import Sentinel
+from sentinelseed import SentinelGuard
 
-# Create sentinel
-sentinel = Sentinel(seed_level="standard")
+# Create guard with standard seed
+guard = SentinelGuard(version="v2", variant="standard")
 
 # Get alignment seed for your LLM
-seed = sentinel.get_seed()
+seed = guard.get_seed()
 
-# Or use chat directly (requires OPENAI_API_KEY)
-result = sentinel.chat("Help me write a Python function")
-print(result["response"])
+# Wrap messages with the seed
+messages = guard.wrap_messages([
+    {"role": "user", "content": "Help me write a Python function"}
+])
+# messages now has the seed as system prompt
+
+# Analyze content for safety
+analysis = guard.analyze("How do I hack a computer?")
+print(f"Safe: {analysis.safe}, Issues: {analysis.issues}")
 ```
+
+### JavaScript Usage
+
+```javascript
+import { SentinelGuard } from 'sentinelseed';
+
+// Create guard with standard seed
+const guard = new SentinelGuard({ version: 'v2', variant: 'standard' });
+
+// Get alignment seed for your LLM
+const seed = guard.getSeed();
+
+// Wrap messages with the seed
+const messages = guard.wrapMessages([
+    { role: 'user', content: 'Help me write a function' }
+]);
+
+// Analyze content for safety
+const analysis = guard.analyze('How do I hack a computer?');
+console.log(`Safe: ${analysis.safe}, Issues: ${analysis.issues}`);
+```
+
+### MCP Server (Claude Desktop)
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "npx",
+      "args": ["mcp-server-sentinelseed"]
+    }
+  }
+}
+```
+
+Tools available: `get_seed`, `wrap_messages`, `analyze_content`, `list_seeds`
 
 ### For Embodied AI / Agents
 
@@ -408,7 +454,7 @@ Sentinel builds on research from:
 - [HarmBench](https://arxiv.org/abs/2402.04249) — Harmful behavior evaluation
 - [Self-Reminder](https://www.nature.com/articles/s42256-024-00922-3) — Nature Machine Intelligence
 - [Agentic Misalignment](https://www.anthropic.com/research/agentic-misalignment) — Anthropic
-- Gabriel / Foundation Alignment Seed — Pioneer of alignment seeds approach
+- [SEED 4.1](https://github.com/foundation-alignment-research) — Foundation Alignment Research (pioneer of alignment seeds)
 
 ---
 
@@ -445,10 +491,22 @@ MIT License — See [LICENSE](LICENSE)
 
 ---
 
+## Packages
+
+| Platform | Package | Install |
+|----------|---------|---------|
+| **PyPI** | [sentinelseed](https://pypi.org/project/sentinelseed) | `pip install sentinelseed` |
+| **npm** | [sentinelseed](https://npmjs.com/package/sentinelseed) | `npm install sentinelseed` |
+| **MCP** | [mcp-server-sentinelseed](https://npmjs.com/package/mcp-server-sentinelseed) | `npx mcp-server-sentinelseed` |
+
+---
+
 ## Community
 
 - 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
-- 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed)
+- 📦 **npm:** [npmjs.com/package/sentinelseed](https://npmjs.com/package/sentinelseed)
+- 🐍 **PyPI:** [pypi.org/project/sentinelseed](https://pypi.org/project/sentinelseed)
+- 🤗 **HuggingFace:** [huggingface.co/sentinelseed](https://huggingface.co/sentinelseed)
 - 𝕏 **Twitter:** [@sentinel_Seed](https://x.com/Sentinel_Seed)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
