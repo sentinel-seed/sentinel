@@ -56,7 +56,9 @@ We implement this through the THSP protocol—a four-gate validation system wher
 
 \subsection{Prompt-Based Safety}
 
-\citet{xie2023defending} demonstrated that ``self-reminder'' prompts—instructing models to consider potential harms before responding—significantly reduce jailbreak success rates. Their work showed that explicit safety instructions in the system prompt create a defensive layer against adversarial inputs. We extend this approach with structured protocols rather than general reminders.
+\citet{xie2023defending} demonstrated that ``self-reminder'' prompts—instructing models to consider potential harms before responding—significantly reduce jailbreak success rates. Their work showed that explicit safety instructions in the system prompt create a defensive layer against adversarial inputs.
+
+More recently, \citet{fortin2025foundation} explored ontological grounding through structured system prompts, demonstrating that carefully designed frameworks can improve alignment in text-based interactions. Their work provided valuable insights into the viability of prompt-based alignment approaches. Building on these foundations, we develop a secular protocol designed for broader accessibility and extend validation to agentic and embodied AI scenarios.
 
 \subsection{Constitutional AI}
 
@@ -282,6 +284,9 @@ Chao, P., et al. (2024). JailbreakBench: An Open Robustness Benchmark for Jailbr
 
 \bibitem[Christiano et al.(2017)]{christiano2017deep}
 Christiano, P., et al. (2017). Deep reinforcement learning from human preferences. \textit{NeurIPS}.
+
+\bibitem[Fortin-Dominguez et al.(2025)]{fortin2025foundation}
+Fortin-Dominguez, D., Fortin-Dominguez, J. (2025). Cross-Architecture Validation of Foundation Alignment Seeds. \textit{GitHub Repository}. \url{https://github.com/davfd/foundation-alignment-cross-architecture}
 
 \bibitem[Gabriel(2020)]{gabriel2020artificial}
 Gabriel, I. (2020). Artificial intelligence, values, and alignment. \textit{Minds and Machines}, 30(3), 411-437.
