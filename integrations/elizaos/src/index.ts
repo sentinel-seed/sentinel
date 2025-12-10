@@ -8,14 +8,15 @@
  * ```typescript
  * import { sentinelPlugin } from '@sentinelseed/elizaos-plugin';
  *
- * const agent = new Agent({
+ * const character = {
+ *   name: 'SafeAgent',
  *   plugins: [
  *     sentinelPlugin({
  *       blockUnsafe: true,
  *       logChecks: true,
  *     })
  *   ]
- * });
+ * };
  * ```
  *
  * @see https://sentinelseed.dev
@@ -25,27 +26,43 @@
 // Main plugin export
 export {
   sentinelPlugin,
-  validateContent,
-  validateAction,
-  quickCheck,
   getValidationHistory,
   getValidationStats,
   clearValidationHistory,
 } from './plugin';
 
+// Validation functions
+export { validateContent, validateAction, quickCheck } from './validator';
+
 // Type exports
 export type {
+  // ElizaOS types
+  Plugin,
+  Action,
+  Provider,
+  Evaluator,
+  Memory,
+  State,
+  Content,
+  IAgentRuntime,
+  Handler,
+  Validator,
+  HandlerCallback,
+  HandlerOptions,
+  ActionResult,
+  ProviderResult,
+  ActionExample,
+  EvaluationExample,
+  UUID,
+  // Sentinel types
   SentinelPluginConfig,
   SafetyCheckResult,
   THSPGates,
   RiskLevel,
+  GateStatus,
   SeedVersion,
   SeedVariant,
   ValidationContext,
-  Memory,
-  State,
-  IAgentRuntime,
-  HandlerCallback,
 } from './types';
 
 // Default export
