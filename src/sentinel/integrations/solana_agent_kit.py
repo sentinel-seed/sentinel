@@ -1,26 +1,47 @@
 """
 Solana Agent Kit integration for Sentinel AI.
 
-Provides safety layer for Solana blockchain agents:
-- SentinelPlugin: Plugin for Solana Agent Kit with safety validation
-- SentinelSafetyMiddleware: Middleware for transaction validation
-- safe_transaction: Decorator for protected transaction execution
+Provides safety validation for Solana blockchain agents. This integration
+works alongside Solana Agent Kit to validate transactions before execution.
 
-This integration adds AI safety guardrails to autonomous crypto agents,
-preventing harmful on-chain actions and validating transaction intent.
+IMPORTANT: Solana Agent Kit uses a plugin system that adds ACTIONS to agents,
+not middleware that intercepts transactions. This integration provides:
 
-Usage:
-    from sentinel.integrations.solana_agent_kit import SentinelPlugin
+1. Standalone validation functions (use before any transaction)
+2. LangChain tools (add to agent toolkit for self-validation)
+3. Action wrappers (for Python-based validation flows)
 
-    # Add to your Solana agent
-    agent = SolanaAgentKit(wallet, rpc_url)
-    agent.use(SentinelPlugin())
+Usage patterns:
+
+    # Pattern 1: Explicit validation before transactions
+    from sentinel.integrations.solana_agent_kit import safe_transaction
+
+    result = safe_transaction("transfer", {"amount": 50, "recipient": "..."})
+    if result.should_proceed:
+        # Execute your Solana Agent Kit transaction
+        pass
+
+    # Pattern 2: LangChain tools for agent self-validation
+    from sentinel.integrations.solana_agent_kit import create_langchain_tools
+
+    safety_tools = create_langchain_tools()
+    # Add to your LangChain agent's toolkit
+
+    # Pattern 3: Validation in custom actions
+    from sentinel.integrations.solana_agent_kit import SentinelValidator
+
+    validator = SentinelValidator()
+    # Use in your custom Solana Agent Kit actions
 """
 
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from sentinel import Sentinel, SeedLevel
+
+try:
+    from sentinel import Sentinel, SeedLevel
+except ImportError:
+    from sentinelseed import Sentinel, SeedLevel
 
 
 class TransactionRisk(Enum):
@@ -43,75 +64,74 @@ class TransactionSafetyResult:
     requires_confirmation: bool = False
 
 
-class SentinelPlugin:
+class SentinelValidator:
     """
-    Sentinel safety plugin for Solana Agent Kit.
+    Safety validator for Solana Agent Kit transactions.
 
-    Integrates with Solana Agent Kit's plugin system to provide
-    safety validation for all blockchain transactions.
-
-    Key features:
-    - Pre-transaction validation
-    - High-value transfer alerts
-    - Suspicious pattern detection
-    - Action intent verification
+    Use this class to validate transactions before executing them
+    with Solana Agent Kit. This is NOT a plugin - Solana Agent Kit
+    plugins add actions, they don't intercept transactions.
 
     Example:
         from solana_agent_kit import SolanaAgentKit
-        from sentinel.integrations.solana_agent_kit import SentinelPlugin
+        from sentinel.integrations.solana_agent_kit import SentinelValidator
 
-        agent = SolanaAgentKit(wallet, rpc_url)
-        agent.use(SentinelPlugin(
-            max_single_transfer=10.0,  # SOL
-            require_confirmation_above=5.0,
-            block_suspicious=True,
-        ))
+        # Initialize both
+        agent = SolanaAgentKit(wallet, rpc_url, config)
+        validator = SentinelValidator(max_transfer=10.0)
+
+        # Validate before executing
+        result = validator.check("transfer", amount=5.0, recipient="ABC...")
+        if result.should_proceed:
+            agent.transfer(recipient, amount)
+        else:
+            print(f"Blocked: {result.concerns}")
     """
-
-    name = "sentinel-safety"
-    description = "AI safety validation for Solana transactions"
 
     def __init__(
         self,
-        sentinel: Optional[Sentinel] = None,
         seed_level: str = "standard",
-        max_single_transfer: float = 100.0,  # SOL
-        require_confirmation_above: float = 10.0,  # SOL
-        block_suspicious: bool = True,
-        allowed_programs: Optional[List[str]] = None,
+        max_transfer: float = 100.0,
+        confirm_above: float = 10.0,
         blocked_addresses: Optional[List[str]] = None,
+        allowed_programs: Optional[List[str]] = None,
     ):
         """
-        Initialize plugin.
+        Initialize validator.
 
         Args:
-            sentinel: Sentinel instance
-            seed_level: Seed level for validation
-            max_single_transfer: Maximum SOL per transaction
-            require_confirmation_above: Require confirmation above this amount
-            block_suspicious: Whether to block suspicious transactions
-            allowed_programs: Whitelist of allowed program IDs
-            blocked_addresses: Blacklist of blocked addresses
+            seed_level: Sentinel seed level ("minimal", "standard", "full")
+            max_transfer: Maximum SOL per single transaction
+            confirm_above: Require confirmation for amounts above this
+            blocked_addresses: List of blocked wallet addresses
+            allowed_programs: Whitelist of allowed program IDs (empty = all allowed)
         """
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.max_single_transfer = max_single_transfer
-        self.require_confirmation_above = require_confirmation_above
-        self.block_suspicious = block_suspicious
-        self.allowed_programs = allowed_programs or []
-        self.blocked_addresses = blocked_addresses or []
-        self.transaction_history: List[TransactionSafetyResult] = []
+        self.sentinel = Sentinel(seed_level=seed_level)
+        self.max_transfer = max_transfer
+        self.confirm_above = confirm_above
+        self.blocked_addresses = set(blocked_addresses or [])
+        self.allowed_programs = set(allowed_programs or [])
+        self.history: List[TransactionSafetyResult] = []
 
-    def validate_transaction(
+    def check(
         self,
         action: str,
-        params: Dict[str, Any],
+        amount: float = 0,
+        recipient: str = "",
+        program_id: str = "",
+        memo: str = "",
+        **kwargs
     ) -> TransactionSafetyResult:
         """
-        Validate a transaction before execution.
+        Check if a transaction is safe to execute.
 
         Args:
-            action: Transaction action name
-            params: Transaction parameters
+            action: Action name (transfer, swap, stake, etc.)
+            amount: Transaction amount in SOL
+            recipient: Recipient address
+            program_id: Program ID being called
+            memo: Transaction memo/data
+            **kwargs: Additional parameters
 
         Returns:
             TransactionSafetyResult with validation details
@@ -120,54 +140,48 @@ class SentinelPlugin:
         recommendations = []
         risk_level = TransactionRisk.LOW
 
-        # Extract common parameters
-        amount = params.get("amount", 0)
-        recipient = params.get("recipient", params.get("to", ""))
-        program_id = params.get("program_id", "")
-
-        # Check for blocked addresses
-        if recipient in self.blocked_addresses:
-            concerns.append(f"Recipient address is blocked: {recipient[:8]}...")
+        # Check blocked addresses
+        if recipient and recipient in self.blocked_addresses:
+            concerns.append(f"Recipient is blocked: {recipient[:8]}...")
             risk_level = TransactionRisk.CRITICAL
 
-        # Check for allowed programs (if whitelist exists)
+        # Check program whitelist
         if self.allowed_programs and program_id:
             if program_id not in self.allowed_programs:
-                concerns.append(f"Program not in whitelist: {program_id[:8]}...")
+                concerns.append(f"Program not whitelisted: {program_id[:8]}...")
                 risk_level = TransactionRisk.HIGH
 
-        # Check transfer amounts
-        if amount > self.max_single_transfer:
-            concerns.append(f"Transfer exceeds maximum: {amount} > {self.max_single_transfer}")
+        # Check transfer limits
+        if amount > self.max_transfer:
+            concerns.append(f"Amount {amount} exceeds limit {self.max_transfer}")
             risk_level = TransactionRisk.CRITICAL
 
-        # Check if confirmation needed
-        requires_confirmation = amount > self.require_confirmation_above
+        requires_confirmation = amount > self.confirm_above
 
-        # Validate action intent with Sentinel
-        action_description = self._format_action_description(action, params)
-        is_safe, sentinel_concerns = self.sentinel.validate_action(action_description)
+        # Validate intent with Sentinel
+        description = self._describe_action(action, amount, recipient, kwargs)
+        is_safe, sentinel_concerns = self.sentinel.validate_action(description)
 
         if not is_safe:
             concerns.extend(sentinel_concerns)
-            risk_level = TransactionRisk.HIGH
+            if risk_level.value < TransactionRisk.HIGH.value:
+                risk_level = TransactionRisk.HIGH
 
-        # Check for suspicious patterns
-        suspicious = self._check_suspicious_patterns(action, params)
+        # Check suspicious patterns
+        suspicious = self._check_patterns(action, amount, memo)
         if suspicious:
             concerns.extend(suspicious)
-            risk_level = max(risk_level, TransactionRisk.MEDIUM, key=lambda x: x.value)
+            if risk_level.value < TransactionRisk.MEDIUM.value:
+                risk_level = TransactionRisk.MEDIUM
 
         # Determine if should proceed
-        should_proceed = risk_level not in [TransactionRisk.CRITICAL]
-        if self.block_suspicious and risk_level == TransactionRisk.HIGH:
-            should_proceed = False
+        should_proceed = risk_level not in [TransactionRisk.CRITICAL, TransactionRisk.HIGH]
 
-        # Generate recommendations
+        # Add recommendations
         if requires_confirmation:
-            recommendations.append("High-value transaction: manual confirmation recommended")
+            recommendations.append("High-value: manual confirmation recommended")
         if risk_level in [TransactionRisk.HIGH, TransactionRisk.CRITICAL]:
-            recommendations.append("Review transaction details carefully before proceeding")
+            recommendations.append("Review transaction details before proceeding")
 
         result = TransactionSafetyResult(
             safe=len(concerns) == 0,
@@ -179,162 +193,93 @@ class SentinelPlugin:
             requires_confirmation=requires_confirmation,
         )
 
-        self.transaction_history.append(result)
+        self.history.append(result)
         return result
 
-    def _format_action_description(
+    def _describe_action(
         self,
         action: str,
-        params: Dict[str, Any],
+        amount: float,
+        recipient: str,
+        extra: Dict
     ) -> str:
-        """Format action for Sentinel validation."""
-        # Clean sensitive data
-        safe_params = {
-            k: v for k, v in params.items()
-            if k not in ["private_key", "secret", "mnemonic"]
-        }
+        """Create description for Sentinel validation."""
+        parts = [f"Solana {action}"]
+        if amount:
+            parts.append(f"amount={amount}")
+        if recipient:
+            parts.append(f"to={recipient[:8]}...")
+        return " ".join(parts)
 
-        # Truncate addresses
-        for key in ["recipient", "to", "from", "address", "mint"]:
-            if key in safe_params and isinstance(safe_params[key], str):
-                safe_params[key] = safe_params[key][:8] + "..."
-
-        return f"Solana {action}: {safe_params}"
-
-    def _check_suspicious_patterns(
+    def _check_patterns(
         self,
         action: str,
-        params: Dict[str, Any],
+        amount: float,
+        memo: str
     ) -> List[str]:
         """Check for suspicious transaction patterns."""
         suspicious = []
-
         action_lower = action.lower()
 
-        # Suspicious action patterns
-        if "drain" in action_lower:
-            suspicious.append("Potential wallet drain operation")
-        if "all" in action_lower and "transfer" in action_lower:
-            suspicious.append("Bulk transfer operation detected")
-        if "approve" in action_lower and "unlimited" in str(params).lower():
-            suspicious.append("Unlimited approval request")
+        # Drain patterns
+        if "drain" in action_lower or "sweep" in action_lower:
+            suspicious.append("Potential drain operation detected")
 
-        # Check for suspicious amounts
-        amount = params.get("amount", 0)
-        if isinstance(amount, (int, float)):
-            # Very round numbers can be suspicious
-            if amount > 0 and amount == int(amount) and amount >= 100:
-                suspicious.append("Large round number transfer")
+        # Bulk operations
+        if "all" in action_lower and ("transfer" in action_lower or "send" in action_lower):
+            suspicious.append("Bulk transfer operation")
 
-        # Check memo/data for suspicious content
-        memo = params.get("memo", "") or params.get("data", "")
+        # Unlimited approvals
+        if "approve" in action_lower and amount == 0:
+            suspicious.append("Potential unlimited approval")
+
+        # Suspicious memo
         if memo:
-            memo_check = self.sentinel.validate_request(str(memo))
-            if not memo_check["should_proceed"]:
-                suspicious.append(f"Suspicious memo content: {memo_check['concerns']}")
+            memo_check = self.sentinel.validate_request(memo)
+            if not memo_check.get("should_proceed", True):
+                suspicious.append("Suspicious memo content")
 
         return suspicious
 
-    def get_safety_report(self) -> Dict[str, Any]:
-        """Get safety statistics for the session."""
-        if not self.transaction_history:
-            return {"total_transactions": 0}
+    def get_stats(self) -> Dict[str, Any]:
+        """Get validation statistics."""
+        if not self.history:
+            return {"total": 0}
 
-        blocked = sum(1 for t in self.transaction_history if not t.should_proceed)
-        high_risk = sum(1 for t in self.transaction_history
-                       if t.risk_level in [TransactionRisk.HIGH, TransactionRisk.CRITICAL])
+        blocked = sum(1 for r in self.history if not r.should_proceed)
+        high_risk = sum(1 for r in self.history
+                       if r.risk_level in [TransactionRisk.HIGH, TransactionRisk.CRITICAL])
 
         return {
-            "total_transactions": len(self.transaction_history),
+            "total": len(self.history),
             "blocked": blocked,
-            "approved": len(self.transaction_history) - blocked,
+            "approved": len(self.history) - blocked,
             "high_risk": high_risk,
-            "low_risk": len(self.transaction_history) - high_risk,
-            "block_rate": blocked / len(self.transaction_history),
+            "block_rate": blocked / len(self.history),
         }
 
-
-class SentinelSafetyMiddleware:
-    """
-    Middleware for Solana Agent Kit transaction validation.
-
-    Wraps the agent's transaction methods to add safety checks.
-
-    Example:
-        middleware = SentinelSafetyMiddleware()
-
-        # Wrap agent methods
-        original_transfer = agent.transfer
-        agent.transfer = middleware.wrap(original_transfer, "transfer")
-    """
-
-    def __init__(
-        self,
-        plugin: Optional[SentinelPlugin] = None,
-    ):
-        """Initialize middleware."""
-        self.plugin = plugin or SentinelPlugin()
-
-    def wrap(
-        self,
-        method: Callable,
-        action_name: str,
-    ) -> Callable:
-        """
-        Wrap a method with safety validation.
-
-        Args:
-            method: Original method to wrap
-            action_name: Name of the action for logging
-
-        Returns:
-            Wrapped method with safety checks
-        """
-        def wrapper(*args, **kwargs):
-            # Build params from args/kwargs
-            params = kwargs.copy()
-            if args:
-                params["_args"] = args
-
-            # Validate
-            result = self.plugin.validate_transaction(action_name, params)
-
-            if not result.should_proceed:
-                raise TransactionBlockedError(
-                    f"Transaction blocked by Sentinel: {result.concerns}"
-                )
-
-            if result.requires_confirmation:
-                print(f"[SENTINEL] High-value transaction: {action_name}")
-                print(f"  Risk level: {result.risk_level.value}")
-                print(f"  Recommendations: {result.recommendations}")
-                # In production, this would prompt for confirmation
-
-            # Execute original method
-            return method(*args, **kwargs)
-
-        return wrapper
-
-
-class TransactionBlockedError(Exception):
-    """Raised when a transaction is blocked by Sentinel."""
-    pass
+    def clear_history(self) -> None:
+        """Clear validation history."""
+        self.history = []
 
 
 def safe_transaction(
     action: str,
-    params: Dict[str, Any],
-    plugin: Optional[SentinelPlugin] = None,
+    params: Optional[Dict[str, Any]] = None,
+    validator: Optional[SentinelValidator] = None,
+    **kwargs
 ) -> TransactionSafetyResult:
     """
-    Standalone safety check for a transaction.
+    Validate a Solana transaction before execution.
 
-    Convenience function for quick validation without full plugin setup.
+    This is a convenience function for quick validation without
+    setting up a full validator instance.
 
     Args:
-        action: Transaction action name
-        params: Transaction parameters
-        plugin: Optional SentinelPlugin instance
+        action: Transaction action (transfer, swap, stake, etc.)
+        params: Transaction parameters dict
+        validator: Optional existing validator
+        **kwargs: Transaction parameters as keyword args
 
     Returns:
         TransactionSafetyResult
@@ -342,132 +287,249 @@ def safe_transaction(
     Example:
         from sentinel.integrations.solana_agent_kit import safe_transaction
 
-        result = safe_transaction("transfer", {
-            "amount": 50,
-            "recipient": "ABC123...",
-        })
+        # Before executing with Solana Agent Kit
+        result = safe_transaction("transfer", amount=5.0, recipient="ABC...")
 
         if result.should_proceed:
-            # Execute transaction
-            pass
+            agent.transfer(recipient, amount)
         else:
             print(f"Blocked: {result.concerns}")
     """
-    if plugin is None:
-        plugin = SentinelPlugin()
+    if validator is None:
+        validator = SentinelValidator()
 
-    return plugin.validate_transaction(action, params)
+    # Merge params dict with kwargs
+    all_params = {**(params or {}), **kwargs}
+
+    return validator.check(
+        action=action,
+        amount=all_params.get("amount", 0),
+        recipient=all_params.get("recipient", all_params.get("to", "")),
+        program_id=all_params.get("program_id", ""),
+        memo=all_params.get("memo", ""),
+        **{k: v for k, v in all_params.items()
+           if k not in ["amount", "recipient", "to", "program_id", "memo"]}
+    )
 
 
-def create_sentinel_actions() -> Dict[str, Callable]:
+def create_sentinel_actions(
+    validator: Optional[SentinelValidator] = None
+) -> Dict[str, Callable]:
     """
-    Create Sentinel safety actions for Solana Agent Kit.
+    Create Sentinel validation actions.
 
-    Returns a dictionary of actions that can be added to an agent's toolkit.
+    These functions can be used in your custom Solana Agent Kit
+    actions or workflows to add safety validation.
+
+    Args:
+        validator: Optional existing validator
+
+    Returns:
+        Dict of action functions
 
     Example:
         from sentinel.integrations.solana_agent_kit import create_sentinel_actions
 
-        safety_actions = create_sentinel_actions()
-        # Add to your agent's available actions
-    """
-    plugin = SentinelPlugin()
+        actions = create_sentinel_actions()
 
-    def check_transaction_safety(
-        action: str,
-        amount: float = 0,
-        recipient: str = "",
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Check if a transaction is safe to execute."""
-        params = {
-            "amount": amount,
-            "recipient": recipient,
-            **kwargs
-        }
-        result = plugin.validate_transaction(action, params)
+        # In your code
+        result = actions["validate_transfer"](50.0, "ABC123...")
+        if result["safe"]:
+            # proceed
+            pass
+    """
+    if validator is None:
+        validator = SentinelValidator()
+
+    def validate_transfer(amount: float, recipient: str) -> Dict[str, Any]:
+        """Validate a token transfer."""
+        result = validator.check("transfer", amount=amount, recipient=recipient)
         return {
-            "safe": result.safe,
-            "should_proceed": result.should_proceed,
-            "risk_level": result.risk_level.value,
+            "safe": result.should_proceed,
+            "risk": result.risk_level.value,
+            "concerns": result.concerns,
+        }
+
+    def validate_swap(
+        amount: float,
+        from_token: str = "SOL",
+        to_token: str = ""
+    ) -> Dict[str, Any]:
+        """Validate a token swap."""
+        result = validator.check(
+            "swap",
+            amount=amount,
+            memo=f"{from_token} -> {to_token}"
+        )
+        return {
+            "safe": result.should_proceed,
+            "risk": result.risk_level.value,
+            "concerns": result.concerns,
+        }
+
+    def validate_action(action: str, **params) -> Dict[str, Any]:
+        """Validate any action."""
+        result = validator.check(action, **params)
+        return {
+            "safe": result.should_proceed,
+            "risk": result.risk_level.value,
             "concerns": result.concerns,
             "recommendations": result.recommendations,
         }
 
     def get_safety_seed() -> str:
-        """Get Sentinel alignment seed for agent system prompt."""
-        return plugin.sentinel.get_seed()
-
-    def validate_intent(description: str) -> Dict[str, Any]:
-        """Validate an action intent description."""
-        is_safe, concerns = plugin.sentinel.validate_action(description)
-        request_check = plugin.sentinel.validate_request(description)
-
-        return {
-            "safe": is_safe and request_check["should_proceed"],
-            "concerns": concerns + request_check.get("concerns", []),
-            "risk_level": request_check["risk_level"],
-        }
+        """Get Sentinel seed for agent system prompt."""
+        return validator.sentinel.get_seed()
 
     return {
-        "sentinel_check_transaction": check_transaction_safety,
-        "sentinel_get_seed": get_safety_seed,
-        "sentinel_validate_intent": validate_intent,
+        "validate_transfer": validate_transfer,
+        "validate_swap": validate_swap,
+        "validate_action": validate_action,
+        "get_safety_seed": get_safety_seed,
     }
 
 
-# Type definitions for Solana Agent Kit compatibility
-SolanaAction = Dict[str, Any]
-
-
-def create_langchain_tools():
+def create_langchain_tools(
+    validator: Optional[SentinelValidator] = None
+):
     """
-    Create LangChain-compatible tools for Solana Agent Kit.
+    Create LangChain tools for Solana transaction validation.
 
-    These tools can be used with LangChain agents that interact
-    with Solana through the Agent Kit.
+    Add these tools to your LangChain agent's toolkit so the agent
+    can self-validate actions before executing them.
+
+    Args:
+        validator: Optional existing validator
+
+    Returns:
+        List of LangChain Tool objects
 
     Example:
+        from langchain.agents import create_react_agent
+        from solana_agent_kit import createSolanaTools
         from sentinel.integrations.solana_agent_kit import create_langchain_tools
 
-        tools = create_langchain_tools()
-        agent = create_react_agent(llm, tools=[...existing_tools, *tools])
+        # Get Solana tools
+        solana_tools = createSolanaTools(agent)
+
+        # Add Sentinel safety tools
+        safety_tools = create_langchain_tools()
+
+        # Combine for agent
+        all_tools = solana_tools + safety_tools
+        agent = create_react_agent(llm, all_tools)
     """
     try:
         from langchain.tools import Tool
     except ImportError:
-        raise ImportError("langchain is required for create_langchain_tools")
+        raise ImportError(
+            "langchain is required: pip install langchain"
+        )
 
-    plugin = SentinelPlugin()
+    if validator is None:
+        validator = SentinelValidator()
 
-    def check_solana_transaction(action_description: str) -> str:
-        """Check if a Solana transaction is safe."""
-        # Parse action description
-        parts = action_description.split(":")
-        action = parts[0].strip() if parts else "unknown"
-        params_str = parts[1].strip() if len(parts) > 1 else "{}"
+    def check_transaction(description: str) -> str:
+        """
+        Check if a Solana transaction is safe.
 
-        try:
-            import json
-            params = json.loads(params_str)
-        except (json.JSONDecodeError, IndexError):
-            params = {"description": action_description}
+        Input format: "action amount recipient"
+        Examples:
+          - "transfer 5.0 ABC123..."
+          - "swap 10.0"
+          - "stake 100.0"
+        """
+        parts = description.strip().split()
+        action = parts[0] if parts else "unknown"
+        amount = float(parts[1]) if len(parts) > 1 else 0
+        recipient = parts[2] if len(parts) > 2 else ""
 
-        result = plugin.validate_transaction(action, params)
+        result = validator.check(action, amount=amount, recipient=recipient)
 
         if result.should_proceed:
-            return f"SAFE: Transaction '{action}' validated. Risk level: {result.risk_level.value}"
+            msg = f"SAFE: {action} validated"
+            if result.requires_confirmation:
+                msg += " (high-value: confirm recommended)"
+            return msg
         else:
-            return f"BLOCKED: {result.concerns}. Recommendations: {result.recommendations}"
+            return f"BLOCKED: {', '.join(result.concerns)}"
 
     return [
         Tool(
-            name="sentinel_solana_safety",
+            name="sentinel_check_transaction",
             description=(
-                "Check if a Solana blockchain transaction is safe before executing. "
-                "Input format: 'action_name: {\"amount\": X, \"recipient\": \"...\"}' "
-                "Use this before any token transfers, swaps, or other on-chain actions."
+                "Check if a Solana transaction is safe before executing. "
+                "Input: 'action amount recipient' (e.g., 'transfer 5.0 ABC123'). "
+                "Use BEFORE any transfer, swap, or on-chain action."
             ),
-            func=check_solana_transaction,
+            func=check_transaction,
         ),
     ]
+
+
+# Backwards compatibility aliases
+SentinelPlugin = SentinelValidator  # Renamed for clarity
+TransactionBlockedError = Exception  # Simple exception
+
+
+class SentinelSafetyMiddleware:
+    """
+    Wrapper for adding safety checks to function calls.
+
+    Note: This is NOT a Solana Agent Kit middleware (SAK doesn't have
+    middleware). This wraps Python functions with validation.
+
+    Example:
+        from sentinel.integrations.solana_agent_kit import SentinelSafetyMiddleware
+
+        middleware = SentinelSafetyMiddleware()
+
+        # Wrap any function
+        def my_transfer(amount, recipient):
+            # your transfer logic
+            pass
+
+        safe_transfer = middleware.wrap(my_transfer, "transfer")
+
+        # Now calls are validated
+        safe_transfer(5.0, "ABC...")  # Validates before executing
+    """
+
+    def __init__(self, validator: Optional[SentinelValidator] = None):
+        self.validator = validator or SentinelValidator()
+
+    def wrap(self, func: Callable, action_name: str) -> Callable:
+        """
+        Wrap a function with safety validation.
+
+        Args:
+            func: Function to wrap
+            action_name: Name for validation logging
+
+        Returns:
+            Wrapped function that validates before executing
+        """
+        def wrapper(*args, **kwargs):
+            # Extract params for validation
+            amount = kwargs.get("amount", args[0] if args else 0)
+            recipient = kwargs.get("recipient", kwargs.get("to", ""))
+            if not recipient and len(args) > 1:
+                recipient = args[1]
+
+            result = self.validator.check(
+                action_name,
+                amount=amount if isinstance(amount, (int, float)) else 0,
+                recipient=str(recipient) if recipient else "",
+            )
+
+            if not result.should_proceed:
+                raise ValueError(
+                    f"Transaction blocked: {', '.join(result.concerns)}"
+                )
+
+            if result.requires_confirmation:
+                print(f"[SENTINEL] High-value {action_name}: {amount}")
+
+            return func(*args, **kwargs)
+
+        return wrapper
