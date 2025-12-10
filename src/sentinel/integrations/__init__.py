@@ -7,6 +7,8 @@ Provides seamless integration with:
 - CrewAI (agent safety)
 - AutoGPT (components, plugins)
 - Solana Agent Kit (blockchain transaction safety)
+- ElizaOS (TypeScript plugin - see integrations/elizaos/)
+- Promptfoo (red teaming plugin - see integrations/promptfoo/)
 """
 
 __all__ = []
