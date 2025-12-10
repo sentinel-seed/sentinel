@@ -1,24 +1,56 @@
 """
 AutoGPT integration for Sentinel AI.
 
-Provides safety components for AutoGPT agents:
-- SentinelSafetyComponent: Component for validating agent actions
-- SentinelGuard: Wrapper for agent execution with safety
-- safety_check: Function for pre-execution validation
+Provides safety validation patterns for autonomous agents:
+- SentinelSafetyComponent: Validation component for agent actions
+- SentinelGuard: Decorator/wrapper for protected execution
+- safety_check: Standalone function for quick validation
 
-Note: AutoGPT plugins were replaced by Components in recent versions.
-This module provides Component-style integration compatible with AutoGPT v0.5+
+IMPORTANT: This integration provides VALIDATION PATTERNS, not native AutoGPT
+plugins. AutoGPT's architecture has changed significantly (now a web platform
+with Server/Frontend in v0.6+). These components work with ANY autonomous
+agent framework that needs action/output validation.
 
-Usage:
+Usage patterns:
+
+    # Pattern 1: Validation component in your agent
     from sentinel.integrations.autogpt import SentinelSafetyComponent
 
-    # Add to your agent's components
-    agent.add_component(SentinelSafetyComponent())
+    class MyAgent:
+        def __init__(self):
+            self.safety = SentinelSafetyComponent()
+
+        def execute(self, action):
+            check = self.safety.validate_action(action)
+            if not check.should_proceed:
+                return f"Blocked: {check.recommendation}"
+            # proceed with action
+
+    # Pattern 2: Decorator for protected functions
+    from sentinel.integrations.autogpt import SentinelGuard
+
+    guard = SentinelGuard()
+
+    @guard.protected
+    def execute_command(cmd):
+        # your logic
+        pass
+
+    # Pattern 3: Quick standalone check
+    from sentinel.integrations.autogpt import safety_check
+
+    result = safety_check("Delete all files")
+    if not result["safe"]:
+        print(f"Blocked: {result['concerns']}")
 """
 
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
-from sentinel import Sentinel, SeedLevel
+
+try:
+    from sentinel import Sentinel, SeedLevel
+except ImportError:
+    from sentinelseed import Sentinel, SeedLevel
 
 
 @dataclass

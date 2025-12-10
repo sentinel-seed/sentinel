@@ -15,7 +15,11 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Callable, Union
 from functools import wraps
-from sentinel import Sentinel, SeedLevel
+
+try:
+    from sentinel import Sentinel, SeedLevel
+except ImportError:
+    from sentinelseed import Sentinel, SeedLevel
 
 
 def safe_agent(
