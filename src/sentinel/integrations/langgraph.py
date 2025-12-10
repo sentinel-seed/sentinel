@@ -25,7 +25,11 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Union, Callable, TypedDict
-from sentinel import Sentinel, SeedLevel
+
+try:
+    from sentinel import Sentinel, SeedLevel
+except ImportError:
+    from sentinelseed import Sentinel, SeedLevel
 
 
 class SentinelState(TypedDict, total=False):
