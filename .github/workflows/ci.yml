@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test-python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  test-sdk:
+    name: SDK Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SDK
+        run: |
+          pip install sentinelseed
+
+      - name: Test SDK import
+        run: |
+          python -c "from sentinelseed import SentinelGuard; print('Import OK')"
+          python -c "from sentinelseed import get_seed; seed = get_seed('v2_standard'); print(f'Seed loaded: {len(seed)} chars')"
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linters
+        run: |
+          pip install ruff
+
+      - name: Run ruff
+        run: ruff check . --ignore E501
+        continue-on-error: true
+
+  validate-seeds:
+    name: Validate Seeds
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check seed files exist
+        run: |
+          test -f seeds/v2/standard.txt || exit 1
+          test -f seeds/v2/minimal.txt || exit 1
+          echo "All seed files present"
+
+      - name: Validate seed content
+        run: |
+          # Check seeds are not empty
+          [ -s seeds/v2/standard.txt ] || exit 1
+          [ -s seeds/v2/minimal.txt ] || exit 1
+
+          # Check for THSP protocol markers
+          grep -q "TRUTH" seeds/v2/standard.txt || exit 1
+          grep -q "HARM" seeds/v2/standard.txt || exit 1
+          grep -q "SCOPE" seeds/v2/standard.txt || exit 1
+          grep -q "PURPOSE" seeds/v2/standard.txt || exit 1
+
+          echo "Seed validation passed"
