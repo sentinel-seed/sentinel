@@ -112,6 +112,15 @@ class SentinelConfig:
     max_transaction_amount: float = 1000.0
     require_confirmation_above: float = 100.0
 
+    # Purpose gate settings
+    require_purpose_for: List[str] = field(default_factory=lambda: [
+        "transfer", "send", "approve", "swap", "bridge", "withdraw",
+    ])
+
+    # Memory integrity settings (defense against memory injection)
+    memory_integrity_check: bool = False
+    memory_secret_key: Optional[str] = None
+
     # Pattern detection - common crypto attack patterns
     suspicious_patterns: List[str] = field(default_factory=lambda: [
         r"(?i)private[_\s]?key",
@@ -341,22 +350,17 @@ class SentinelValidator:
             action_args.get("reason"),
         ])
 
-        # High-risk actions require explicit purpose
-        high_risk_patterns = [
-            r"(?i)transfer",
-            r"(?i)send",
-            r"(?i)approve",
-            r"(?i)swap",
-            r"(?i)bridge",
-            r"(?i)withdraw",
-        ]
-
-        is_high_risk = any(
-            re.search(p, action_name) for p in high_risk_patterns
+        # Check if action requires purpose based on config
+        requires_purpose = any(
+            keyword.lower() in action_name.lower()
+            for keyword in self.config.require_purpose_for
         )
 
-        if is_high_risk and not has_purpose:
-            concerns.append("High-risk action requires explicit purpose/reason")
+        if requires_purpose and not has_purpose:
+            concerns.append(
+                f"Action '{action_name}' requires explicit purpose/reason "
+                f"(matches: {self.config.require_purpose_for})"
+            )
 
         return len(concerns) == 0, concerns
 

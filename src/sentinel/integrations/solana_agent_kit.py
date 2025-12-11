@@ -88,6 +88,11 @@ class SentinelValidator:
             print(f"Blocked: {result.concerns}")
     """
 
+    # Default actions that require explicit purpose
+    DEFAULT_REQUIRE_PURPOSE = [
+        "transfer", "send", "approve", "swap", "bridge", "withdraw", "stake",
+    ]
+
     def __init__(
         self,
         seed_level: str = "standard",
@@ -95,6 +100,9 @@ class SentinelValidator:
         confirm_above: float = 10.0,
         blocked_addresses: Optional[List[str]] = None,
         allowed_programs: Optional[List[str]] = None,
+        require_purpose_for: Optional[List[str]] = None,
+        memory_integrity_check: bool = False,
+        memory_secret_key: Optional[str] = None,
     ):
         """
         Initialize validator.
@@ -105,13 +113,31 @@ class SentinelValidator:
             confirm_above: Require confirmation for amounts above this
             blocked_addresses: List of blocked wallet addresses
             allowed_programs: Whitelist of allowed program IDs (empty = all allowed)
+            require_purpose_for: Actions that require explicit purpose/reason
+            memory_integrity_check: Enable memory integrity verification
+            memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
         """
         self.sentinel = Sentinel(seed_level=seed_level)
         self.max_transfer = max_transfer
         self.confirm_above = confirm_above
         self.blocked_addresses = set(blocked_addresses or [])
         self.allowed_programs = set(allowed_programs or [])
+        self.require_purpose_for = require_purpose_for or self.DEFAULT_REQUIRE_PURPOSE
+        self.memory_integrity_check = memory_integrity_check
+        self.memory_secret_key = memory_secret_key
         self.history: List[TransactionSafetyResult] = []
+
+        # Initialize memory checker if enabled
+        self._memory_checker = None
+        if memory_integrity_check:
+            try:
+                from sentinel.memory import MemoryIntegrityChecker
+                self._memory_checker = MemoryIntegrityChecker(
+                    secret_key=memory_secret_key,
+                    strict_mode=False,
+                )
+            except ImportError:
+                pass  # Memory module not available
 
     def check(
         self,
@@ -120,6 +146,7 @@ class SentinelValidator:
         recipient: str = "",
         program_id: str = "",
         memo: str = "",
+        purpose: str = "",
         **kwargs
     ) -> TransactionSafetyResult:
         """
@@ -131,6 +158,7 @@ class SentinelValidator:
             recipient: Recipient address
             program_id: Program ID being called
             memo: Transaction memo/data
+            purpose: Explicit purpose/reason for the transaction
             **kwargs: Additional parameters
 
         Returns:
@@ -155,6 +183,19 @@ class SentinelValidator:
         if amount > self.max_transfer:
             concerns.append(f"Amount {amount} exceeds limit {self.max_transfer}")
             risk_level = TransactionRisk.CRITICAL
+
+        # PURPOSE GATE: Check if action requires explicit purpose
+        requires_purpose = any(
+            keyword.lower() in action.lower()
+            for keyword in self.require_purpose_for
+        )
+        if requires_purpose and not purpose and not kwargs.get("reason"):
+            concerns.append(
+                f"Action '{action}' requires explicit purpose/reason "
+                f"(set purpose= or reason= parameter)"
+            )
+            if risk_level.value < TransactionRisk.MEDIUM.value:
+                risk_level = TransactionRisk.MEDIUM
 
         requires_confirmation = amount > self.confirm_above
 
@@ -182,6 +223,8 @@ class SentinelValidator:
             recommendations.append("High-value: manual confirmation recommended")
         if risk_level in [TransactionRisk.HIGH, TransactionRisk.CRITICAL]:
             recommendations.append("Review transaction details before proceeding")
+        if requires_purpose and not purpose:
+            recommendations.append(f"Provide purpose= for {action} actions")
 
         result = TransactionSafetyResult(
             safe=len(concerns) == 0,
