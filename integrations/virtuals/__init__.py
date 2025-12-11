@@ -1,50 +1,61 @@
 """
 Sentinel Safety Plugin for Virtuals Protocol GAME SDK
 
-Provides safety guardrails for AI agents built on the GAME framework.
-Integrates THSP Protocol (Truth, Harm, Scope, Purpose) validation.
+Provides THSP Protocol (Truth, Harm, Scope, Purpose) validation for AI agents
+built with the GAME framework.
+
+Installation:
+    pip install game-sdk  # Virtuals Protocol SDK
+    pip install sentinelseed  # Optional, for seed access
 
 Usage:
     from sentinel.integrations.virtuals import (
+        SentinelConfig,
         SentinelSafetyWorker,
+        create_sentinel_function,
+        wrap_functions_with_sentinel,
         sentinel_protected,
-        wrap_agent_with_sentinel,
     )
 
-    # Option 1: Add safety worker to existing agent
-    agent = wrap_agent_with_sentinel(agent, block_unsafe=True)
+    # Option 1: Add a safety worker to your agent
+    safety_worker = SentinelSafetyWorker.create_worker_config()
 
-    # Option 2: Protect individual functions
-    @sentinel_protected(level="standard")
-    def risky_function(args):
-        ...
+    agent = Agent(
+        api_key=api_key,
+        name="SafeAgent",
+        agent_goal="Execute safe operations",
+        agent_description="An agent with safety validation",
+        get_agent_state_fn=get_state,
+        workers=[safety_worker, other_workers],
+    )
 
-    # Option 3: Create standalone safety worker
-    safety_worker = SentinelSafetyWorker(config)
+    # Option 2: Wrap individual functions
+    safe_fn = create_sentinel_function(my_function, config)
+
+    # Option 3: Wrap all functions in an action space
+    safe_action_space = wrap_functions_with_sentinel(action_space)
 """
 
 from .plugin import (
-    SentinelSafetyWorker,
-    SentinelWorkerConfig,
+    SentinelConfig,
     SentinelValidator,
-    SentinelValidationError,
     ValidationResult,
-    THSPGate,
+    SentinelValidationError,
+    SentinelSafetyWorker,
+    create_sentinel_function,
+    wrap_functions_with_sentinel,
     sentinel_protected,
-    wrap_function_with_sentinel,
-    wrap_agent_with_sentinel,
-    create_safe_agent,
+    GAME_SDK_AVAILABLE,
 )
 
 __all__ = [
-    "SentinelSafetyWorker",
-    "SentinelWorkerConfig",
+    "SentinelConfig",
     "SentinelValidator",
-    "SentinelValidationError",
     "ValidationResult",
-    "THSPGate",
+    "SentinelValidationError",
+    "SentinelSafetyWorker",
+    "create_sentinel_function",
+    "wrap_functions_with_sentinel",
     "sentinel_protected",
-    "wrap_function_with_sentinel",
-    "wrap_agent_with_sentinel",
-    "create_safe_agent",
+    "GAME_SDK_AVAILABLE",
 ]
