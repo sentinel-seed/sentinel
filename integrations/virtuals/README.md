@@ -32,9 +32,10 @@ AI agents on Virtuals Protocol can execute financial transactions, interact with
   - Unlimited approval blocking
 
 - **Integration Options**:
-  - Decorator for individual functions
-  - Agent-wide wrapping
-  - Standalone safety worker
+  - Function wrapper for individual GAME Functions
+  - Batch wrapping for action spaces
+  - Dedicated Safety Worker
+  - Decorator for custom executables
 
 ## Installation
 
@@ -42,123 +43,142 @@ AI agents on Virtuals Protocol can execute financial transactions, interact with
 # Install GAME SDK
 pip install game-sdk
 
-# Sentinel is included via system prompt or sentinelseed package
+# Sentinel integration (optional, for package usage)
 pip install sentinelseed
 ```
 
 ## Quick Start
 
-### Option 1: Wrap an Existing Agent
+### Option 1: Add Safety Worker to Agent (Recommended)
+
+The Safety Worker provides a `check_action_safety` function that other workers can call before executing sensitive operations.
 
 ```python
-from game_sdk.game import Agent, WorkerConfig
-from sentinel.integrations.virtuals import wrap_agent_with_sentinel, SentinelWorkerConfig
+import os
+from game_sdk.game.agent import Agent, WorkerConfig
+from game_sdk.game.custom_types import Function, Argument, FunctionResultStatus
+from sentinel.integrations.virtuals import SentinelSafetyWorker, SentinelConfig
 
-# Create your agent as usual
+# Create safety worker
+config = SentinelConfig(
+    max_transaction_amount=500.0,
+    require_confirmation_above=100.0,
+    block_unsafe=True,
+)
+safety_worker = SentinelSafetyWorker.create_worker_config(config)
+
+# Your other workers...
+def get_state(fn_result, current_state):
+    return {"balance": 1000}
+
+trading_worker = WorkerConfig(
+    id="trading_worker",
+    worker_description="Executes token swaps",
+    get_state_fn=get_state,
+    action_space=[your_functions],
+)
+
+# Create agent with safety worker FIRST
 agent = Agent(
-    api_key="your-game-api-key",
-    name="TradingBot",
-    goal="Execute safe token swaps for the user",
-    workers=[your_workers],
+    api_key=os.environ.get("GAME_API_KEY"),
+    name="SafeTradingBot",
+    agent_goal="Execute safe token operations",
+    agent_description="A trading bot that validates all actions",
+    get_agent_state_fn=lambda r, s: {"status": "active"},
+    workers=[safety_worker, trading_worker],  # Safety first
+)
+
+agent.compile()
+agent.run()
+```
+
+### Option 2: Wrap Individual Functions
+
+```python
+from game_sdk.game.custom_types import Function, Argument, FunctionResultStatus
+from sentinel.integrations.virtuals import create_sentinel_function, SentinelConfig
+
+# Define your function
+def transfer_tokens(recipient: str, amount: float, purpose: str = ""):
+    # Your transfer logic
+    return (FunctionResultStatus.DONE, f"Transferred {amount}", {})
+
+# Create GAME Function
+transfer_fn = Function(
+    fn_name="transfer_tokens",
+    fn_description="Transfer tokens to a recipient",
+    args=[
+        Argument(name="recipient", description="Wallet address", type="string"),
+        Argument(name="amount", description="Amount to send", type="number"),
+        Argument(name="purpose", description="Reason for transfer", type="string", optional=True),
+    ],
+    executable=transfer_tokens,
 )
 
 # Wrap with Sentinel protection
-config = SentinelWorkerConfig(
-    max_token_amount=500.0,        # Max tokens per transaction
-    require_confirmation_above=50.0,  # Require confirmation above 50 tokens
-    block_unsafe=True,              # Block (vs just log) unsafe actions
-)
+config = SentinelConfig(max_transaction_amount=1000)
+safe_transfer_fn = create_sentinel_function(transfer_fn, config)
 
-agent = wrap_agent_with_sentinel(agent, config)
-
-# Agent now validates all actions through THSP Protocol
-agent.compile()
-agent.run()
+# Use in your worker's action_space
 ```
 
-### Option 2: Protect Individual Functions
+### Option 3: Wrap All Functions in Action Space
 
 ```python
-from sentinel.integrations.virtuals import sentinel_protected
+from sentinel.integrations.virtuals import wrap_functions_with_sentinel, SentinelConfig
 
-@sentinel_protected(level="standard", block_on_failure=True)
-def transfer_tokens(recipient: str, amount: float, purpose: str = "") -> dict:
-    """Transfer tokens to a recipient."""
-    # Your transfer logic here
-    return {"status": "success", "amount": amount}
+# Your original action space
+action_space = [transfer_fn, swap_fn, approve_fn, check_balance_fn]
 
-# Function will raise SentinelValidationError if validation fails
-result = transfer_tokens(
-    recipient="0x...",
-    amount=100,
-    purpose="Payment for services rendered"
+# Wrap all with Sentinel
+config = SentinelConfig(block_unsafe=True)
+safe_action_space = wrap_functions_with_sentinel(action_space, config)
+
+# Use in worker
+worker = WorkerConfig(
+    id="my_worker",
+    worker_description="...",
+    get_state_fn=get_state,
+    action_space=safe_action_space,  # All functions now validated
 )
 ```
 
-### Option 3: Add Safety Worker to Agent
+### Option 4: Protect Custom Executables with Decorator
 
 ```python
-from sentinel.integrations.virtuals import SentinelSafetyWorker
+from sentinel.integrations.virtuals import sentinel_protected, SentinelConfig
+from game_sdk.game.custom_types import FunctionResultStatus
 
-# Create safety worker config
-safety_worker = SentinelSafetyWorker.create_worker_config()
-
-# Add to your agent's workers
-agent = Agent(
-    api_key="your-key",
-    name="SafeBot",
-    goal="Execute operations safely",
-    workers=[safety_worker, your_other_workers],
-)
-
-# The safety worker provides check_action_safety function
-# Other workers can call it before sensitive operations
-```
-
-### Option 4: Create Safe Agent (All-in-One)
-
-```python
-from sentinel.integrations.virtuals import create_safe_agent, SentinelWorkerConfig
-
-agent = create_safe_agent(
-    api_key="your-game-api-key",
-    name="TradingBot",
-    goal="Execute safe token swaps",
-    workers=[swap_worker, analysis_worker],
-    sentinel_config=SentinelWorkerConfig(
-        max_token_amount=100,
-        seed_level="standard",
-    ),
-)
-
-# Agent has safety worker + all functions wrapped
-agent.compile()
-agent.run()
+@sentinel_protected(config=SentinelConfig(max_transaction_amount=500))
+def risky_transfer(recipient: str, amount: float, purpose: str = ""):
+    """Transfer with Sentinel validation."""
+    # Will be blocked if validation fails
+    return (FunctionResultStatus.DONE, f"Transferred {amount}", {})
 ```
 
 ## Configuration
 
 ```python
-from sentinel.integrations.virtuals import SentinelWorkerConfig
+from sentinel.integrations.virtuals import SentinelConfig
 
-config = SentinelWorkerConfig(
+config = SentinelConfig(
     # Behavior
     block_unsafe=True,           # Block unsafe actions (vs just logging)
-    log_all_validations=True,    # Log every validation result
-    seed_level="standard",       # minimal, standard, or full
+    log_validations=True,        # Log every validation result
 
     # Financial limits
-    max_token_amount=1000.0,     # Maximum tokens in single transaction
+    max_transaction_amount=1000.0,     # Maximum tokens per transaction
     require_confirmation_above=100.0,  # Require _confirmed=True above this
 
     # Pattern detection (added to defaults)
     suspicious_patterns=[
         r"(?i)private[_\s]?key",
         r"(?i)seed[_\s]?phrase",
+        r"(?i)drain[_\s]?wallet",
         # ... your custom patterns
     ],
 
-    # Whitelist (empty = allow all)
+    # Whitelist (empty = allow all except blocked)
     allowed_functions=["swap", "transfer", "approve"],
 
     # Blacklist (always checked)
@@ -166,6 +186,7 @@ config = SentinelWorkerConfig(
         "drain_wallet",
         "send_all_tokens",
         "export_private_key",
+        "reveal_seed_phrase",
     ],
 )
 ```
@@ -212,12 +233,9 @@ Requires teleological justification:
 ## Error Handling
 
 ```python
-from sentinel.integrations.virtuals import (
-    SentinelValidationError,
-    sentinel_protected,
-)
+from sentinel.integrations.virtuals import SentinelValidationError, sentinel_protected
 
-@sentinel_protected(block_on_failure=True)
+@sentinel_protected()
 def risky_action(amount: float):
     ...
 
@@ -229,29 +247,32 @@ except SentinelValidationError as e:
     # Handle gracefully
 ```
 
-## Validation History
+When using with GAME SDK Functions, validation failures return:
+```python
+(FunctionResultStatus.FAILED, "Sentinel blocked: <concerns>", {"sentinel_blocked": True})
+```
+
+## Validation Statistics
 
 ```python
-from sentinel.integrations.virtuals import SentinelSafetyWorker
+from sentinel.integrations.virtuals import SentinelValidator, SentinelConfig
 
-safety = SentinelSafetyWorker()
+config = SentinelConfig()
+validator = SentinelValidator(config)
 
 # After some validations...
-history = safety.get_validation_history()
-# [{"action": "transfer", "result": True, "concerns": []}, ...]
-
-stats = safety.get_safety_stats()
+stats = validator.get_stats()
 # {"total": 10, "passed": 8, "blocked": 2, "pass_rate": 0.8}
 ```
 
 ## Best Practices
 
-1. **Always wrap production agents** with `wrap_agent_with_sentinel()`
+1. **Add Safety Worker first** in your workers list so the agent can self-validate
 
 2. **Set appropriate limits** for your use case:
    ```python
-   config = SentinelWorkerConfig(
-       max_token_amount=your_max,
+   config = SentinelConfig(
+       max_transaction_amount=your_max,
        require_confirmation_above=your_threshold,
    )
    ```
@@ -265,7 +286,7 @@ stats = safety.get_safety_stats()
 
 5. **Use whitelist mode** for critical agents:
    ```python
-   config = SentinelWorkerConfig(
+   config = SentinelConfig(
        allowed_functions=["swap", "get_balance"],  # Only these allowed
    )
    ```
@@ -282,7 +303,7 @@ stats = safety.get_safety_stats()
 
 - [Sentinel Documentation](https://sentinelseed.dev/docs)
 - [THSP Protocol](https://sentinelseed.dev/docs/thsp-protocol)
-- [GAME SDK Documentation](https://whitepaper.virtuals.io/developer-documents/game-framework/agent-sdk)
+- [GAME SDK Documentation](https://docs.game.virtuals.io/)
 - [Virtuals Protocol](https://virtuals.io)
 
 ## License

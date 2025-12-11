@@ -467,9 +467,10 @@ def create_langchain_tools(
     ]
 
 
-# Backwards compatibility aliases
-SentinelPlugin = SentinelValidator  # Renamed for clarity
-TransactionBlockedError = Exception  # Simple exception
+# Simple exception for blocked transactions
+class TransactionBlockedError(Exception):
+    """Raised when a transaction is blocked by Sentinel validation."""
+    pass
 
 
 class SentinelSafetyMiddleware:

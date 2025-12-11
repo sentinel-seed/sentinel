@@ -8,7 +8,7 @@ Prerequisites:
     pip install game-sdk sentinelseed
 
 Note: This is a demonstration script. You'll need a valid GAME API key
-to actually run agents.
+to actually run agents. Get one at https://console.game.virtuals.io/
 """
 
 import json
@@ -18,13 +18,14 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import from local plugin (same directory)
-# In production with sentinelseed package: from sentinelseed.integrations.virtuals import ...
+# Import from local plugin
 from plugin import (
-    SentinelWorkerConfig,
+    SentinelConfig,
     SentinelValidator,
+    SentinelSafetyWorker,
     sentinel_protected,
     SentinelValidationError,
+    GAME_SDK_AVAILABLE,
 )
 
 
@@ -39,8 +40,8 @@ def example_basic_validation():
     print("="*60)
 
     # Create validator with config
-    config = SentinelWorkerConfig(
-        max_token_amount=500.0,
+    config = SentinelConfig(
+        max_transaction_amount=500.0,
         require_confirmation_above=100.0,
         block_unsafe=True,
     )
@@ -68,10 +69,10 @@ def example_basic_validation():
             "context": {"purpose": "Payment"},
             "expected": "fail",
         },
-        # Blocked by HARM gate (suspicious pattern)
+        # Blocked by HARM gate (blocked function)
         {
-            "name": "approve_unlimited",
-            "args": {"spender": "0x...", "amount": "0xffffffffffffffffffffffffffffffff"},
+            "name": "drain_wallet",
+            "args": {"target": "0x..."},
             "context": {},
             "expected": "fail",
         },
@@ -126,7 +127,7 @@ def example_decorator_usage():
     print("Example 2: Decorator Protection")
     print("="*60)
 
-    @sentinel_protected(level="standard", block_on_failure=True)
+    @sentinel_protected(config=SentinelConfig(block_unsafe=True))
     def safe_transfer(recipient: str, amount: float, purpose: str = "") -> dict:
         """Transfer tokens with Sentinel protection."""
         return {
@@ -173,11 +174,10 @@ def example_custom_config():
     print("="*60)
 
     # Trading bot config - higher limits, specific patterns
-    trading_config = SentinelWorkerConfig(
-        max_token_amount=10000.0,  # Higher limit for trading
+    trading_config = SentinelConfig(
+        max_transaction_amount=10000.0,  # Higher limit for trading
         require_confirmation_above=1000.0,
         block_unsafe=True,
-        seed_level="standard",
 
         # Only allow trading-related functions
         allowed_functions=[
@@ -208,7 +208,11 @@ def example_custom_config():
 
     # Test allowed function
     print("\n1. Testing allowed function (swap_tokens)...")
-    result = validator.validate("swap_tokens", {"amount": 500, "from": "SOL", "to": "USDC"}, {"purpose": "Rebalance portfolio"})
+    result = validator.validate(
+        "swap_tokens",
+        {"amount": 500, "from": "SOL", "to": "USDC"},
+        {"purpose": "Rebalance portfolio"}
+    )
     print(f"   {'[OK]' if result.passed else '[X]'} swap_tokens: {result.passed}")
 
     # Test blocked function
@@ -223,116 +227,124 @@ def example_custom_config():
 
 
 # =============================================================================
-# Example 4: GAME SDK Integration (Mock)
+# Example 4: GAME SDK Integration
 # =============================================================================
 
 def example_game_sdk_integration():
-    """Demonstrate integration with GAME SDK (mocked for demo)."""
+    """Demonstrate integration with GAME SDK."""
     print("\n" + "="*60)
-    print("Example 4: GAME SDK Integration (Conceptual)")
+    print("Example 4: GAME SDK Integration")
     print("="*60)
 
+    if GAME_SDK_AVAILABLE:
+        print("\nGAME SDK is available. Here's how to use it:")
+    else:
+        print("\nGAME SDK not installed. Install with: pip install game-sdk")
+
     print("""
-This example shows how you would integrate with the GAME SDK in production:
+Integration pattern with GAME SDK:
 
 ```python
-from game_sdk.game import Agent, WorkerConfig, Function, Argument
+import os
+from game_sdk.game.agent import Agent, WorkerConfig
+from game_sdk.game.custom_types import Function, Argument, FunctionResultStatus
 from sentinel.integrations.virtuals import (
-    wrap_agent_with_sentinel,
-    SentinelWorkerConfig,
+    SentinelConfig,
     SentinelSafetyWorker,
+    create_sentinel_function,
+    wrap_functions_with_sentinel,
 )
 
-# 1. Create your worker functions
+# 1. Define your function
 def transfer_tokens(recipient: str, amount: float, purpose: str = ""):
-    # Your transfer logic
-    return {"status": "success", "tx": "0x..."}
+    # Your transfer logic here
+    return (FunctionResultStatus.DONE, f"Transferred {amount} to {recipient}", {})
 
+# 2. Create GAME Function
 transfer_fn = Function(
     fn_name="transfer_tokens",
-    fn_description="Transfer tokens to a recipient",
+    fn_description="Transfer tokens to a recipient wallet",
     args=[
-        Argument(name="recipient", type="string", description="Wallet address"),
-        Argument(name="amount", type="number", description="Amount to send"),
-        Argument(name="purpose", type="string", description="Reason for transfer"),
+        Argument(name="recipient", description="Wallet address", type="string"),
+        Argument(name="amount", description="Amount to send", type="number"),
+        Argument(name="purpose", description="Reason for transfer", type="string", optional=True),
     ],
     executable=transfer_tokens,
 )
 
-# 2. Create worker config
+# 3. Wrap with Sentinel protection
+config = SentinelConfig(max_transaction_amount=1000, block_unsafe=True)
+safe_transfer_fn = create_sentinel_function(transfer_fn, config)
+
+# 4. Create Sentinel Safety Worker (recommended)
+safety_worker = SentinelSafetyWorker.create_worker_config(config)
+
+# 5. Create your trading worker
+def get_trading_state(fn_result, current_state):
+    return {"balance": 1000, "last_action": fn_result}
+
 trading_worker = WorkerConfig(
     id="trading_worker",
-    worker_description="Executes token transfers and swaps",
-    get_state_fn=lambda result, state: state,
-    action_space=[transfer_fn],
+    worker_description="Executes token transfers and swaps safely",
+    get_state_fn=get_trading_state,
+    action_space=[safe_transfer_fn],  # Using wrapped function
 )
 
-# 3. Create safety worker (optional but recommended)
-safety_worker = SentinelSafetyWorker.create_worker_config()
-
-# 4. Create agent
+# 6. Create agent
 agent = Agent(
-    api_key="your-game-api-key",
-    name="TradingBot",
-    goal="Safely execute user-requested trades",
-    workers=[safety_worker, trading_worker],
+    api_key=os.environ.get("GAME_API_KEY"),
+    name="SafeTradingBot",
+    agent_goal="Execute safe token operations",
+    agent_description="A trading bot with Sentinel safety validation",
+    get_agent_state_fn=lambda r, s: {"status": "active"},
+    workers=[safety_worker, trading_worker],  # Safety worker first
 )
 
-# 5. Wrap with Sentinel protection
-config = SentinelWorkerConfig(
-    max_token_amount=1000,
-    require_confirmation_above=100,
-    block_unsafe=True,
-)
-agent = wrap_agent_with_sentinel(agent, config)
-
-# 6. Run agent
+# 7. Run agent
 agent.compile()
-while True:
-    agent.step()  # All actions validated through THSP
+agent.run()
 ```
+
+Key points:
+- Use `create_sentinel_function()` to wrap individual functions
+- Add `SentinelSafetyWorker` as the first worker for self-validation
+- The agent can call `check_action_safety` before sensitive operations
 """)
 
 
 # =============================================================================
-# Example 5: Handling Validation Results
+# Example 5: Safety Worker Demo
 # =============================================================================
 
-def example_handling_results():
-    """Demonstrate proper handling of validation results."""
+def example_safety_worker():
+    """Demonstrate the safety worker's check function."""
     print("\n" + "="*60)
-    print("Example 5: Handling Validation Results")
+    print("Example 5: Safety Worker Check Function")
     print("="*60)
 
-    config = SentinelWorkerConfig(block_unsafe=False)  # Log-only mode
-    validator = SentinelValidator(config)
+    # Create safety worker instance (without GAME SDK)
+    config = SentinelConfig(max_transaction_amount=500)
+    worker = SentinelSafetyWorker(config)
 
-    # Simulate validation with detailed handling
-    actions_to_validate = [
-        ("send_tokens", {"amount": 2000, "to": "0x..."}, {"purpose": "Large transfer"}),
-        ("approve", {"spender": "0x...", "amount": 999999999}, {}),
+    # Test the check_action_safety function (same as what the agent would call)
+    test_actions = [
+        ("transfer", '{"amount": 100, "recipient": "0x..."}', "Payment for services"),
+        ("transfer", '{"amount": 1000, "recipient": "0x..."}', "Large payment"),
+        ("drain_wallet", '{}', ""),
+        ("swap", '{"amount": 50}', ""),  # No purpose
     ]
 
-    for action_name, args, context in actions_to_validate:
-        print(f"\nValidating: {action_name}")
-        result = validator.validate(action_name, args, context)
+    print("\nSimulating what the Safety Worker would return:\n")
 
-        if result.passed:
-            print("  [OK] Action approved")
-            # Proceed with action
-        else:
-            print(f"  [X] Action flagged")
-            print(f"    Blocked gate: {result.blocked_gate}")
-            print(f"    Failed gates: {result.failed_gates}")
-
-            for concern in result.concerns:
-                print(f"    - {concern}")
-
-            # In production, you might:
-            # 1. Request user confirmation
-            # 2. Log for audit
-            # 3. Modify the action to comply
-            # 4. Reject the action entirely
+    for action_name, args_json, purpose in test_actions:
+        status, message, info = worker.check_action_safety(action_name, args_json, purpose)
+        print(f"Action: {action_name}")
+        print(f"  Status: {status}")
+        print(f"  Message: {message}")
+        print(f"  Safe: {info.get('safe')}")
+        if info.get('concerns'):
+            print(f"  Concerns: {info.get('concerns')}")
+        print()
 
 
 # =============================================================================
@@ -342,10 +354,13 @@ def example_handling_results():
 if __name__ == "__main__":
     print("""
 ================================================================================
-  SENTINEL SAFETY PLUGIN FOR VIRTUALS PROTOCOL - EXAMPLES
+  SENTINEL SAFETY PLUGIN FOR VIRTUALS PROTOCOL GAME SDK - EXAMPLES
 
-  This script demonstrates various ways to use Sentinel's THSP Protocol
+  This script demonstrates how to use Sentinel's THSP Protocol
   to protect AI agents built on the GAME SDK.
+
+  GAME SDK: pip install game-sdk
+  Documentation: https://docs.game.virtuals.io/
 ================================================================================
 """)
 
@@ -353,7 +368,7 @@ if __name__ == "__main__":
     example_decorator_usage()
     example_custom_config()
     example_game_sdk_integration()
-    example_handling_results()
+    example_safety_worker()
 
     print("\n" + "="*60)
     print("All examples completed!")
@@ -361,4 +376,4 @@ if __name__ == "__main__":
     print("\nFor more information, see:")
     print("  - https://sentinelseed.dev/docs")
     print("  - https://github.com/sentinel-seed/sentinel")
-    print("  - https://whitepaper.virtuals.io/developer-documents/game-framework/agent-sdk")
+    print("  - https://docs.game.virtuals.io/")

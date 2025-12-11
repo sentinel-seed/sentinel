@@ -5,52 +5,69 @@ This plugin provides safety guardrails for AI agents built with the GAME framewo
 It implements the THSP Protocol (Truth, Harm, Scope, Purpose) to validate agent
 actions before execution.
 
-Key Features:
-- Function-level protection with decorators
-- Agent-wide safety wrapping
-- Configurable blocking vs logging modes
-- Financial transaction validation (critical for crypto agents)
-- Memory/state integrity checking
+IMPORTANT: This integration works with the official game-sdk package from PyPI.
+Install with: pip install game-sdk
+
+The GAME SDK architecture:
+- Agent: High-Level Planner (defines goals, coordinates workers)
+- Worker: Low-Level Planner (selects and executes functions for tasks)
+- Function: Executable unit with args and return values
+
+This integration provides:
+1. Function wrappers that add THSP validation before execution
+2. A dedicated Safety Worker that other workers can call
+3. Utilities to wrap existing agents with safety validation
+
+Usage:
+    from game_sdk.game.agent import Agent, WorkerConfig
+    from sentinel.integrations.virtuals import (
+        create_sentinel_function,
+        SentinelSafetyWorker,
+        wrap_functions_with_sentinel,
+    )
+
+    # Option 1: Wrap individual functions
+    safe_fn = create_sentinel_function(my_function, config)
+
+    # Option 2: Add a safety worker to your agent
+    safety_worker = SentinelSafetyWorker.create_worker_config()
+
+    # Option 3: Wrap all functions in a worker's action space
+    safe_action_space = wrap_functions_with_sentinel(action_space)
 """
 
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-# Try to import GAME SDK components (optional dependency)
+logger = logging.getLogger("sentinel.virtuals")
+
+
+# Check for game-sdk availability
 try:
-    from game_sdk.game.agent import Agent
-    from game_sdk.game.worker import Worker
-    from game_sdk.game.custom_types import Function, Argument, FunctionResult, WorkerConfig
+    from game_sdk.game.agent import Agent, WorkerConfig
+    from game_sdk.game.custom_types import (
+        Function,
+        Argument,
+        FunctionResult,
+        FunctionResultStatus,
+    )
     GAME_SDK_AVAILABLE = True
 except ImportError:
     GAME_SDK_AVAILABLE = False
+    # Define stubs for type hints when SDK not installed
     Agent = None
-    Worker = None
-    Function = None
     WorkerConfig = None
-
-# Try to import sentinelseed package
-try:
-    from sentinelseed import get_seed, SEEDS
-    SENTINELSEED_AVAILABLE = True
-except ImportError:
-    SENTINELSEED_AVAILABLE = False
-    SEEDS = {
-        "v2_minimal": "",
-        "v2_standard": "",
-        "v2_full": "",
-    }
-    def get_seed(name: str) -> str:
-        return SEEDS.get(name, "")
-
-
-logger = logging.getLogger("sentinel.virtuals")
+    Function = None
+    Argument = None
+    FunctionResult = None
+    FunctionResultStatus = None
 
 
 class SentinelValidationError(Exception):
@@ -84,19 +101,18 @@ class ValidationResult:
 
 
 @dataclass
-class SentinelWorkerConfig:
-    """Configuration for Sentinel safety worker."""
+class SentinelConfig:
+    """Configuration for Sentinel safety validation."""
 
     # Behavior settings
     block_unsafe: bool = True
-    log_all_validations: bool = True
-    seed_level: str = "standard"  # minimal, standard, full
+    log_validations: bool = True
 
-    # Validation thresholds
-    max_token_amount: float = 1000.0  # Max tokens in single transaction
-    require_confirmation_above: float = 100.0  # Require explicit confirmation above this
+    # Transaction limits (for crypto/financial agents)
+    max_transaction_amount: float = 1000.0
+    require_confirmation_above: float = 100.0
 
-    # Pattern detection
+    # Pattern detection - common crypto attack patterns
     suspicious_patterns: List[str] = field(default_factory=lambda: [
         r"(?i)private[_\s]?key",
         r"(?i)seed[_\s]?phrase",
@@ -108,15 +124,16 @@ class SentinelWorkerConfig:
         r"0x[fF]{64}",  # Max uint256 approvals
     ])
 
-    # Allowed actions (whitelist mode, empty = allow all)
+    # Function whitelist (empty = allow all except blocked)
     allowed_functions: List[str] = field(default_factory=list)
 
-    # Blocked actions (blacklist, always checked)
+    # Function blacklist (always checked)
     blocked_functions: List[str] = field(default_factory=lambda: [
         "drain_wallet",
         "send_all_tokens",
         "approve_unlimited",
         "export_private_key",
+        "reveal_seed_phrase",
     ])
 
 
@@ -131,11 +148,12 @@ class SentinelValidator:
     - PURPOSE: Does this action serve a legitimate benefit?
     """
 
-    def __init__(self, config: SentinelWorkerConfig):
-        self.config = config
+    def __init__(self, config: Optional[SentinelConfig] = None):
+        self.config = config or SentinelConfig()
         self._compiled_patterns = [
-            re.compile(p) for p in config.suspicious_patterns
+            re.compile(p) for p in self.config.suspicious_patterns
         ]
+        self._validation_history: List[Dict[str, Any]] = []
 
     def validate(
         self,
@@ -147,9 +165,9 @@ class SentinelValidator:
         Validate an action through all THSP gates.
 
         Args:
-            action_name: Name of the function/action to execute
-            action_args: Arguments passed to the action
-            context: Optional context (agent state, history, etc.)
+            action_name: Name of the function to execute
+            action_args: Arguments passed to the function
+            context: Optional context (worker state, purpose, etc.)
 
         Returns:
             ValidationResult with pass/fail status and details
@@ -158,28 +176,28 @@ class SentinelValidator:
         concerns = []
         gate_results = {}
 
-        # Gate 1: TRUTH - Check for deceptive patterns
+        # Gate 1: TRUTH
         truth_passed, truth_concerns = self._check_truth_gate(
             action_name, action_args, context
         )
         gate_results["truth"] = truth_passed
         concerns.extend(truth_concerns)
 
-        # Gate 2: HARM - Check for harmful actions
+        # Gate 2: HARM
         harm_passed, harm_concerns = self._check_harm_gate(
             action_name, action_args, context
         )
         gate_results["harm"] = harm_passed
         concerns.extend(harm_concerns)
 
-        # Gate 3: SCOPE - Check for boundary violations
+        # Gate 3: SCOPE
         scope_passed, scope_concerns = self._check_scope_gate(
             action_name, action_args, context
         )
         gate_results["scope"] = scope_passed
         concerns.extend(scope_concerns)
 
-        # Gate 4: PURPOSE - Check for legitimate benefit
+        # Gate 4: PURPOSE
         purpose_passed, purpose_concerns = self._check_purpose_gate(
             action_name, action_args, context
         )
@@ -195,12 +213,22 @@ class SentinelValidator:
                     blocked_gate = gate
                     break
 
-        return ValidationResult(
+        result = ValidationResult(
             passed=all_passed,
             gate_results=gate_results,
             concerns=concerns,
             blocked_gate=blocked_gate,
         )
+
+        # Record in history
+        self._validation_history.append({
+            "action": action_name,
+            "passed": all_passed,
+            "blocked_gate": blocked_gate,
+            "concerns": concerns,
+        })
+
+        return result
 
     def _check_truth_gate(
         self,
@@ -208,24 +236,17 @@ class SentinelValidator:
         action_args: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Tuple[bool, List[str]]:
-        """
-        TRUTH gate: Verify factual correspondence.
-
-        Checks for:
-        - Misleading function names
-        - Inconsistent arguments
-        - Context manipulation attempts
-        """
+        """TRUTH gate: Verify factual correspondence and detect deception."""
         concerns = []
 
-        # Check for context manipulation (memory injection)
+        # Check for context manipulation attempts
         if context.get("_injected") or context.get("_override"):
             concerns.append("Potential context manipulation detected")
             return False, concerns
 
         # Check for misleading action names
         misleading_patterns = [
-            (r"(?i)safe.*(?:drain|steal|hack)", "Action name suggests safe but contains harmful verb"),
+            (r"(?i)safe.*(?:drain|steal|hack)", "Action name misleading: contains 'safe' but suggests harm"),
             (r"(?i)test.*(?:transfer|send).*(?:real|prod)", "Test action targeting production"),
         ]
 
@@ -241,19 +262,12 @@ class SentinelValidator:
         action_args: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Tuple[bool, List[str]]:
-        """
-        HARM gate: Assess potential for harm.
-
-        Checks for:
-        - Blocked function names
-        - Suspicious patterns in arguments
-        - High-risk financial operations
-        """
+        """HARM gate: Assess potential for harm."""
         concerns = []
 
         # Check blocked functions
         if action_name.lower() in [f.lower() for f in self.config.blocked_functions]:
-            concerns.append(f"Action '{action_name}' is explicitly blocked")
+            concerns.append(f"Function '{action_name}' is blocked")
             return False, concerns
 
         # Check for suspicious patterns in arguments
@@ -265,8 +279,10 @@ class SentinelValidator:
         # Check for private key exposure
         for key, value in action_args.items():
             if isinstance(value, str):
+                # 64-char hex string (potential private key)
                 if re.match(r"^[0-9a-fA-F]{64}$", value):
                     concerns.append(f"Potential private key in argument '{key}'")
+                # 12-24 word phrase (potential seed phrase)
                 if re.match(r"^(\w+\s+){11,23}\w+$", value):
                     concerns.append(f"Potential seed phrase in argument '{key}'")
 
@@ -278,20 +294,13 @@ class SentinelValidator:
         action_args: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Tuple[bool, List[str]]:
-        """
-        SCOPE gate: Check appropriate boundaries.
-
-        Checks for:
-        - Transaction amounts exceeding limits
-        - Unauthorized target addresses
-        - Rate limiting violations
-        """
+        """SCOPE gate: Check appropriate boundaries."""
         concerns = []
 
         # Check whitelist if configured
         if self.config.allowed_functions:
             if action_name not in self.config.allowed_functions:
-                concerns.append(f"Action '{action_name}' not in allowed list")
+                concerns.append(f"Function '{action_name}' not in allowed list")
                 return False, concerns
 
         # Check transaction amounts
@@ -300,12 +309,11 @@ class SentinelValidator:
             if key in action_args:
                 try:
                     amount = float(action_args[key])
-                    if amount > self.config.max_token_amount:
+                    if amount > self.config.max_transaction_amount:
                         concerns.append(
-                            f"Transaction amount {amount} exceeds maximum {self.config.max_token_amount}"
+                            f"Amount {amount} exceeds maximum {self.config.max_transaction_amount}"
                         )
                     elif amount > self.config.require_confirmation_above:
-                        # Check if explicit confirmation was provided
                         if not action_args.get("_confirmed", False):
                             concerns.append(
                                 f"Amount {amount} requires explicit confirmation"
@@ -321,19 +329,10 @@ class SentinelValidator:
         action_args: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Tuple[bool, List[str]]:
-        """
-        PURPOSE gate: Require teleological justification.
-
-        The absence of harm is not sufficient - there must be genuine purpose.
-
-        Checks for:
-        - Clear beneficial intent
-        - User authorization
-        - Legitimate business purpose
-        """
+        """PURPOSE gate: Require teleological justification."""
         concerns = []
 
-        # Check for purpose/reason in context
+        # Check for purpose/reason in context or args
         has_purpose = any([
             context.get("purpose"),
             context.get("reason"),
@@ -349,6 +348,7 @@ class SentinelValidator:
             r"(?i)approve",
             r"(?i)swap",
             r"(?i)bridge",
+            r"(?i)withdraw",
         ]
 
         is_high_risk = any(
@@ -356,201 +356,172 @@ class SentinelValidator:
         )
 
         if is_high_risk and not has_purpose:
-            concerns.append(
-                "High-risk action requires explicit purpose/reason"
-            )
+            concerns.append("High-risk action requires explicit purpose/reason")
 
         return len(concerns) == 0, concerns
 
+    def get_stats(self) -> Dict[str, Any]:
+        """Get validation statistics."""
+        if not self._validation_history:
+            return {"total": 0, "passed": 0, "blocked": 0, "pass_rate": 1.0}
 
-def sentinel_protected(
-    level: str = "standard",
-    block_on_failure: bool = True,
-    config: Optional[SentinelWorkerConfig] = None,
-):
+        total = len(self._validation_history)
+        passed = sum(1 for v in self._validation_history if v["passed"])
+
+        return {
+            "total": total,
+            "passed": passed,
+            "blocked": total - passed,
+            "pass_rate": passed / total if total > 0 else 1.0,
+        }
+
+
+def create_sentinel_function(
+    original_function: "Function",
+    config: Optional[SentinelConfig] = None,
+    validator: Optional[SentinelValidator] = None,
+) -> "Function":
     """
-    Decorator to protect a GAME SDK function with Sentinel validation.
+    Wrap a GAME SDK Function with Sentinel validation.
 
-    Usage:
-        @sentinel_protected(level="standard")
-        def transfer_tokens(recipient: str, amount: float) -> FunctionResult:
-            ...
+    This creates a new Function that validates through THSP gates
+    before executing the original function's executable.
 
     Args:
-        level: Seed level (minimal, standard, full)
-        block_on_failure: If True, raise exception on validation failure
-        config: Optional custom configuration
-    """
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Create validator
-            cfg = config or SentinelWorkerConfig(
-                seed_level=level,
-                block_unsafe=block_on_failure,
-            )
-            validator = SentinelValidator(cfg)
-
-            # Validate
-            result = validator.validate(
-                action_name=func.__name__,
-                action_args=kwargs,
-                context={"args": args},
-            )
-
-            # Log validation
-            if cfg.log_all_validations:
-                status = "PASSED" if result.passed else "BLOCKED"
-                logger.info(
-                    f"Sentinel [{status}] {func.__name__}: "
-                    f"gates={result.gate_results}, concerns={result.concerns}"
-                )
-
-            # Handle failure
-            if not result.passed:
-                if cfg.block_unsafe:
-                    raise SentinelValidationError(
-                        f"Action '{func.__name__}' blocked by Sentinel",
-                        gate=result.blocked_gate or "unknown",
-                        concerns=result.concerns,
-                    )
-                else:
-                    logger.warning(
-                        f"Sentinel validation failed for {func.__name__}: {result.concerns}"
-                    )
-
-            # Execute original function
-            return func(*args, **kwargs)
-
-        return wrapper
-    return decorator
-
-
-def wrap_function_with_sentinel(
-    func: Callable,
-    config: Optional[SentinelWorkerConfig] = None,
-) -> Callable:
-    """
-    Wrap a function with Sentinel validation (non-decorator version).
-
-    Args:
-        func: The function to wrap
-        config: Optional configuration
+        original_function: The GAME SDK Function to wrap
+        config: Optional Sentinel configuration
+        validator: Optional existing validator instance
 
     Returns:
-        Wrapped function with safety validation
-    """
-    cfg = config or SentinelWorkerConfig()
-    return sentinel_protected(
-        level=cfg.seed_level,
-        block_on_failure=cfg.block_unsafe,
-        config=cfg,
-    )(func)
-
-
-def wrap_agent_with_sentinel(
-    agent: "Agent",
-    config: Optional[SentinelWorkerConfig] = None,
-) -> "Agent":
-    """
-    Wrap all functions in a GAME SDK Agent with Sentinel protection.
-
-    This modifies the agent's workers to validate all function executions
-    through Sentinel's THSP Protocol.
-
-    Args:
-        agent: The GAME SDK Agent to protect
-        config: Optional configuration
-
-    Returns:
-        The same agent with protected functions
+        New Function with safety validation
 
     Example:
-        agent = Agent(...)
-        agent = wrap_agent_with_sentinel(agent, config=SentinelWorkerConfig(
-            max_token_amount=500,
-            block_unsafe=True,
-        ))
-    """
-    if not GAME_SDK_AVAILABLE:
-        raise ImportError(
-            "GAME SDK is required. Install with: pip install game-sdk"
+        from game_sdk.game.custom_types import Function, Argument
+
+        # Original function
+        transfer_fn = Function(
+            fn_name="transfer_tokens",
+            fn_description="Transfer tokens to a recipient",
+            args=[
+                Argument(name="recipient", description="Recipient address"),
+                Argument(name="amount", description="Amount to transfer"),
+            ],
+            executable=my_transfer_logic,
         )
 
-    cfg = config or SentinelWorkerConfig()
-    validator = SentinelValidator(cfg)
+        # Wrap with Sentinel
+        safe_transfer_fn = create_sentinel_function(transfer_fn)
+    """
+    if not GAME_SDK_AVAILABLE:
+        raise ImportError("game-sdk is required. Install with: pip install game-sdk")
 
-    # Wrap each worker's action space
-    for worker_id, worker in agent.workers.items():
-        if hasattr(worker, 'action_space'):
-            wrapped_space = {}
-            for fn_name, fn_obj in worker.action_space.items():
-                # Create wrapped executable
-                original_execute = fn_obj.executable
+    cfg = config or SentinelConfig()
+    val = validator or SentinelValidator(cfg)
 
-                def make_wrapped(orig_fn, name):
-                    def wrapped_execute(**kwargs):
-                        # Validate before execution
-                        result = validator.validate(
-                            action_name=name,
-                            action_args=kwargs,
-                            context={"worker_id": worker_id},
-                        )
+    original_executable = original_function.executable
+    fn_name = original_function.fn_name
 
-                        if cfg.log_all_validations:
-                            status = "PASSED" if result.passed else "BLOCKED"
-                            logger.info(
-                                f"Sentinel [{status}] {worker_id}.{name}: "
-                                f"gates={result.gate_results}"
-                            )
+    def safe_executable(**kwargs) -> Tuple["FunctionResultStatus", str, dict]:
+        """Wrapped executable with Sentinel validation."""
+        # Validate before execution
+        result = val.validate(
+            action_name=fn_name,
+            action_args=kwargs,
+            context={},
+        )
 
-                        if not result.passed and cfg.block_unsafe:
-                            raise SentinelValidationError(
-                                f"Action '{name}' blocked by Sentinel",
-                                gate=result.blocked_gate or "unknown",
-                                concerns=result.concerns,
-                            )
+        if cfg.log_validations:
+            status = "PASSED" if result.passed else "BLOCKED"
+            logger.info(f"Sentinel [{status}] {fn_name}: gates={result.gate_results}")
 
-                        return orig_fn(**kwargs)
-                    return wrapped_execute
+        if not result.passed:
+            if cfg.block_unsafe:
+                return (
+                    FunctionResultStatus.FAILED,
+                    f"Sentinel blocked: {', '.join(result.concerns)}",
+                    {"sentinel_blocked": True, "gate": result.blocked_gate},
+                )
+            else:
+                logger.warning(f"Sentinel: {fn_name} would be blocked: {result.concerns}")
 
-                # Create new Function with wrapped executable
-                fn_obj.executable = make_wrapped(original_execute, fn_name)
-                wrapped_space[fn_name] = fn_obj
+        # Execute original function
+        return original_executable(**kwargs)
 
-            worker.action_space = wrapped_space
-
-    logger.info(
-        f"Agent wrapped with Sentinel protection "
-        f"(level={cfg.seed_level}, block={cfg.block_unsafe})"
+    # Create new Function with wrapped executable
+    return Function(
+        fn_name=original_function.fn_name,
+        fn_description=original_function.fn_description,
+        args=original_function.args,
+        hint=getattr(original_function, 'hint', None),
+        executable=safe_executable,
     )
 
-    return agent
+
+def wrap_functions_with_sentinel(
+    functions: List["Function"],
+    config: Optional[SentinelConfig] = None,
+) -> List["Function"]:
+    """
+    Wrap a list of Functions with Sentinel validation.
+
+    Args:
+        functions: List of GAME SDK Functions
+        config: Optional Sentinel configuration
+
+    Returns:
+        List of wrapped Functions
+
+    Example:
+        action_space = [transfer_fn, swap_fn, check_balance_fn]
+        safe_action_space = wrap_functions_with_sentinel(action_space)
+    """
+    if not GAME_SDK_AVAILABLE:
+        raise ImportError("game-sdk is required. Install with: pip install game-sdk")
+
+    cfg = config or SentinelConfig()
+    validator = SentinelValidator(cfg)
+
+    return [
+        create_sentinel_function(fn, config=cfg, validator=validator)
+        for fn in functions
+    ]
 
 
 class SentinelSafetyWorker:
     """
-    A standalone safety worker that can be added to any GAME Agent.
+    A dedicated safety worker that can be added to any GAME Agent.
 
     This worker provides safety-checking functions that other workers
-    can call before performing sensitive operations.
+    can call before performing sensitive operations. It follows the
+    Virtuals Protocol pattern of "Evaluator Agents" for validation.
 
     Usage:
+        from sentinel.integrations.virtuals import SentinelSafetyWorker
+
+        # Create the worker config
         safety_worker = SentinelSafetyWorker.create_worker_config()
-        agent.add_worker(safety_worker)
+
+        # Add to your agent
+        agent = Agent(
+            api_key=api_key,
+            name="MyAgent",
+            agent_goal="...",
+            agent_description="...",
+            get_agent_state_fn=get_state,
+            workers=[safety_worker, my_other_worker],
+        )
     """
 
-    def __init__(self, config: Optional[SentinelWorkerConfig] = None):
-        self.config = config or SentinelWorkerConfig()
+    def __init__(self, config: Optional[SentinelConfig] = None):
+        self.config = config or SentinelConfig()
         self.validator = SentinelValidator(self.config)
-        self._validation_history: List[Dict[str, Any]] = []
 
-    def check_action(
+    def check_action_safety(
         self,
         action_name: str,
-        action_args: str,  # JSON string for GAME SDK compatibility
+        action_args: str = "{}",
         purpose: str = "",
-    ) -> Dict[str, Any]:
+    ) -> Tuple["FunctionResultStatus", str, dict]:
         """
         Check if an action is safe to execute.
 
@@ -560,196 +531,203 @@ class SentinelSafetyWorker:
             purpose: Stated purpose for the action
 
         Returns:
-            Dict with 'safe' boolean, 'concerns' list, and 'gate_results'
+            Tuple of (status, message, info_dict)
         """
-        import json
-
         try:
             args = json.loads(action_args) if action_args else {}
         except json.JSONDecodeError:
-            args = {"raw": action_args}
+            args = {"raw_input": action_args}
 
         result = self.validator.validate(
             action_name=action_name,
             action_args=args,
-            context={"purpose": purpose},
+            context={"purpose": purpose} if purpose else {},
         )
 
-        # Record in history
-        self._validation_history.append({
-            "action": action_name,
-            "args": args,
-            "result": result.passed,
-            "concerns": result.concerns,
-        })
-
-        return {
+        info = {
             "safe": result.passed,
             "concerns": result.concerns,
             "gate_results": result.gate_results,
             "blocked_gate": result.blocked_gate,
         }
 
-    def get_validation_history(self) -> List[Dict[str, Any]]:
-        """Get history of all validations performed."""
-        return self._validation_history
+        if result.passed:
+            return (
+                FunctionResultStatus.DONE,
+                f"Action '{action_name}' passed all safety gates. Safe to proceed.",
+                info,
+            )
+        else:
+            return (
+                FunctionResultStatus.DONE,  # Still DONE - we successfully checked
+                f"Action '{action_name}' blocked by {result.blocked_gate} gate: {', '.join(result.concerns)}",
+                info,
+            )
 
-    def get_safety_stats(self) -> Dict[str, Any]:
-        """Get statistics about validation history."""
-        if not self._validation_history:
-            return {"total": 0, "passed": 0, "blocked": 0, "pass_rate": 1.0}
-
-        total = len(self._validation_history)
-        passed = sum(1 for v in self._validation_history if v["result"])
-
-        return {
-            "total": total,
-            "passed": passed,
-            "blocked": total - passed,
-            "pass_rate": passed / total if total > 0 else 1.0,
-        }
+    def get_safety_stats(self) -> Tuple["FunctionResultStatus", str, dict]:
+        """Get statistics about safety validations performed."""
+        stats = self.validator.get_stats()
+        return (
+            FunctionResultStatus.DONE,
+            f"Validation stats: {stats['total']} total, {stats['passed']} passed, {stats['blocked']} blocked",
+            stats,
+        )
 
     @classmethod
     def create_worker_config(
         cls,
-        config: Optional[SentinelWorkerConfig] = None,
+        config: Optional[SentinelConfig] = None,
     ) -> "WorkerConfig":
         """
         Create a WorkerConfig for adding to a GAME Agent.
 
         Returns:
-            WorkerConfig that can be passed to agent.add_worker()
+            WorkerConfig that can be passed to Agent constructor
+
+        Example:
+            safety_worker = SentinelSafetyWorker.create_worker_config()
+            agent = Agent(..., workers=[safety_worker, other_workers])
         """
         if not GAME_SDK_AVAILABLE:
-            raise ImportError(
-                "GAME SDK is required. Install with: pip install game-sdk"
-            )
+            raise ImportError("game-sdk is required. Install with: pip install game-sdk")
 
         instance = cls(config)
 
-        # Create GAME SDK Function objects
+        # Define the check_action_safety function
         check_action_fn = Function(
             fn_name="check_action_safety",
             fn_description=(
-                "Check if an action is safe to execute before performing it. "
+                "Check if an action is safe to execute BEFORE performing it. "
                 "Uses THSP Protocol (Truth, Harm, Scope, Purpose) validation. "
-                "Call this BEFORE executing any sensitive operation like transfers, "
-                "approvals, or data access."
+                "Call this before any sensitive operation like token transfers, "
+                "approvals, swaps, or external API calls. Returns whether the "
+                "action is safe and any concerns found."
             ),
             args=[
                 Argument(
                     name="action_name",
+                    description="Name of the action/function to check",
                     type="string",
-                    description="Name of the action to check",
                 ),
                 Argument(
                     name="action_args",
+                    description="JSON string of action arguments (e.g., '{\"amount\": 100, \"recipient\": \"...\"}')",
                     type="string",
-                    description="JSON string of action arguments",
+                    optional=True,
                 ),
                 Argument(
                     name="purpose",
-                    type="string",
                     description="Stated purpose/reason for the action",
+                    type="string",
+                    optional=True,
                 ),
             ],
-            executable=instance.check_action,
+            executable=instance.check_action_safety,
         )
 
+        # Define the get_safety_stats function
         get_stats_fn = Function(
             fn_name="get_safety_statistics",
             fn_description=(
                 "Get statistics about safety validations performed. "
-                "Returns total checks, passed, blocked, and pass rate."
+                "Returns total checks, passed count, blocked count, and pass rate."
             ),
             args=[],
             executable=instance.get_safety_stats,
         )
 
-        def get_state_fn(fn_result, current_state):
+        # State function for the worker
+        def get_worker_state(function_result, current_state):
             """Update worker state after function execution."""
-            stats = instance.get_safety_stats()
+            stats = instance.validator.get_stats()
+            history = instance.validator._validation_history
             return {
                 "validation_count": stats["total"],
                 "pass_rate": f"{stats['pass_rate']:.1%}",
-                "last_concerns": (
-                    instance._validation_history[-1]["concerns"]
-                    if instance._validation_history else []
+                "recent_concerns": (
+                    history[-1]["concerns"] if history else []
                 ),
             }
 
         return WorkerConfig(
-            id="sentinel_safety_worker",
+            id="sentinel_safety",
             worker_description=(
                 "Sentinel Safety Worker - Validates actions through THSP Protocol "
-                "(Truth, Harm, Scope, Purpose). Use check_action_safety BEFORE "
-                "executing any sensitive operations like token transfers, "
-                "approvals, or external API calls. This worker helps prevent "
+                "(Truth, Harm, Scope, Purpose) gates. Use check_action_safety "
+                "BEFORE executing any sensitive operations like token transfers, "
+                "approvals, swaps, or external API calls. This worker helps prevent "
                 "harmful, deceptive, or unauthorized actions."
             ),
-            get_state_fn=get_state_fn,
+            get_state_fn=get_worker_state,
             action_space=[check_action_fn, get_stats_fn],
         )
 
 
-# Convenience function for quick setup
-def create_safe_agent(
-    api_key: str,
-    name: str,
-    goal: str,
-    workers: List["WorkerConfig"],
-    sentinel_config: Optional[SentinelWorkerConfig] = None,
-    **agent_kwargs,
-) -> "Agent":
+def sentinel_protected(
+    config: Optional[SentinelConfig] = None,
+):
     """
-    Create a GAME Agent with Sentinel safety built-in.
+    Decorator to protect a function with Sentinel validation.
 
-    This is a convenience function that:
-    1. Creates the Agent with provided configuration
-    2. Adds a Sentinel Safety Worker
-    3. Wraps all functions with validation
+    Use this for custom executables that aren't wrapped as Function objects.
 
-    Args:
-        api_key: GAME API key
-        name: Agent name
-        goal: Agent goal description
-        workers: List of WorkerConfigs
-        sentinel_config: Optional Sentinel configuration
-        **agent_kwargs: Additional arguments for Agent()
+    Usage:
+        @sentinel_protected()
+        def my_transfer(recipient: str, amount: float):
+            # transfer logic
+            return (FunctionResultStatus.DONE, "Transferred", {})
 
-    Returns:
-        Fully configured Agent with Sentinel protection
-
-    Example:
-        agent = create_safe_agent(
-            api_key="your-key",
-            name="TradingBot",
-            goal="Execute safe token swaps",
-            workers=[swap_worker, analysis_worker],
-            sentinel_config=SentinelWorkerConfig(max_token_amount=100),
-        )
+        @sentinel_protected(config=SentinelConfig(max_transaction_amount=50))
+        def limited_transfer(recipient: str, amount: float):
+            # transfer logic with lower limit
+            return (FunctionResultStatus.DONE, "Transferred", {})
     """
-    if not GAME_SDK_AVAILABLE:
-        raise ImportError(
-            "GAME SDK is required. Install with: pip install game-sdk"
-        )
+    def decorator(func: Callable) -> Callable:
+        cfg = config or SentinelConfig()
+        validator = SentinelValidator(cfg)
 
-    cfg = sentinel_config or SentinelWorkerConfig()
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Validate
+            result = validator.validate(
+                action_name=func.__name__,
+                action_args=kwargs,
+                context={"args": args},
+            )
 
-    # Add Sentinel safety worker to the list
-    safety_worker_config = SentinelSafetyWorker.create_worker_config(cfg)
-    all_workers = [safety_worker_config] + list(workers)
+            if cfg.log_validations:
+                status = "PASSED" if result.passed else "BLOCKED"
+                logger.info(f"Sentinel [{status}] {func.__name__}")
 
-    # Create agent
-    agent = Agent(
-        api_key=api_key,
-        name=name,
-        goal=goal,
-        workers=all_workers,
-        **agent_kwargs,
-    )
+            if not result.passed and cfg.block_unsafe:
+                if GAME_SDK_AVAILABLE:
+                    return (
+                        FunctionResultStatus.FAILED,
+                        f"Sentinel blocked: {', '.join(result.concerns)}",
+                        {"sentinel_blocked": True},
+                    )
+                else:
+                    raise SentinelValidationError(
+                        f"Action '{func.__name__}' blocked by Sentinel",
+                        gate=result.blocked_gate or "unknown",
+                        concerns=result.concerns,
+                    )
 
-    # Wrap all functions with validation
-    agent = wrap_agent_with_sentinel(agent, cfg)
+            return func(*args, **kwargs)
 
-    return agent
+        return wrapper
+    return decorator
+
+
+# Convenience exports
+__all__ = [
+    "SentinelConfig",
+    "SentinelValidator",
+    "ValidationResult",
+    "SentinelValidationError",
+    "SentinelSafetyWorker",
+    "create_sentinel_function",
+    "wrap_functions_with_sentinel",
+    "sentinel_protected",
+    "GAME_SDK_AVAILABLE",
+]
