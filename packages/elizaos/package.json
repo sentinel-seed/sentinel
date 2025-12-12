@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/elizaos-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sentinel AI safety plugin for ElizaOS - THSP protocol validation for autonomous agents",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -42,7 +42,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sentinel-seed/sentinel.git",
-    "directory": "integrations/elizaos"
+    "directory": "packages/elizaos"
   },
   "homepage": "https://sentinelseed.dev",
   "bugs": {
