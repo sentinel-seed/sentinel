@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/solana-agent-kit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sentinel safety validation plugin for Solana Agent Kit - THSP protocol for AI agent transaction safety",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -49,7 +49,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sentinel-seed/sentinel.git",
-    "directory": "integrations/solana-agent-kit/typescript"
+    "directory": "packages/solana-agent-kit/typescript"
   },
   "bugs": {
     "url": "https://github.com/sentinel-seed/sentinel/issues"
