@@ -8,74 +8,99 @@ Requirements:
 """
 
 from sentinel.integrations.solana_agent_kit import (
-    SentinelPlugin,
+    SentinelValidator,
     SentinelSafetyMiddleware,
     safe_transaction,
     create_sentinel_actions,
 )
 
 
-def example_plugin():
-    """Example 1: Using SentinelPlugin."""
-    print("=== Sentinel Plugin ===\n")
+def example_validator():
+    """Example 1: Using SentinelValidator."""
+    print("=== Sentinel Validator ===\n")
 
-    # Create plugin
-    plugin = SentinelPlugin(seed_level="standard")
+    # Create validator with custom limits
+    validator = SentinelValidator(
+        seed_level="standard",
+        max_transfer=100.0,
+        confirm_above=10.0
+    )
 
-    print(f"Plugin name: {plugin.name}")
-    print(f"Actions available: {len(plugin.actions)}")
+    print(f"Max transfer limit: {validator.max_transfer} SOL")
+    print(f"Confirm above: {validator.confirm_above} SOL")
 
     # Validate a transaction
-    tx_data = {
-        "type": "transfer",
-        "amount": 1.0,
-        "to": "recipient_address"
-    }
+    result = validator.check(
+        action="transfer",
+        amount=5.0,
+        recipient="ABC123..."
+    )
 
-    result = plugin.validate_transaction(tx_data)
-    print(f"Transaction safe: {result['safe']}")
+    print(f"\nTransaction check:")
+    print(f"  Safe: {result.should_proceed}")
+    print(f"  Risk level: {result.risk_level.value}")
+    if result.concerns:
+        print(f"  Concerns: {result.concerns}")
+
+
+def example_safe_transaction():
+    """Example 2: Using safe_transaction function."""
+    print("\n=== Safe Transaction Function ===\n")
+
+    # Quick validation without setting up a full validator
+    result = safe_transaction(
+        action="transfer",
+        amount=5.0,
+        recipient="ABC123..."
+    )
+
+    print(f"Transaction safe: {result.should_proceed}")
+    print(f"Risk: {result.risk_level.value}")
+
+    # High-value transaction
+    high_value = safe_transaction(
+        action="transfer",
+        amount=50.0,
+        recipient="XYZ789..."
+    )
+
+    print(f"\nHigh-value transaction:")
+    print(f"  Requires confirmation: {high_value.requires_confirmation}")
 
 
 def example_middleware():
-    """Example 2: Using middleware pattern."""
+    """Example 3: Using middleware to wrap functions."""
     print("\n=== Safety Middleware ===\n")
 
     middleware = SentinelSafetyMiddleware()
 
-    # Check an action
-    action = "Transfer 100 SOL to unknown address"
-    result = middleware.check_action(action)
+    # Wrap a function with safety validation
+    def my_transfer(amount: float, recipient: str):
+        return f"Transferred {amount} SOL to {recipient}"
 
-    print(f"Action: {action}")
-    print(f"Safe: {result['safe']}")
-    print(f"Risk: {result.get('risk_level', 'N/A')}")
-
-
-def example_decorator():
-    """Example 3: Using safe_transaction decorator."""
-    print("\n=== Transaction Decorator ===\n")
-
-    @safe_transaction
-    def transfer_sol(amount: float, to_address: str):
-        return f"Transferred {amount} SOL to {to_address}"
+    safe_transfer = middleware.wrap(my_transfer, "transfer")
 
     # This will be validated before execution
     try:
-        result = transfer_sol(1.0, "valid_address")
+        result = safe_transfer(5.0, "valid_address")
         print(f"Result: {result}")
-    except Exception as e:
+    except ValueError as e:
         print(f"Blocked: {e}")
 
 
 def example_actions():
-    """Example 4: Creating LangChain-compatible actions."""
+    """Example 4: Creating validation actions for custom workflows."""
     print("\n=== Sentinel Actions ===\n")
 
     actions = create_sentinel_actions()
 
     print("Available actions:")
-    for action in actions:
-        print(f"  - {action['name']}: {action['description'][:50]}...")
+    for name, func in actions.items():
+        print(f"  - {name}")
+
+    # Use the validate_transfer action
+    result = actions["validate_transfer"](5.0, "ABC123...")
+    print(f"\nValidate transfer result: {result}")
 
 
 if __name__ == "__main__":
@@ -83,6 +108,7 @@ if __name__ == "__main__":
     print("Sentinel + Solana Agent Kit Integration Examples")
     print("=" * 60)
 
-    example_plugin()
+    example_validator()
+    example_safe_transaction()
     example_middleware()
     example_actions()

@@ -1,5 +1,5 @@
 """
-Basic usage example for sentinel-ai.
+Basic usage example for sentinelseed.
 
 This example demonstrates core functionality:
 - Getting alignment seeds

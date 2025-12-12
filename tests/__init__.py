@@ -1,1 +1,1 @@
-"""Tests for sentinel-ai package."""
+"""Tests for sentinelseed package."""

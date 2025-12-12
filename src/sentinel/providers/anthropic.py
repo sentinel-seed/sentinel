@@ -35,7 +35,7 @@ class AnthropicProvider(BaseProvider):
             except ImportError:
                 raise ImportError(
                     "anthropic package not installed. "
-                    "Install with: pip install sentinel-ai[anthropic]"
+                    "Install with: pip install sentinelseed[anthropic]"
                 )
         return self._client
 

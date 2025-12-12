@@ -134,23 +134,26 @@ npx mcp-server-sentinelseed
 ### Python Usage
 
 ```python
-from sentinelseed import SentinelGuard
+from sentinel import Sentinel
 
-# Create guard with standard seed
-guard = SentinelGuard(version="v2", variant="standard")
+# Create with standard seed level
+sentinel = Sentinel(seed_level="standard")
 
 # Get alignment seed for your LLM
-seed = guard.get_seed()
+seed = sentinel.get_seed()
 
-# Wrap messages with the seed
-messages = guard.wrap_messages([
+# Use with any LLM provider
+messages = [
+    {"role": "system", "content": seed},
     {"role": "user", "content": "Help me write a Python function"}
-])
-# messages now has the seed as system prompt
+]
 
-# Analyze content for safety
-analysis = guard.analyze("How do I hack a computer?")
-print(f"Safe: {analysis.safe}, Issues: {analysis.issues}")
+# Validate content through THSP gates
+is_safe, violations = sentinel.validate("How do I hack a computer?")
+print(f"Safe: {is_safe}, Violations: {violations}")
+
+# Or use the built-in chat (requires API key)
+response = sentinel.chat("Help me learn Python")
 ```
 
 ### JavaScript Usage
