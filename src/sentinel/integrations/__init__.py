@@ -7,6 +7,11 @@ Provides seamless integration with:
 - CrewAI (agent safety with system_template support)
 - Agent Validation (framework-agnostic safety validation)
 - Solana Agent Kit (blockchain transaction safety)
+- MCP Server (Model Context Protocol tools)
+- Anthropic SDK (Claude API integration)
+- OpenAI Assistants (Assistants API integration)
+- LlamaIndex (callback handlers, LLM wrappers)
+- Raw API (direct HTTP API integration)
 - ElizaOS (TypeScript plugin - see integrations/elizaos/)
 - Virtuals/GAME SDK (see integrations/virtuals/)
 - Promptfoo (red teaming plugin - see integrations/promptfoo/)
@@ -130,4 +135,90 @@ def get_solana_agent_kit_integration():
         "create_sentinel_actions": create_sentinel_actions,
         "create_langchain_tools": create_langchain_tools,
         "TransactionBlockedError": TransactionBlockedError,
+    }
+
+
+def get_mcp_server_integration():
+    """Get MCP Server integration components."""
+    from sentinel.integrations.mcp_server import (
+        create_sentinel_mcp_server,
+        add_sentinel_tools,
+        SentinelMCPClient,
+    )
+    return {
+        "create_sentinel_mcp_server": create_sentinel_mcp_server,
+        "add_sentinel_tools": add_sentinel_tools,
+        "SentinelMCPClient": SentinelMCPClient,
+    }
+
+
+def get_anthropic_sdk_integration():
+    """Get Anthropic SDK integration components."""
+    from sentinel.integrations.anthropic_sdk import (
+        SentinelAnthropic,
+        SentinelAsyncAnthropic,
+        wrap_anthropic_client,
+        inject_seed,
+        create_safe_client,
+    )
+    return {
+        "SentinelAnthropic": SentinelAnthropic,
+        "SentinelAsyncAnthropic": SentinelAsyncAnthropic,
+        "wrap_anthropic_client": wrap_anthropic_client,
+        "inject_seed": inject_seed,
+        "create_safe_client": create_safe_client,
+    }
+
+
+def get_openai_assistant_integration():
+    """Get OpenAI Assistants integration components."""
+    from sentinel.integrations.openai_assistant import (
+        SentinelAssistant,
+        SentinelAssistantClient,
+        SentinelAsyncAssistantClient,
+        wrap_assistant,
+        inject_seed_instructions,
+    )
+    return {
+        "SentinelAssistant": SentinelAssistant,
+        "SentinelAssistantClient": SentinelAssistantClient,
+        "SentinelAsyncAssistantClient": SentinelAsyncAssistantClient,
+        "wrap_assistant": wrap_assistant,
+        "inject_seed_instructions": inject_seed_instructions,
+    }
+
+
+def get_llamaindex_integration():
+    """Get LlamaIndex integration components."""
+    from sentinel.integrations.llamaindex import (
+        SentinelCallbackHandler,
+        SentinelLLM,
+        wrap_llm,
+        setup_sentinel_monitoring,
+    )
+    return {
+        "SentinelCallbackHandler": SentinelCallbackHandler,
+        "SentinelLLM": SentinelLLM,
+        "wrap_llm": wrap_llm,
+        "setup_sentinel_monitoring": setup_sentinel_monitoring,
+    }
+
+
+def get_raw_api_integration():
+    """Get Raw API integration components."""
+    from sentinel.integrations.raw_api import (
+        prepare_openai_request,
+        prepare_anthropic_request,
+        validate_response,
+        RawAPIClient,
+        inject_seed_openai,
+        inject_seed_anthropic,
+    )
+    return {
+        "prepare_openai_request": prepare_openai_request,
+        "prepare_anthropic_request": prepare_anthropic_request,
+        "validate_response": validate_response,
+        "RawAPIClient": RawAPIClient,
+        "inject_seed_openai": inject_seed_openai,
+        "inject_seed_anthropic": inject_seed_anthropic,
     }
