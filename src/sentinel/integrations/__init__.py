@@ -4,11 +4,14 @@ Framework integrations for Sentinel AI.
 Provides seamless integration with:
 - LangChain (callbacks, guards, wrappers)
 - LangGraph (safety nodes, conditional edges, agent executor)
-- CrewAI (agent safety)
-- AutoGPT (components, plugins)
+- CrewAI (agent safety with system_template support)
+- Agent Validation (framework-agnostic safety validation)
 - Solana Agent Kit (blockchain transaction safety)
 - ElizaOS (TypeScript plugin - see integrations/elizaos/)
+- Virtuals/GAME SDK (see integrations/virtuals/)
 - Promptfoo (red teaming plugin - see integrations/promptfoo/)
+
+Note: The 'autogpt' module is deprecated. Use 'agent_validation' instead.
 """
 
 __all__ = []
@@ -62,8 +65,40 @@ def get_crewai_integration():
     }
 
 
+def get_agent_validation():
+    """
+    Get agent validation components (framework-agnostic).
+
+    This is the recommended module for autonomous agent safety validation.
+    Works with any agent framework that needs action/output validation.
+    """
+    from sentinel.integrations.agent_validation import (
+        SafetyValidator,
+        ExecutionGuard,
+        ValidationResult,
+        safety_check,
+    )
+    return {
+        "SafetyValidator": SafetyValidator,
+        "ExecutionGuard": ExecutionGuard,
+        "ValidationResult": ValidationResult,
+        "safety_check": safety_check,
+    }
+
+
 def get_autogpt_integration():
-    """Get AutoGPT integration components."""
+    """
+    Get AutoGPT integration components.
+
+    DEPRECATED: Use get_agent_validation() instead.
+    This function is kept for backward compatibility only.
+    """
+    import warnings
+    warnings.warn(
+        "get_autogpt_integration() is deprecated. Use get_agent_validation() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     from sentinel.integrations.autogpt import (
         SentinelSafetyComponent,
         SentinelGuard,
