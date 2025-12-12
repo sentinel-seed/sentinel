@@ -582,3 +582,128 @@ def create_sentinel_callback(
     """
     sentinel = Sentinel(seed_level=seed_level)
     return SentinelCallback(sentinel=sentinel, on_violation=on_violation)
+
+
+def wrap_llm(
+    llm: Any,
+    sentinel: Optional[Sentinel] = None,
+    seed_level: Union[SeedLevel, str] = SeedLevel.STANDARD,
+    inject_seed: bool = True,
+    add_callback: bool = True,
+) -> Any:
+    """
+    Wrap a LangChain LLM with Sentinel safety.
+
+    This function wraps an existing LLM instance to:
+    1. Inject the Sentinel seed into system prompts
+    2. Add a SentinelCallback for monitoring
+
+    Args:
+        llm: LangChain LLM instance to wrap
+        sentinel: Sentinel instance (creates default if None)
+        seed_level: Which seed level to use
+        inject_seed: Whether to inject seed via system prompt
+        add_callback: Whether to add monitoring callback
+
+    Returns:
+        Wrapped LLM with Sentinel safety
+
+    Example:
+        from langchain_openai import ChatOpenAI
+        from sentinel.integrations.langchain import wrap_llm
+
+        # Wrap an existing LLM
+        llm = ChatOpenAI(model="gpt-4o")
+        safe_llm = wrap_llm(llm)
+
+        # Now use safe_llm - it has Sentinel protection
+        response = safe_llm.invoke("Help me with something")
+    """
+    sentinel = sentinel or Sentinel(seed_level=seed_level)
+
+    # Add callback if requested
+    if add_callback:
+        callback = SentinelCallback(sentinel=sentinel)
+        existing_callbacks = getattr(llm, 'callbacks', None) or []
+        if hasattr(llm, 'callbacks'):
+            llm.callbacks = list(existing_callbacks) + [callback]
+
+    # Create wrapper class that injects seed
+    if inject_seed:
+        return _SentinelLLMWrapper(llm, sentinel)
+
+    return llm
+
+
+class _SentinelLLMWrapper:
+    """
+    Internal wrapper class that injects Sentinel seed into LLM calls.
+
+    This wrapper intercepts invoke/ainvoke calls and prepends the
+    Sentinel seed to the system message.
+    """
+
+    def __init__(self, llm: Any, sentinel: Sentinel):
+        self._llm = llm
+        self._sentinel = sentinel
+        self._seed = sentinel.get_seed()
+
+        # Copy attributes from wrapped LLM for compatibility
+        for attr in ['model_name', 'temperature', 'max_tokens', 'callbacks']:
+            if hasattr(llm, attr):
+                setattr(self, attr, getattr(llm, attr))
+
+    def _inject_seed(self, messages: Any) -> Any:
+        """Inject seed into messages."""
+        if not messages:
+            return messages
+
+        # Handle list of messages
+        if isinstance(messages, list):
+            messages = list(messages)
+
+            # Check for existing system message
+            has_system = False
+            for i, msg in enumerate(messages):
+                if isinstance(msg, dict) and msg.get('role') == 'system':
+                    messages[i] = {
+                        **msg,
+                        'content': f"{self._seed}\n\n---\n\n{msg['content']}"
+                    }
+                    has_system = True
+                    break
+                elif hasattr(msg, 'type') and msg.type == 'system':
+                    # LangChain message object
+                    try:
+                        from langchain_core.messages import SystemMessage
+                        messages[i] = SystemMessage(
+                            content=f"{self._seed}\n\n---\n\n{msg.content}"
+                        )
+                    except ImportError:
+                        pass
+                    has_system = True
+                    break
+
+            # Add system message if none exists
+            if not has_system:
+                try:
+                    from langchain_core.messages import SystemMessage
+                    messages.insert(0, SystemMessage(content=self._seed))
+                except ImportError:
+                    messages.insert(0, {'role': 'system', 'content': self._seed})
+
+        return messages
+
+    def invoke(self, messages: Any, **kwargs: Any) -> Any:
+        """Invoke LLM with seed injection."""
+        messages = self._inject_seed(messages)
+        return self._llm.invoke(messages, **kwargs)
+
+    async def ainvoke(self, messages: Any, **kwargs: Any) -> Any:
+        """Async invoke LLM with seed injection."""
+        messages = self._inject_seed(messages)
+        return await self._llm.ainvoke(messages, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        """Proxy unknown attributes to wrapped LLM."""
+        return getattr(self._llm, name)
