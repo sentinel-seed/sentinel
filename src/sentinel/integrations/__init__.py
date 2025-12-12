@@ -17,7 +17,7 @@ Available integrations:
     from sentinel.integrations.openai_assistant import SentinelAssistant
     from sentinel.integrations.raw_api import prepare_openai_request
     from sentinel.integrations.agent_validation import SafetyValidator
-    from sentinel.integrations.solana_agent_kit import SentinelPlugin
+    from sentinel.integrations.solana_agent_kit import SentinelValidator
 
 External packages (npm/PyPI):
     See packages/ directory for:

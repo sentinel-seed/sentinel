@@ -1,5 +1,5 @@
 """
-LangChain integration example for sentinel-ai.
+LangChain integration example for sentinelseed.
 
 Shows how to:
 - Use SentinelCallback for monitoring
@@ -7,7 +7,7 @@ Shows how to:
 - Use wrap_llm for seed injection
 
 Requirements:
-    pip install sentinel-ai[langchain] langchain-openai
+    pip install sentinelseed[langchain] langchain-openai
 """
 
 import sys
@@ -89,7 +89,7 @@ def main():
     print("\n" + "=" * 60)
     print("Examples complete!")
     print("\nFor full LangChain usage, install:")
-    print("  pip install sentinel-ai[langchain] langchain-openai")
+    print("  pip install sentinelseed[langchain] langchain-openai")
 
 
 if __name__ == "__main__":

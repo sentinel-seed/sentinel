@@ -200,7 +200,7 @@ class SentinelCrew:
         except ImportError:
             raise ImportError(
                 "crewai package not installed. "
-                "Install with: pip install sentinel-ai[crewai]"
+                "Install with: pip install sentinelseed[crewai]"
             )
 
         self.validation_log: List[Dict[str, Any]] = []
@@ -346,7 +346,7 @@ def create_safe_crew(
     except ImportError:
         raise ImportError(
             "crewai package not installed. "
-            "Install with: pip install sentinel-ai[crewai]"
+            "Install with: pip install sentinelseed[crewai]"
         )
 
     # Create agents
