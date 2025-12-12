@@ -1,0 +1,26 @@
+# Source files (we publish dist/)
+src/
+
+# Examples (not needed in package)
+examples/
+
+# Config files
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.eslintrc.*
+
+# Development
+.gitignore
+.vscode/
+.idea/
+
+# Tests
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Other
+*.log
+.env*
