@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sentinelseed-promptfoo"
+version = "1.0.0"
+description = "Sentinel safety provider for Promptfoo - THSP protocol validation for red-teaming"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Sentinel Team", email = "team@sentinelseed.dev" }
+]
+keywords = [
+    "promptfoo",
+    "ai-safety",
+    "red-teaming",
+    "sentinel",
+    "thsp",
+    "llm-testing",
+    "evaluation",
+    "alignment"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.20.0"]
+all = ["openai>=1.0.0", "anthropic>=0.20.0"]
+
+[project.urls]
+Homepage = "https://sentinelseed.dev"
+Documentation = "https://sentinelseed.dev/docs/promptfoo"
+Repository = "https://github.com/sentinel-seed/sentinel"
+Issues = "https://github.com/sentinel-seed/sentinel/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sentinelseed_promptfoo"]
