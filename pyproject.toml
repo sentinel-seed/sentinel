@@ -3,17 +3,30 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sentinel-ai"
-version = "0.1.0"
-description = "AI alignment toolkit - The Guardian Against Machine Independence"
+name = "sentinelseed"
+version = "2.0.0"
+description = "AI safety toolkit with THSP protocol - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Sentinel Team", email = "team@sentinelseed.dev"}
 ]
-keywords = ["ai", "safety", "alignment", "llm", "guardrails", "ethics"]
+keywords = [
+    "ai",
+    "safety",
+    "alignment",
+    "llm",
+    "guardrails",
+    "thsp",
+    "ai-agents",
+    "langchain",
+    "langgraph",
+    "crewai",
+    "openai",
+    "anthropic",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -25,18 +38,24 @@ classifiers = [
     "Topic :: Security",
 ]
 requires-python = ">=3.9"
-dependencies = [
-    "openai>=1.0.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
+openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.18.0"]
 langchain = ["langchain>=0.1.0", "langchain-core>=0.1.0"]
+langgraph = ["langgraph>=0.0.1"]
 crewai = ["crewai>=0.1.0"]
+llamaindex = ["llama-index-core>=0.10.0"]
+mcp = ["mcp>=0.1.0"]
 all = [
+    "openai>=1.0.0",
     "anthropic>=0.18.0",
     "langchain>=0.1.0",
     "langchain-core>=0.1.0",
+    "langgraph>=0.0.1",
+    "crewai>=0.1.0",
+    "llama-index-core>=0.10.0",
 ]
 dev = [
     "pytest>=7.0.0",
