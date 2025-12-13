@@ -352,6 +352,18 @@ The AI will:
 
 ## Framework Integrations
 
+Sentinel provides native integrations for 12 frameworks. Install optional dependencies as needed:
+
+```bash
+pip install sentinelseed[langchain]   # LangChain + LangGraph
+pip install sentinelseed[crewai]      # CrewAI
+pip install sentinelseed[virtuals]    # Virtuals Protocol (GAME SDK)
+pip install sentinelseed[llamaindex]  # LlamaIndex
+pip install sentinelseed[anthropic]   # Anthropic SDK
+pip install sentinelseed[openai]      # OpenAI Assistants
+pip install sentinelseed[all]         # All integrations
+```
+
 ### LangChain
 
 ```python
@@ -364,6 +376,16 @@ llm = ChatOpenAI(callbacks=[callback])
 # Or wrap an agent
 guard = SentinelGuard(agent, block_unsafe=True)
 result = guard.run("Your task")
+```
+
+### LangGraph
+
+```python
+from sentinelseed.integrations.langgraph import SentinelSafetyNode, create_safe_graph
+
+# Add safety node to your graph
+safety_node = SentinelSafetyNode(seed_level="standard")
+graph = create_safe_graph(your_graph, safety_node)
 ```
 
 ### CrewAI
@@ -393,7 +415,7 @@ from sentinelseed.integrations.virtuals import (
 )
 from game_sdk.game.agent import Agent
 
-# Create safety worker
+# Create safety worker with transaction limits
 config = SentinelConfig(max_transaction_amount=500)
 safety_worker = SentinelSafetyWorker.create_worker_config(config)
 
@@ -401,8 +423,112 @@ safety_worker = SentinelSafetyWorker.create_worker_config(config)
 agent = Agent(
     api_key=api_key,
     name="SafeAgent",
-    workers=[safety_worker, trading_worker],  # Safety first
+    workers=[safety_worker, trading_worker],
 )
+```
+
+### LlamaIndex
+
+```python
+from sentinelseed.integrations.llamaindex import SentinelCallbackHandler, SentinelLLM
+
+# Monitor queries
+handler = SentinelCallbackHandler(block_unsafe=True)
+index = VectorStoreIndex.from_documents(docs, callback_manager=CallbackManager([handler]))
+
+# Or wrap the LLM directly
+safe_llm = SentinelLLM(llm, seed_level="standard")
+```
+
+### Anthropic SDK
+
+```python
+from sentinelseed.integrations.anthropic_sdk import SentinelAnthropic
+
+# Drop-in replacement for Anthropic client
+client = SentinelAnthropic(api_key="...")
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+# Seed automatically injected
+```
+
+### OpenAI Assistants
+
+```python
+from sentinelseed.integrations.openai_assistant import SentinelAssistant
+
+# Wrap OpenAI Assistant with safety
+assistant = SentinelAssistant(
+    client=openai_client,
+    assistant_id="asst_...",
+    seed_level="standard"
+)
+response = assistant.run("Your task")
+```
+
+### Solana Agent Kit
+
+```python
+from sentinelseed.integrations.solana_agent_kit import SentinelValidator, safe_transaction
+
+# Validate transactions before execution
+validator = SentinelValidator(max_amount=1000)
+
+@safe_transaction(validator)
+def transfer_tokens(recipient, amount):
+    # Your transfer logic
+    pass
+```
+
+### MCP Server (Claude Desktop)
+
+```python
+from sentinelseed.integrations.mcp_server import create_sentinel_mcp_server
+
+# Create MCP server with Sentinel tools
+server = create_sentinel_mcp_server()
+# Tools: get_seed, validate_content, analyze_action
+```
+
+Or use the npm package directly:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "npx",
+      "args": ["mcp-server-sentinelseed"]
+    }
+  }
+}
+```
+
+### Raw API Integration
+
+```python
+from sentinelseed.integrations.raw_api import prepare_openai_request, prepare_anthropic_request
+
+# Inject seed into raw API requests
+messages = prepare_openai_request(
+    messages=[{"role": "user", "content": "Hello"}],
+    seed_level="standard"
+)
+# Use with requests or httpx directly
+```
+
+### Agent Validation (Generic)
+
+```python
+from sentinelseed.integrations.agent_validation import SafetyValidator, ExecutionGuard
+
+# Universal safety validator for any agent framework
+validator = SafetyValidator(seed_level="standard")
+result = validator.validate_action("delete_all_files", {"path": "/"})
+
+if not result.is_safe:
+    print(f"Blocked: {result.concerns}")
 ```
 
 ---
