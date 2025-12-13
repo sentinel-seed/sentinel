@@ -607,7 +607,7 @@ sentinel/
 │   ├── validators/           # THSP gates
 │   ├── providers/            # OpenAI, Anthropic
 │   ├── memory/               # Memory integrity checking
-│   └── integrations/         # LangChain, CrewAI, Virtuals, etc.
+│   └── integrations/         # 14 frameworks (LangChain, CrewAI, Garak, etc.)
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
@@ -622,9 +622,11 @@ sentinel/
 │       ├── safeagentbench/
 │       ├── badrobot/
 │       └── jailbreakbench/
-├── packages/                  # External NPM packages
-│   ├── elizaos/              # @sentinelseed/elizaos-plugin
-│   └── solana-agent-kit/     # @sentinelseed/solana-agent-kit
+├── packages/                  # External NPM/PyPI packages
+│   ├── elizaos/              # @sentinelseed/elizaos-plugin (npm)
+│   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit (npm)
+│   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
+│   └── virtuals/             # @sentinelseed/virtuals-plugin (npm)
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts
