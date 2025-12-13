@@ -43,7 +43,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Anti-Self-Preservation** — Prevents AI from prioritizing its own existence
 - **Alignment Seeds** — System prompts that shape LLM behavior
 - **Python SDK** — Easy integration with any LLM
-- **Framework Support** — LangChain, CrewAI integrations
+- **Framework Support** — LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals Protocol integrations
 - **REST API** — Deploy alignment as a service
 
 ---
@@ -134,7 +134,7 @@ npx mcp-server-sentinelseed
 ### Python Usage
 
 ```python
-from sentinel import Sentinel
+from sentinelseed import Sentinel
 
 # Create with standard seed level
 sentinel = Sentinel(seed_level="standard")
@@ -197,7 +197,7 @@ Tools available: `get_seed`, `wrap_messages`, `analyze_content`, `list_seeds`
 ### For Embodied AI / Agents
 
 ```python
-from sentinel import Sentinel
+from sentinelseed import Sentinel
 
 sentinel = Sentinel(seed_level="standard")  # Full seed for agents
 
@@ -212,7 +212,7 @@ if not is_safe:
 ### Validate Responses
 
 ```python
-from sentinel import Sentinel
+from sentinelseed import Sentinel
 
 sentinel = Sentinel()
 
@@ -230,6 +230,8 @@ if not is_safe:
 ### 🤖 Robotics & Embodied AI
 
 ```python
+from sentinelseed import Sentinel
+
 # Prevent dangerous physical actions
 sentinel = Sentinel(seed_level="full")  # Full seed for max safety
 
@@ -242,7 +244,7 @@ result = sentinel.validate_action(robot_task)
 
 ```python
 # Safety layer for code agents
-from sentinel.integrations.langchain import SentinelGuard
+from sentinelseed.integrations.langchain import SentinelGuard
 
 agent = create_your_agent()
 safe_agent = SentinelGuard(agent, block_unsafe=True)
@@ -255,6 +257,8 @@ result = safe_agent.run("Delete all files in the system")
 ### 💬 Chatbots & Assistants
 
 ```python
+from sentinelseed import Sentinel
+
 # Alignment seed for customer service bot
 sentinel = Sentinel(seed_level="standard")
 system_prompt = sentinel.get_seed() + "\n\nYou are a helpful customer service agent."
@@ -265,6 +269,8 @@ system_prompt = sentinel.get_seed() + "\n\nYou are a helpful customer service ag
 ### 🏭 Industrial Automation
 
 ```python
+from sentinelseed import Sentinel
+
 # M2M safety decisions
 sentinel = Sentinel(seed_level="minimal")  # Low latency
 
@@ -284,7 +290,7 @@ if not sentinel.validate_action(decision).is_safe:
 | `v2/full` | ~1,900 | Critical systems, max safety |
 
 ```python
-from sentinel import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
 
 # Choose based on use case
 sentinel_chat = Sentinel(seed_level=SeedLevel.MINIMAL)
@@ -349,7 +355,7 @@ The AI will:
 ### LangChain
 
 ```python
-from sentinel.integrations.langchain import SentinelCallback, SentinelGuard
+from sentinelseed.integrations.langchain import SentinelCallback, SentinelGuard
 
 # Monitor LLM calls
 callback = SentinelCallback(on_violation="log")
@@ -363,7 +369,7 @@ result = guard.run("Your task")
 ### CrewAI
 
 ```python
-from sentinel.integrations.crewai import SentinelCrew, safe_agent
+from sentinelseed.integrations.crewai import SentinelCrew, safe_agent
 
 # Wrap individual agent
 safe_researcher = safe_agent(researcher)
@@ -375,6 +381,28 @@ crew = SentinelCrew(
     seed_level="standard"
 )
 result = crew.kickoff()
+```
+
+### Virtuals Protocol (GAME SDK)
+
+```python
+from sentinelseed.integrations.virtuals import (
+    SentinelConfig,
+    SentinelSafetyWorker,
+    create_sentinel_function,
+)
+from game_sdk.game.agent import Agent
+
+# Create safety worker
+config = SentinelConfig(max_transaction_amount=500)
+safety_worker = SentinelSafetyWorker.create_worker_config(config)
+
+# Add to your agent
+agent = Agent(
+    api_key=api_key,
+    name="SafeAgent",
+    workers=[safety_worker, trading_worker],  # Safety first
+)
 ```
 
 ---
@@ -402,11 +430,12 @@ POST /chat              - Chat with seed injection
 
 ```
 sentinel/
-├── sdk/sentinel/              # Python SDK
+├── src/sentinelseed/          # Python SDK
 │   ├── core.py               # Main Sentinel class
 │   ├── validators/           # THSP gates
 │   ├── providers/            # OpenAI, Anthropic
-│   └── integrations/         # LangChain, CrewAI
+│   ├── memory/               # Memory integrity checking
+│   └── integrations/         # LangChain, CrewAI, Virtuals, etc.
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
@@ -421,6 +450,9 @@ sentinel/
 │       ├── safeagentbench/
 │       ├── badrobot/
 │       └── jailbreakbench/
+├── packages/                  # External NPM packages
+│   ├── elizaos/              # @sentinelseed/elizaos-plugin
+│   └── solana-agent-kit/     # @sentinelseed/solana-agent-kit
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts
@@ -518,6 +550,19 @@ MIT License — See [LICENSE](LICENSE)
 | **PyPI** | [sentinelseed](https://pypi.org/project/sentinelseed) | `pip install sentinelseed` |
 | **npm** | [sentinelseed](https://npmjs.com/package/sentinelseed) | `npm install sentinelseed` |
 | **MCP** | [mcp-server-sentinelseed](https://npmjs.com/package/mcp-server-sentinelseed) | `npx mcp-server-sentinelseed` |
+
+### Optional Dependencies
+
+```bash
+# For Virtuals Protocol integration
+pip install sentinelseed[virtuals]
+
+# For LangChain integration
+pip install sentinelseed[langchain]
+
+# For all integrations
+pip install sentinelseed[all]
+```
 
 ---
 
