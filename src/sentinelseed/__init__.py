@@ -47,10 +47,32 @@ from sentinelseed.memory import (
 )
 
 __version__ = "2.2.0"
+
+
+def get_seed(level: str = "standard") -> str:
+    """Convenience function to get an alignment seed.
+
+    Args:
+        level: Seed level - 'minimal', 'standard', or 'full'
+
+    Returns:
+        The seed content as a string.
+
+    Example:
+        >>> from sentinelseed import get_seed
+        >>> seed = get_seed("standard")
+        >>> print(len(seed))
+        4521
+    """
+    sentinel = Sentinel()
+    return sentinel.get_seed(level)
+
+
 __all__ = [
     # Core
     "Sentinel",
     "SeedLevel",
+    "get_seed",
     # Validators
     "TruthGate",
     "HarmGate",
