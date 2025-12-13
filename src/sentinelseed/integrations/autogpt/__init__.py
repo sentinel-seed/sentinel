@@ -1,22 +1,25 @@
 """
 AutoGPT integration for Sentinel AI.
 
-DEPRECATION NOTICE:
-    This module is maintained for backward compatibility only.
-    For new projects, use `sentinel.integrations.agent_validation` instead.
+MIGRATION NOTICE:
+    AutoGPT Platform (v0.6+) uses a Block SDK architecture. For the new
+    AutoGPT Platform, use the `autogpt_block` integration instead:
 
-    AutoGPT's architecture changed significantly in v0.6+ (now a web platform),
-    making the "AutoGPT" name misleading. The new `agent_validation` module
-    provides the same functionality with clearer naming.
+    # For AutoGPT Platform (v0.6+) - Block SDK
+    from sentinelseed.integrations.autogpt_block import (
+        SentinelValidationBlock,
+        SentinelActionCheckBlock,
+        SentinelSeedBlock,
+    )
 
-Migration:
-    # Old (still works)
-    from sentinelseed.integrations.autogpt import SentinelSafetyComponent
-
-    # New (recommended)
+    # For standalone validation (no AutoGPT dependency)
     from sentinelseed.integrations.agent_validation import SafetyValidator
 
-All imports from this module are re-exported from agent_validation.py
+    # Legacy (this module) - for old AutoGPT versions only
+    from sentinelseed.integrations.autogpt import SentinelSafetyComponent
+
+This module is maintained for backward compatibility with pre-v0.6 AutoGPT.
+All imports are re-exported from agent_validation.py.
 """
 
 import warnings
@@ -35,10 +38,11 @@ SafetyCheckResult = ValidationResult
 SentinelSafetyComponent = SafetyValidator
 SentinelGuard = ExecutionGuard
 
-# Issue deprecation warning on import (only once)
+# Issue migration warning on import (only once)
 warnings.warn(
-    "sentinel.integrations.autogpt is deprecated. "
-    "Use sentinel.integrations.agent_validation instead.",
+    "sentinelseed.integrations.autogpt is for legacy AutoGPT (pre-v0.6). "
+    "For AutoGPT Platform v0.6+, use sentinelseed.integrations.autogpt_block. "
+    "For standalone validation, use sentinelseed.integrations.agent_validation.",
     DeprecationWarning,
     stacklevel=2
 )
