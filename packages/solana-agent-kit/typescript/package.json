@@ -44,7 +44,10 @@
     "web3",
     "defi-safety"
   ],
-  "author": "Sentinel Team",
+  "author": {
+    "name": "Sentinel Team",
+    "email": "team@sentinelseed.dev"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

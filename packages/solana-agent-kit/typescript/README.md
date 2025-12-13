@@ -277,6 +277,7 @@ Sentinel addresses these by requiring every transaction to pass through the THSP
 - **Documentation**: [sentinelseed.dev/docs](https://sentinelseed.dev/docs)
 - **GitHub**: [sentinel-seed/sentinel](https://github.com/sentinel-seed/sentinel/tree/main/integrations/solana-agent-kit/typescript)
 - **npm**: [@sentinelseed/solana-agent-kit](https://www.npmjs.com/package/@sentinelseed/solana-agent-kit)
+- **Contact**: [team@sentinelseed.dev](mailto:team@sentinelseed.dev)
 
 ## License
 
@@ -284,4 +285,4 @@ MIT License - see [LICENSE](./LICENSE)
 
 ---
 
-Built by [Sentinel Team](https://sentinelseed.dev)
+Built by [Sentinel Team](https://sentinelseed.dev) | [team@sentinelseed.dev](mailto:team@sentinelseed.dev)

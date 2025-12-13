@@ -240,6 +240,7 @@ import type {
 - [ElizaOS Documentation](https://docs.elizaos.ai)
 - [THSP Protocol Specification](https://sentinelseed.dev/docs/methodology)
 - [GitHub Repository](https://github.com/sentinel-seed/sentinel)
+- [Contact](mailto:team@sentinelseed.dev)
 
 ## License
 
@@ -247,4 +248,4 @@ MIT - See [LICENSE](../../LICENSE)
 
 ---
 
-Made with care by [Sentinel Team](https://sentinelseed.dev)
+Made with care by [Sentinel Team](https://sentinelseed.dev) | [team@sentinelseed.dev](mailto:team@sentinelseed.dev)

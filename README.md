@@ -528,6 +528,7 @@ MIT License — See [LICENSE](LICENSE)
 - 🐍 **PyPI:** [pypi.org/project/sentinelseed](https://pypi.org/project/sentinelseed)
 - 🤗 **HuggingFace:** [huggingface.co/sentinelseed](https://huggingface.co/sentinelseed)
 - 𝕏 **Twitter:** [@sentinel_Seed](https://x.com/Sentinel_Seed)
+- 📧 **Contact:** [team@sentinelseed.dev](mailto:team@sentinelseed.dev)
 - **GitHub Issues:** Bug reports and feature requests
 - **Discussions:** Questions and ideas
 
