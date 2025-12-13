@@ -64,7 +64,8 @@ See [python/example.py](./python/example.py) for usage examples.
 - [Sentinel Documentation](https://sentinelseed.dev/docs)
 - [Solana Agent Kit](https://docs.sendai.fun)
 - [THSP Protocol](https://sentinelseed.dev/docs/thsp)
+- [Contact](mailto:team@sentinelseed.dev)
 
 ---
 
-Built by [Sentinel Team](https://sentinelseed.dev)
+Built by [Sentinel Team](https://sentinelseed.dev) | [team@sentinelseed.dev](mailto:team@sentinelseed.dev)
