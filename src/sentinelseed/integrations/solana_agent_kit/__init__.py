@@ -46,10 +46,30 @@ except ImportError:
 
 class TransactionRisk(Enum):
     """Risk levels for blockchain transactions."""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+
+    def __lt__(self, other):
+        if isinstance(other, TransactionRisk):
+            return self.value < other.value
+        return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, TransactionRisk):
+            return self.value <= other.value
+        return NotImplemented
+
+    def __gt__(self, other):
+        if isinstance(other, TransactionRisk):
+            return self.value > other.value
+        return NotImplemented
+
+    def __ge__(self, other):
+        if isinstance(other, TransactionRisk):
+            return self.value >= other.value
+        return NotImplemented
 
 
 @dataclass
@@ -194,7 +214,7 @@ class SentinelValidator:
                 f"Action '{action}' requires explicit purpose/reason "
                 f"(set purpose= or reason= parameter)"
             )
-            if risk_level.value < TransactionRisk.MEDIUM.value:
+            if risk_level < TransactionRisk.MEDIUM:
                 risk_level = TransactionRisk.MEDIUM
 
         requires_confirmation = amount > self.confirm_above
@@ -205,14 +225,14 @@ class SentinelValidator:
 
         if not is_safe:
             concerns.extend(sentinel_concerns)
-            if risk_level.value < TransactionRisk.HIGH.value:
+            if risk_level < TransactionRisk.HIGH:
                 risk_level = TransactionRisk.HIGH
 
         # Check suspicious patterns
         suspicious = self._check_patterns(action, amount, memo)
         if suspicious:
             concerns.extend(suspicious)
-            if risk_level.value < TransactionRisk.MEDIUM.value:
+            if risk_level < TransactionRisk.MEDIUM:
                 risk_level = TransactionRisk.MEDIUM
 
         # Determine if should proceed
@@ -389,7 +409,7 @@ def create_sentinel_actions(
         result = validator.check("transfer", amount=amount, recipient=recipient)
         return {
             "safe": result.should_proceed,
-            "risk": result.risk_level.value,
+            "risk": result.risk_level.name.lower(),
             "concerns": result.concerns,
         }
 
@@ -406,7 +426,7 @@ def create_sentinel_actions(
         )
         return {
             "safe": result.should_proceed,
-            "risk": result.risk_level.value,
+            "risk": result.risk_level.name.lower(),
             "concerns": result.concerns,
         }
 
@@ -415,7 +435,7 @@ def create_sentinel_actions(
         result = validator.check(action, **params)
         return {
             "safe": result.should_proceed,
-            "risk": result.risk_level.value,
+            "risk": result.risk_level.name.lower(),
             "concerns": result.concerns,
             "recommendations": result.recommendations,
         }
@@ -577,3 +597,15 @@ class SentinelSafetyMiddleware:
             return func(*args, **kwargs)
 
         return wrapper
+
+
+__all__ = [
+    "TransactionRisk",
+    "TransactionSafetyResult",
+    "SentinelValidator",
+    "safe_transaction",
+    "create_sentinel_actions",
+    "create_langchain_tools",
+    "TransactionBlockedError",
+    "SentinelSafetyMiddleware",
+]

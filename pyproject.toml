@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.1.0"
+version = "2.1.1"
 description = "AI safety toolkit with THSP protocol - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,6 +27,7 @@ keywords = [
     "virtuals",
     "game-sdk",
     "solana",
+    "autogpt",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -352,7 +352,7 @@ The AI will:
 
 ## Framework Integrations
 
-Sentinel provides native integrations for 12 frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 13 frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -454,6 +454,8 @@ response = client.messages.create(
 # Seed automatically injected
 ```
 
+> **Note:** Default model will be updated to latest Claude versions as they become available.
+
 ### OpenAI Assistants
 
 ```python
@@ -516,6 +518,25 @@ messages = prepare_openai_request(
     seed_level="standard"
 )
 # Use with requests or httpx directly
+```
+
+### AutoGPT Platform (Block SDK)
+
+```python
+from sentinelseed.integrations.autogpt_block import (
+    SentinelValidationBlock,
+    SentinelActionCheckBlock,
+    SentinelSeedBlock,
+    validate_content,  # Standalone function
+)
+
+# Use blocks in AutoGPT workflows (drag-and-drop in UI)
+# Blocks are auto-registered when copied to AutoGPT blocks directory
+
+# Standalone usage (without AutoGPT Platform):
+result = validate_content("How do I hack a computer?")
+if not result["safe"]:
+    print(f"Blocked: {result['violations']}")
 ```
 
 ### Agent Validation (Generic)

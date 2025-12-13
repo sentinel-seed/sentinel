@@ -19,6 +19,7 @@ Available integrations:
     from sentinelseed.integrations.agent_validation import SafetyValidator
     from sentinelseed.integrations.solana_agent_kit import SentinelValidator
     from sentinelseed.integrations.virtuals import SentinelSafetyWorker
+    from sentinelseed.integrations.autogpt_block import SentinelValidationBlock
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -31,6 +32,7 @@ __all__ = [
     'agent_validation',
     'anthropic_sdk',
     'autogpt',
+    'autogpt_block',
     'crewai',
     'langchain',
     'langgraph',
