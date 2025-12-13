@@ -1,0 +1,585 @@
+"""
+Raw API integration for Sentinel AI.
+
+Provides utilities for adding Sentinel safety to raw HTTP API calls
+to LLM providers. Use this when you're not using an official SDK
+and making direct HTTP requests.
+
+Supports:
+    - OpenAI Chat Completions API
+    - Anthropic Messages API
+    - Any OpenAI-compatible API (OpenRouter, Together, etc.)
+    - Generic message-based APIs
+
+Usage:
+    from sentinelseed.integrations.raw_api import (
+        prepare_openai_request,
+        prepare_anthropic_request,
+        validate_response,
+    )
+
+    # For OpenAI-compatible APIs
+    headers, body = prepare_openai_request(
+        messages=[{"role": "user", "content": "Hello"}],
+        model="gpt-4o",
+        api_key="your-key"
+    )
+    response = requests.post(url, headers=headers, json=body)
+    validated = validate_response(response.json())
+
+    # For Anthropic API
+    headers, body = prepare_anthropic_request(
+        messages=[{"role": "user", "content": "Hello"}],
+        model="claude-sonnet-4-5-20250929",
+        api_key="your-key"
+    )
+"""
+
+from typing import Any, Dict, List, Optional, Tuple, Union
+import json
+
+try:
+    from sentinel import Sentinel, SeedLevel
+except ImportError:
+    from sentinelseed import Sentinel, SeedLevel
+
+
+# API endpoints
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+
+
+def prepare_openai_request(
+    messages: List[Dict[str, str]],
+    model: str = "gpt-4o-mini",
+    api_key: Optional[str] = None,
+    sentinel: Optional[Sentinel] = None,
+    seed_level: str = "standard",
+    inject_seed: bool = True,
+    validate_input: bool = True,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    **kwargs,
+) -> Tuple[Dict[str, str], Dict[str, Any]]:
+    """
+    Prepare an OpenAI-compatible API request with Sentinel safety.
+
+    Works with OpenAI, OpenRouter, Together AI, and any OpenAI-compatible API.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content'
+        model: Model identifier
+        api_key: API key for Authorization header
+        sentinel: Sentinel instance (creates default if None)
+        seed_level: Seed level to use
+        inject_seed: Whether to inject seed into system message
+        validate_input: Whether to validate input messages
+        max_tokens: Maximum tokens in response
+        temperature: Sampling temperature
+        **kwargs: Additional API parameters
+
+    Returns:
+        Tuple of (headers dict, body dict)
+
+    Raises:
+        ValueError: If input validation fails
+
+    Example:
+        import requests
+        from sentinelseed.integrations.raw_api import prepare_openai_request
+
+        headers, body = prepare_openai_request(
+            messages=[{"role": "user", "content": "Hello"}],
+            model="gpt-4o",
+            api_key="sk-..."
+        )
+
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=body
+        )
+    """
+    sentinel = sentinel or Sentinel(seed_level=seed_level)
+
+    # Validate input messages
+    if validate_input:
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str) and msg.get("role") == "user":
+                result = sentinel.validate_request(content)
+                if not result["should_proceed"]:
+                    raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+
+    # Prepare messages with seed injection
+    prepared_messages = list(messages)
+
+    if inject_seed:
+        seed = sentinel.get_seed()
+
+        # Check for existing system message
+        has_system = False
+        for i, msg in enumerate(prepared_messages):
+            if msg.get("role") == "system":
+                prepared_messages[i] = {
+                    "role": "system",
+                    "content": f"{seed}\n\n---\n\n{msg['content']}"
+                }
+                has_system = True
+                break
+
+        # Add system message if none exists
+        if not has_system:
+            prepared_messages.insert(0, {"role": "system", "content": seed})
+
+    # Build headers
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Build request body
+    body = {
+        "model": model,
+        "messages": prepared_messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        **kwargs,
+    }
+
+    return headers, body
+
+
+def prepare_anthropic_request(
+    messages: List[Dict[str, str]],
+    model: str = "claude-sonnet-4-5-20250929",
+    api_key: Optional[str] = None,
+    sentinel: Optional[Sentinel] = None,
+    seed_level: str = "standard",
+    inject_seed: bool = True,
+    validate_input: bool = True,
+    max_tokens: int = 1024,
+    system: Optional[str] = None,
+    **kwargs,
+) -> Tuple[Dict[str, str], Dict[str, Any]]:
+    """
+    Prepare an Anthropic API request with Sentinel safety.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content'
+        model: Model identifier
+        api_key: API key for x-api-key header
+        sentinel: Sentinel instance (creates default if None)
+        seed_level: Seed level to use
+        inject_seed: Whether to inject seed into system prompt
+        validate_input: Whether to validate input messages
+        max_tokens: Maximum tokens in response
+        system: System prompt (seed will be prepended)
+        **kwargs: Additional API parameters
+
+    Returns:
+        Tuple of (headers dict, body dict)
+
+    Raises:
+        ValueError: If input validation fails
+
+    Example:
+        import requests
+        from sentinelseed.integrations.raw_api import prepare_anthropic_request
+
+        headers, body = prepare_anthropic_request(
+            messages=[{"role": "user", "content": "Hello"}],
+            model="claude-sonnet-4-5-20250929",
+            api_key="sk-ant-..."
+        )
+
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=body
+        )
+    """
+    sentinel = sentinel or Sentinel(seed_level=seed_level)
+
+    # Validate input messages
+    if validate_input:
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str) and msg.get("role") == "user":
+                result = sentinel.validate_request(content)
+                if not result["should_proceed"]:
+                    raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+
+    # Filter out system messages (Anthropic uses separate system field)
+    filtered_messages = [
+        msg for msg in messages
+        if msg.get("role") != "system"
+    ]
+
+    # Extract system content from messages if present
+    for msg in messages:
+        if msg.get("role") == "system":
+            if system:
+                system = f"{msg['content']}\n\n{system}"
+            else:
+                system = msg["content"]
+
+    # Inject seed into system prompt
+    if inject_seed:
+        seed = sentinel.get_seed()
+        if system:
+            system = f"{seed}\n\n---\n\n{system}"
+        else:
+            system = seed
+
+    # Build headers
+    headers = {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+    }
+    if api_key:
+        headers["x-api-key"] = api_key
+
+    # Build request body
+    body = {
+        "model": model,
+        "messages": filtered_messages,
+        "max_tokens": max_tokens,
+        **kwargs,
+    }
+
+    if system:
+        body["system"] = system
+
+    return headers, body
+
+
+def validate_response(
+    response: Dict[str, Any],
+    sentinel: Optional[Sentinel] = None,
+    response_format: str = "openai",
+) -> Dict[str, Any]:
+    """
+    Validate an API response through Sentinel THSP gates.
+
+    Args:
+        response: Parsed JSON response from API
+        sentinel: Sentinel instance (creates default if None)
+        response_format: Format of response - 'openai' or 'anthropic'
+
+    Returns:
+        Dict with 'valid', 'response', 'violations', 'content'
+
+    Example:
+        response = requests.post(url, headers=headers, json=body).json()
+        result = validate_response(response)
+
+        if result["valid"]:
+            print(result["content"])
+        else:
+            print(f"Safety concerns: {result['violations']}")
+    """
+    sentinel = sentinel or Sentinel()
+
+    # Extract content based on format
+    content = ""
+
+    if response_format == "openai":
+        # OpenAI format: choices[0].message.content
+        choices = response.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+            content = message.get("content", "")
+
+    elif response_format == "anthropic":
+        # Anthropic format: content[0].text
+        content_blocks = response.get("content", [])
+        if content_blocks:
+            for block in content_blocks:
+                if block.get("type") == "text":
+                    content += block.get("text", "")
+
+    # Validate content
+    if content:
+        is_safe, violations = sentinel.validate(content)
+    else:
+        is_safe = True
+        violations = []
+
+    return {
+        "valid": is_safe,
+        "response": response,
+        "violations": violations,
+        "content": content,
+        "sentinel_checked": True,
+    }
+
+
+def create_openai_request_body(
+    messages: List[Dict[str, str]],
+    model: str = "gpt-4o-mini",
+    sentinel: Optional[Sentinel] = None,
+    seed_level: str = "standard",
+    inject_seed: bool = True,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Create just the request body for OpenAI API (without headers).
+
+    Useful when you're using a library that handles headers.
+
+    Args:
+        messages: List of message dicts
+        model: Model identifier
+        sentinel: Sentinel instance
+        seed_level: Seed level to use
+        inject_seed: Whether to inject seed
+        **kwargs: Additional parameters
+
+    Returns:
+        Request body dict
+
+    Example:
+        from openai import OpenAI
+        from sentinelseed.integrations.raw_api import create_openai_request_body
+
+        body = create_openai_request_body(
+            messages=[{"role": "user", "content": "Hello"}],
+            model="gpt-4o"
+        )
+
+        # Use with low-level httpx client
+        response = httpx.post(url, json=body, headers=headers)
+    """
+    _, body = prepare_openai_request(
+        messages=messages,
+        model=model,
+        sentinel=sentinel,
+        seed_level=seed_level,
+        inject_seed=inject_seed,
+        validate_input=False,  # Caller handles validation
+        **kwargs,
+    )
+    return body
+
+
+def create_anthropic_request_body(
+    messages: List[Dict[str, str]],
+    model: str = "claude-sonnet-4-5-20250929",
+    sentinel: Optional[Sentinel] = None,
+    seed_level: str = "standard",
+    inject_seed: bool = True,
+    system: Optional[str] = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Create just the request body for Anthropic API (without headers).
+
+    Args:
+        messages: List of message dicts
+        model: Model identifier
+        sentinel: Sentinel instance
+        seed_level: Seed level to use
+        inject_seed: Whether to inject seed
+        system: System prompt
+        **kwargs: Additional parameters
+
+    Returns:
+        Request body dict
+    """
+    _, body = prepare_anthropic_request(
+        messages=messages,
+        model=model,
+        sentinel=sentinel,
+        seed_level=seed_level,
+        inject_seed=inject_seed,
+        validate_input=False,
+        system=system,
+        **kwargs,
+    )
+    return body
+
+
+class RawAPIClient:
+    """
+    Simple HTTP client for LLM APIs with Sentinel safety.
+
+    Provides a minimal client for making API calls without
+    depending on official SDKs.
+
+    Example:
+        from sentinelseed.integrations.raw_api import RawAPIClient
+
+        client = RawAPIClient(
+            provider="openai",
+            api_key="sk-..."
+        )
+
+        response = client.chat(
+            messages=[{"role": "user", "content": "Hello"}],
+            model="gpt-4o"
+        )
+    """
+
+    def __init__(
+        self,
+        provider: str = "openai",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        sentinel: Optional[Sentinel] = None,
+        seed_level: str = "standard",
+    ):
+        """
+        Initialize raw API client.
+
+        Args:
+            provider: API provider - 'openai' or 'anthropic'
+            api_key: API key
+            base_url: Custom base URL (for OpenAI-compatible APIs)
+            sentinel: Sentinel instance
+            seed_level: Seed level to use
+        """
+        self.provider = provider
+        self.api_key = api_key
+        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+
+        if base_url:
+            self.base_url = base_url.rstrip("/")
+        elif provider == "openai":
+            self.base_url = "https://api.openai.com/v1"
+        elif provider == "anthropic":
+            self.base_url = "https://api.anthropic.com/v1"
+        else:
+            self.base_url = "https://api.openai.com/v1"
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        max_tokens: int = 1024,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Send a chat request.
+
+        Args:
+            messages: Conversation messages
+            model: Model to use
+            max_tokens: Maximum tokens
+            **kwargs: Additional parameters
+
+        Returns:
+            API response dict with validation info
+        """
+        try:
+            import requests
+        except ImportError:
+            raise ImportError("requests package required. Install with: pip install requests")
+
+        # Set default model
+        if model is None:
+            model = "gpt-4o-mini" if self.provider == "openai" else "claude-sonnet-4-5-20250929"
+
+        # Prepare request
+        if self.provider == "anthropic":
+            headers, body = prepare_anthropic_request(
+                messages=messages,
+                model=model,
+                api_key=self.api_key,
+                sentinel=self.sentinel,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+            url = f"{self.base_url}/messages"
+            response_format = "anthropic"
+        else:
+            headers, body = prepare_openai_request(
+                messages=messages,
+                model=model,
+                api_key=self.api_key,
+                sentinel=self.sentinel,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+            url = f"{self.base_url}/chat/completions"
+            response_format = "openai"
+
+        # Make request
+        response = requests.post(url, headers=headers, json=body)
+        response.raise_for_status()
+
+        # Validate response
+        return validate_response(
+            response.json(),
+            sentinel=self.sentinel,
+            response_format=response_format,
+        )
+
+
+# Convenience functions
+def inject_seed_openai(
+    messages: List[Dict[str, str]],
+    seed_level: str = "standard",
+) -> List[Dict[str, str]]:
+    """
+    Inject Sentinel seed into OpenAI-format messages.
+
+    Simple utility to add seed without full request preparation.
+
+    Args:
+        messages: Original messages
+        seed_level: Seed level to use
+
+    Returns:
+        Messages with seed injected
+
+    Example:
+        messages = [{"role": "user", "content": "Hello"}]
+        safe_messages = inject_seed_openai(messages)
+    """
+    sentinel = Sentinel(seed_level=seed_level)
+    seed = sentinel.get_seed()
+
+    result = list(messages)
+
+    # Check for existing system message
+    has_system = False
+    for i, msg in enumerate(result):
+        if msg.get("role") == "system":
+            result[i] = {
+                "role": "system",
+                "content": f"{seed}\n\n---\n\n{msg['content']}"
+            }
+            has_system = True
+            break
+
+    if not has_system:
+        result.insert(0, {"role": "system", "content": seed})
+
+    return result
+
+
+def inject_seed_anthropic(
+    system: Optional[str] = None,
+    seed_level: str = "standard",
+) -> str:
+    """
+    Inject Sentinel seed into Anthropic system prompt.
+
+    Args:
+        system: Original system prompt
+        seed_level: Seed level to use
+
+    Returns:
+        System prompt with seed injected
+
+    Example:
+        system = inject_seed_anthropic("You are a helpful assistant")
+    """
+    sentinel = Sentinel(seed_level=seed_level)
+    seed = sentinel.get_seed()
+
+    if system:
+        return f"{seed}\n\n---\n\n{system}"
+    return seed

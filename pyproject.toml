@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.0.1"
+version = "2.1.0"
 description = "AI safety toolkit with THSP protocol - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -24,6 +24,9 @@ keywords = [
     "crewai",
     "openai",
     "anthropic",
+    "virtuals",
+    "game-sdk",
+    "solana",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -48,6 +51,7 @@ langgraph = ["langgraph>=0.0.1"]
 crewai = ["crewai>=0.1.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
 mcp = ["mcp>=0.1.0"]
+virtuals = ["game-sdk>=0.1.1"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
@@ -56,6 +60,7 @@ all = [
     "langgraph>=0.0.1",
     "crewai>=0.1.0",
     "llama-index-core>=0.10.0",
+    "game-sdk>=0.1.1",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -73,7 +78,7 @@ Issues = "https://github.com/sentinel-seed/sentinel/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-sentinel = ["seeds/*.txt"]
+sentinelseed = ["seeds/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
