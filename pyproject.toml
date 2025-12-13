@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.1.1"
+version = "2.2.0"
 description = "AI safety toolkit with THSP protocol - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,6 +28,9 @@ keywords = [
     "game-sdk",
     "solana",
     "autogpt",
+    "garak",
+    "red-teaming",
+    "security-testing",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -53,6 +56,7 @@ crewai = ["crewai>=0.1.0"]
 llamaindex = ["llama-index-core>=0.10.0"]
 mcp = ["mcp>=0.1.0"]
 virtuals = ["game-sdk>=0.1.1"]
+garak = ["garak>=0.9.0"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",

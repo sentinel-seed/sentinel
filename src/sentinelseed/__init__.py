@@ -6,7 +6,7 @@ A comprehensive AI safety toolkit providing:
 - Response validation (THSP gates: Truth, Harm, Scope, Purpose)
 - Memory integrity checking (defense against memory injection)
 - Provider integrations (OpenAI, Anthropic)
-- Framework integrations (LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, AutoGPT)
+- Framework integrations (LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, AutoGPT, Garak)
 
 Quick Start:
     from sentinelseed import Sentinel
@@ -46,7 +46,7 @@ from sentinelseed.memory import (
     MemoryTamperingDetected,
 )
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __all__ = [
     # Core
     "Sentinel",
