@@ -1,0 +1,242 @@
+# Garak Integration (NVIDIA LLM Vulnerability Scanner)
+
+THSP protocol probes and detectors for Garak security testing.
+
+## Requirements
+
+```bash
+pip install sentinelseed[garak]
+# or manually:
+pip install sentinelseed garak
+```
+
+**Dependencies:**
+- `garak>=0.9.0` — [Docs](https://docs.garak.ai) | [GitHub](https://github.com/NVIDIA/garak)
+
+## Overview
+
+| Component | Description |
+|-----------|-------------|
+| `TruthGate` | Probe for fake documents, impersonation, misinformation |
+| `HarmGate` | Probe for violence, hacking, financial crime |
+| `ScopeGate` | Probe for jailbreaks, prompt injection, persona manipulation |
+| `PurposeGate` | Probe for purposeless destruction, waste |
+| `THSPCombined` | Probe for multi-gate sophisticated attacks |
+| `TruthViolation` | Detector for deceptive content generation |
+| `HarmViolation` | Detector for harmful information provision |
+| `ScopeViolation` | Detector for jailbreak/persona acceptance |
+| `PurposeViolation` | Detector for purposeless destruction assistance |
+| `THSPCombinedDetector` | Combined detector (max score across all gates) |
+
+## Installation
+
+### Step 1: Install packages
+
+```bash
+pip install garak sentinelseed
+```
+
+### Step 2: Install Sentinel plugin to Garak
+
+```bash
+python -m sentinelseed.integrations.garak.install
+```
+
+This copies the probes and detectors to your Garak installation directory.
+
+### Verify Installation
+
+```bash
+python -m sentinelseed.integrations.garak.install --check
+```
+
+## Usage
+
+### Test All THSP Gates
+
+```bash
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+```
+
+### Test Specific Gates
+
+```bash
+# Truth Gate (fake documents, misinformation)
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.TruthGate
+
+# Harm Gate (violence, hacking)
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.HarmGate
+
+# Scope Gate (jailbreaks, prompt injection)
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.ScopeGate
+
+# Purpose Gate (purposeless destruction)
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.PurposeGate
+```
+
+### Use Sentinel Detectors
+
+```bash
+garak --model_type openai --model_name gpt-4o \
+    --probes sentinel_thsp \
+    --detectors sentinel_thsp
+```
+
+### Compare Models (Baseline vs Sentinel)
+
+```bash
+# Test baseline
+garak --model_type openai --model_name gpt-4o \
+    --probes sentinel_thsp \
+    --report_prefix gpt4o_baseline
+
+# Test with Sentinel seed
+garak --model_type openai --model_name gpt-4o \
+    --probes sentinel_thsp \
+    --system_prompt "$(python -c 'from sentinelseed import Sentinel; print(Sentinel().get_seed())')" \
+    --report_prefix gpt4o_sentinel
+```
+
+### Different Model Backends
+
+```bash
+# OpenAI
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+
+# Hugging Face
+garak --model_type huggingface --model_name meta-llama/Llama-2-7b-chat-hf --probes sentinel_thsp
+
+# Ollama (local)
+garak --model_type ollama --model_name llama2 --probes sentinel_thsp
+
+# Anthropic
+garak --model_type anthropic --model_name claude-3-opus-20240229 --probes sentinel_thsp
+```
+
+## Probe Details
+
+| Probe | Prompts | Description |
+|-------|---------|-------------|
+| `TruthGate` | 15 | Fake press releases, medical certificates, impersonation, misinformation |
+| `HarmGate` | 17 | Weapons, hacking tutorials, financial fraud, self-harm queries |
+| `ScopeGate` | 17 | DAN jailbreaks, system prompt disclosure, persona manipulation |
+| `PurposeGate` | 15 | Vandalism planning, resource waste, self-sabotage |
+| `THSPCombined` | 9 | Multi-gate attacks (Truth+Harm, Scope+Harm, etc.) |
+
+**Total: 73 prompts**
+
+## Detector Details
+
+| Detector | Patterns | Detects |
+|----------|----------|---------|
+| `TruthViolation` | 13 | Fake document generation, impersonation compliance |
+| `HarmViolation` | 15 | Harmful instructions, hacking code, financial fraud methods |
+| `ScopeViolation` | 11 | Jailbreak acceptance, system prompt disclosure |
+| `PurposeViolation` | 12 | Destruction assistance, waste planning |
+| `THSPCombinedDetector` | - | Maximum score across all detectors |
+
+## Understanding Results
+
+Garak reports vulnerability scores from 0.0 to 1.0:
+
+| Score | Meaning |
+|-------|---------|
+| 0.0 | Model refused (safe) |
+| 0.1-0.3 | Ambiguous/short response |
+| 0.4-0.6 | Partial compliance (concerning) |
+| 0.7-0.9 | Specific compliance detected |
+| 1.0 | Full jailbreak/compliance (critical) |
+
+## CI/CD Integration
+
+```yaml
+# .github/workflows/llm-security.yml
+name: LLM Security Scan
+
+on: [push, pull_request]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install garak sentinelseed
+
+      - name: Install Sentinel plugin
+        run: python -m sentinelseed.integrations.garak.install
+
+      - name: Run THSP Security Scan
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          garak --model_type openai \
+                --model_name gpt-4o \
+                --probes sentinel_thsp \
+                --report_prefix security_scan
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: garak-security-report
+          path: garak_runs/
+```
+
+## Programmatic Usage
+
+```python
+from sentinelseed.integrations.garak.probes import TruthGate, HarmGate
+from sentinelseed.integrations.garak.detectors import TruthViolation
+
+# Access probe prompts
+probe = TruthGate()
+print(f"TruthGate: {len(probe.prompts)} prompts")
+print(f"Goal: {probe.goal}")
+print(f"Primary detector: {probe.primary_detector}")
+
+# Access detector patterns
+detector = TruthViolation()
+print(f"Compliance patterns: {len(detector.compliance_patterns)}")
+```
+
+## Uninstall
+
+```bash
+python -m sentinelseed.integrations.garak.install --uninstall
+```
+
+## API Reference
+
+### Probes
+
+All probes inherit from `garak.probes.Probe` and include:
+
+- `active: bool` — Whether probe is active by default
+- `lang: str` — Language (BCP47 format)
+- `goal: str` — Probe objective
+- `prompts: List[str]` — Test prompts
+- `primary_detector: str` — Default detector
+- `extended_detectors: List[str]` — Additional detectors
+- `tags: List[str]` — MISP taxonomy tags
+- `tier: Tier` — Classification tier
+
+### Detectors
+
+All detectors inherit from `garak.detectors.base.Detector` and include:
+
+- `detect(attempt) -> Iterable[float | None]` — Main detection method
+- `refusal_patterns: List[str]` — Patterns indicating safe refusal
+- `compliance_patterns: List[str]` — Patterns indicating violation
+
+## Resources
+
+- [Garak Documentation](https://docs.garak.ai)
+- [Garak GitHub](https://github.com/NVIDIA/garak)
+- [Sentinel THSP Protocol](https://sentinelseed.dev/docs/methodology)
+- [OWASP LLM Top 10](https://genai.owasp.org/)
