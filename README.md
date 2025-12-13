@@ -352,7 +352,7 @@ The AI will:
 
 ## Framework Integrations
 
-Sentinel provides native integrations for 13 frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 14 frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -361,6 +361,7 @@ pip install sentinelseed[virtuals]    # Virtuals Protocol (GAME SDK)
 pip install sentinelseed[llamaindex]  # LlamaIndex
 pip install sentinelseed[anthropic]   # Anthropic SDK
 pip install sentinelseed[openai]      # OpenAI Assistants
+pip install sentinelseed[garak]       # Garak (NVIDIA) security scanner
 pip install sentinelseed[all]         # All integrations
 ```
 
@@ -538,6 +539,30 @@ result = validate_content("How do I hack a computer?")
 if not result["safe"]:
     print(f"Blocked: {result['violations']}")
 ```
+
+### Garak (NVIDIA LLM Security Scanner)
+
+```bash
+# Install plugin to Garak
+pip install garak sentinelseed
+python -m sentinelseed.integrations.garak.install
+
+# Run THSP security scan
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+
+# Test specific gates
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.TruthGate
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.HarmGate
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.ScopeGate
+garak --model_type openai --model_name gpt-4o --probes sentinel_thsp.PurposeGate
+
+# With Sentinel detectors
+garak --model_type openai --model_name gpt-4o \
+    --probes sentinel_thsp \
+    --detectors sentinel_thsp
+```
+
+The plugin adds **73 prompts** across 5 probe classes (TruthGate, HarmGate, ScopeGate, PurposeGate, THSPCombined) plus 5 detector classes for accurate classification.
 
 ### Agent Validation (Generic)
 

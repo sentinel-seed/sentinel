@@ -20,12 +20,17 @@ Available integrations:
     from sentinelseed.integrations.solana_agent_kit import SentinelValidator
     from sentinelseed.integrations.virtuals import SentinelSafetyWorker
     from sentinelseed.integrations.autogpt_block import SentinelValidationBlock
+    from sentinelseed.integrations.garak import TruthGate, HarmGate  # Garak probes
 
 External packages (npm/PyPI):
     See packages/ directory for:
     - elizaos: npm install @sentinelseed/elizaos-plugin
     - promptfoo: pip install sentinelseed-promptfoo
     - solana-agent-kit: npm install @sentinelseed/solana-agent-kit
+
+Garak (NVIDIA LLM Vulnerability Scanner):
+    Install: python -m sentinelseed.integrations.garak.install
+    Usage: garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
 """
 
 __all__ = [
@@ -34,6 +39,7 @@ __all__ = [
     'autogpt',
     'autogpt_block',
     'crewai',
+    'garak',
     'langchain',
     'langgraph',
     'llamaindex',
