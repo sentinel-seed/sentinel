@@ -625,8 +625,7 @@ sentinel/
 ├── packages/                  # External NPM/PyPI packages
 │   ├── elizaos/              # @sentinelseed/elizaos-plugin (npm)
 │   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit (npm)
-│   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
-│   └── virtuals/             # @sentinelseed/virtuals-plugin (npm)
+│   └── promptfoo/            # sentinelseed-promptfoo (PyPI)
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts
