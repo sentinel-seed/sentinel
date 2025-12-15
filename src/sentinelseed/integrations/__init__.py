@@ -21,6 +21,7 @@ Available integrations:
     from sentinelseed.integrations.virtuals import SentinelSafetyWorker
     from sentinelseed.integrations.autogpt_block import SentinelValidationBlock
     from sentinelseed.integrations.garak import TruthGate, HarmGate  # Garak probes
+    from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -45,6 +46,7 @@ __all__ = [
     'llamaindex',
     'mcp_server',
     'openai_assistant',
+    'openguardrails',
     'raw_api',
     'solana_agent_kit',
     'virtuals',
