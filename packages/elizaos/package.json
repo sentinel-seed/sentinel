@@ -1,7 +1,7 @@
 {
   "name": "@sentinelseed/elizaos-plugin",
-  "version": "1.0.1",
-  "description": "Sentinel AI safety plugin for ElizaOS - THSP protocol validation for autonomous agents",
+  "version": "1.1.0",
+  "description": "Sentinel AI safety plugin for ElizaOS - THSP protocol validation and memory integrity for autonomous agents",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -35,7 +35,10 @@
     "ai-agents",
     "plugin",
     "web3",
-    "crypto"
+    "crypto",
+    "memory-integrity",
+    "memory-injection",
+    "hmac"
   ],
   "author": {
     "name": "Sentinel Team",
