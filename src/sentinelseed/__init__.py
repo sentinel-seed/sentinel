@@ -45,6 +45,7 @@ Framework Integrations:
     from sentinelseed.integrations.langgraph import SentinelSafetyNode
     from sentinelseed.integrations.crewai import safe_agent, SentinelCrew
     from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
+    from sentinelseed.integrations.openai_agents import create_sentinel_agent
 
 Documentation: https://sentinelseed.dev/docs
 GitHub: https://github.com/sentinel-seed/sentinel
@@ -67,7 +68,7 @@ from sentinelseed.fiduciary import (
     is_fiduciary_compliant,
 )
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 
 
 def get_seed(level: str = "standard") -> str:

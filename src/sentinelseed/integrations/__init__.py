@@ -15,6 +15,7 @@ Available integrations:
     from sentinelseed.integrations.llamaindex import SentinelCallbackHandler
     from sentinelseed.integrations.mcp_server import create_sentinel_mcp_server
     from sentinelseed.integrations.openai_assistant import SentinelAssistant
+    from sentinelseed.integrations.openai_agents import create_sentinel_agent  # NEW
     from sentinelseed.integrations.raw_api import prepare_openai_request
     from sentinelseed.integrations.agent_validation import SafetyValidator
     from sentinelseed.integrations.solana_agent_kit import SentinelValidator
@@ -32,6 +33,13 @@ External packages (npm/PyPI):
 Garak (NVIDIA LLM Vulnerability Scanner):
     Install: python -m sentinelseed.integrations.garak.install
     Usage: garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+
+OpenAI Agents SDK:
+    from sentinelseed.integrations.openai_agents import (
+        create_sentinel_agent,
+        sentinel_input_guardrail,
+        sentinel_output_guardrail,
+    )
 """
 
 __all__ = [
@@ -45,6 +53,7 @@ __all__ = [
     'langgraph',
     'llamaindex',
     'mcp_server',
+    'openai_agents',
     'openai_assistant',
     'openguardrails',
     'raw_api',
