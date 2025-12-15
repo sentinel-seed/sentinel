@@ -192,6 +192,14 @@ export interface SentinelPluginConfig {
     gate: keyof THSPGates;
   }>;
   skipActions?: string[];
+  // Memory integrity settings
+  memoryIntegrity?: {
+    enabled: boolean;
+    secretKey?: string;
+    verifyOnRead?: boolean;
+    signOnWrite?: boolean;
+    minTrustScore?: number;
+  };
 }
 
 export interface ValidationContext {
