@@ -35,11 +35,12 @@ Resources provided:
 """
 
 from typing import Any, Dict, List, Optional, Union
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.mcp_server")
 
 # Check for MCP SDK availability
 MCP_AVAILABLE = False

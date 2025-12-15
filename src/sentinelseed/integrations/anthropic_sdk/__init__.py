@@ -2,7 +2,7 @@
 Anthropic SDK integration for Sentinel AI.
 
 Provides wrappers for the official Anthropic Python SDK that inject
-Sentinel safety seeds and validate inputs/outputs.
+Sentinel safety seeds and validate inputs/outputs using semantic LLM analysis.
 
 This follows the official Anthropic SDK specification:
 https://github.com/anthropics/anthropic-sdk-python
@@ -10,10 +10,12 @@ https://github.com/anthropics/anthropic-sdk-python
 Usage:
     from sentinelseed.integrations.anthropic_sdk import SentinelAnthropic
 
-    # Option 1: Use wrapper client
-    client = SentinelAnthropic()
+    # Option 1: Use wrapper client (recommended)
+    client = SentinelAnthropic(
+        validation_model="claude-3-haiku-20240307",  # Model for validation
+    )
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-4-20250514",
         max_tokens=1024,
         messages=[{"role": "user", "content": "Hello"}]
     )
@@ -25,11 +27,11 @@ Usage:
     client = Anthropic()
     safe_client = wrap_anthropic_client(client)
 
-    # Option 3: Just inject seed into system prompt
+    # Option 3: Just inject seed (no runtime validation)
     from sentinelseed.integrations.anthropic_sdk import inject_seed
 
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-4-20250514",
         max_tokens=1024,
         system=inject_seed("You are a helpful assistant"),
         messages=[...]
@@ -38,11 +40,16 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Union, Iterator, AsyncIterator
 import os
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel
+from sentinelseed.validators.semantic import (
+    SemanticValidator,
+    AsyncSemanticValidator,
+    THSPResult,
+)
+
+logger = logging.getLogger("sentinelseed.anthropic_sdk")
 
 # Check for Anthropic SDK availability
 ANTHROPIC_AVAILABLE = False
@@ -82,7 +89,7 @@ def inject_seed(
 
         client = Anthropic()
         message = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=inject_seed("You are a helpful coding assistant"),
             messages=[{"role": "user", "content": "Help me with Python"}]
@@ -103,6 +110,7 @@ def wrap_anthropic_client(
     inject_seed: bool = True,
     validate_input: bool = True,
     validate_output: bool = True,
+    validation_model: str = "claude-3-haiku-20240307",
 ) -> "SentinelAnthropicWrapper":
     """
     Wrap an existing Anthropic client with Sentinel safety.
@@ -114,19 +122,10 @@ def wrap_anthropic_client(
         inject_seed: Whether to inject seed into system prompts
         validate_input: Whether to validate input messages
         validate_output: Whether to validate output messages
+        validation_model: Model to use for semantic validation
 
     Returns:
         Wrapped client with Sentinel protection
-
-    Example:
-        from anthropic import Anthropic
-        from sentinelseed.integrations.anthropic_sdk import wrap_anthropic_client
-
-        client = Anthropic()
-        safe_client = wrap_anthropic_client(client)
-
-        # Use safe_client exactly like the original
-        message = safe_client.messages.create(...)
     """
     return SentinelAnthropicWrapper(
         client=client,
@@ -135,15 +134,16 @@ def wrap_anthropic_client(
         inject_seed_flag=inject_seed,
         validate_input=validate_input,
         validate_output=validate_output,
+        validation_model=validation_model,
     )
 
 
 class SentinelAnthropic:
     """
-    Sentinel-wrapped Anthropic client.
+    Sentinel-wrapped Anthropic client with semantic validation.
 
     Drop-in replacement for the Anthropic client that automatically
-    injects Sentinel safety seeds and validates messages.
+    injects Sentinel safety seeds and validates messages using LLM analysis.
 
     Example:
         from sentinelseed.integrations.anthropic_sdk import SentinelAnthropic
@@ -151,7 +151,7 @@ class SentinelAnthropic:
         client = SentinelAnthropic()
 
         message = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Hello, Claude"}]
         )
@@ -165,6 +165,7 @@ class SentinelAnthropic:
         inject_seed: bool = True,
         validate_input: bool = True,
         validate_output: bool = True,
+        validation_model: str = "claude-3-haiku-20240307",
         **kwargs,
     ):
         """
@@ -175,8 +176,9 @@ class SentinelAnthropic:
             sentinel: Sentinel instance (creates default if None)
             seed_level: Seed level to use
             inject_seed: Whether to inject seed into system prompts
-            validate_input: Whether to validate input messages
-            validate_output: Whether to validate output messages
+            validate_input: Whether to validate input messages (semantic LLM)
+            validate_output: Whether to validate output messages (semantic LLM)
+            validation_model: Model to use for semantic validation
             **kwargs: Additional arguments for Anthropic client
         """
         if not ANTHROPIC_AVAILABLE:
@@ -185,11 +187,20 @@ class SentinelAnthropic:
                 "Install with: pip install anthropic"
             )
 
-        self._client = Anthropic(api_key=api_key, **kwargs)
+        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self._client = Anthropic(api_key=self._api_key, **kwargs)
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
         self._inject_seed = inject_seed
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._validation_model = validation_model
+
+        # Semantic validator using Anthropic
+        self._semantic_validator = SemanticValidator(
+            provider="anthropic",
+            model=validation_model,
+            api_key=self._api_key,
+        ) if (validate_input or validate_output) else None
 
         # Create messages wrapper
         self.messages = _SentinelMessages(
@@ -198,6 +209,7 @@ class SentinelAnthropic:
             self._inject_seed,
             self._validate_input,
             self._validate_output,
+            self._semantic_validator,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -207,7 +219,7 @@ class SentinelAnthropic:
 
 class SentinelAsyncAnthropic:
     """
-    Sentinel-wrapped async Anthropic client.
+    Sentinel-wrapped async Anthropic client with semantic validation.
 
     Async version of SentinelAnthropic for use with asyncio.
 
@@ -217,7 +229,7 @@ class SentinelAsyncAnthropic:
         client = SentinelAsyncAnthropic()
 
         message = await client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Hello, Claude"}]
         )
@@ -231,6 +243,7 @@ class SentinelAsyncAnthropic:
         inject_seed: bool = True,
         validate_input: bool = True,
         validate_output: bool = True,
+        validation_model: str = "claude-3-haiku-20240307",
         **kwargs,
     ):
         """Initialize async Sentinel Anthropic client."""
@@ -240,11 +253,20 @@ class SentinelAsyncAnthropic:
                 "Install with: pip install anthropic"
             )
 
-        self._client = AsyncAnthropic(api_key=api_key, **kwargs)
+        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self._client = AsyncAnthropic(api_key=self._api_key, **kwargs)
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
         self._inject_seed = inject_seed
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._validation_model = validation_model
+
+        # Async semantic validator
+        self._semantic_validator = AsyncSemanticValidator(
+            provider="anthropic",
+            model=validation_model,
+            api_key=self._api_key,
+        ) if (validate_input or validate_output) else None
 
         # Create async messages wrapper
         self.messages = _SentinelAsyncMessages(
@@ -253,6 +275,7 @@ class SentinelAsyncAnthropic:
             self._inject_seed,
             self._validate_input,
             self._validate_output,
+            self._semantic_validator,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -261,7 +284,7 @@ class SentinelAsyncAnthropic:
 
 
 class _SentinelMessages:
-    """Wrapper for synchronous messages API."""
+    """Wrapper for synchronous messages API with semantic validation."""
 
     def __init__(
         self,
@@ -270,12 +293,14 @@ class _SentinelMessages:
         inject_seed_flag: bool,
         validate_input: bool,
         validate_output: bool,
+        semantic_validator: Optional[SemanticValidator],
     ):
         self._messages = messages_api
         self._sentinel = sentinel
         self._inject_seed = inject_seed_flag
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._validator = semantic_validator
         self._seed = sentinel.get_seed()
 
     def create(
@@ -287,7 +312,7 @@ class _SentinelMessages:
         **kwargs,
     ) -> Any:
         """
-        Create a message with Sentinel safety.
+        Create a message with Sentinel semantic validation.
 
         Args:
             model: Model to use
@@ -299,15 +324,18 @@ class _SentinelMessages:
         Returns:
             Message response from API
         """
-        # Validate input messages
-        if self._validate_input:
+        # Validate input messages using semantic analysis
+        if self._validate_input and self._validator:
             for msg in messages:
                 content = msg.get("content", "")
-                if isinstance(content, str):
-                    result = self._sentinel.validate_request(content)
-                    if not result["should_proceed"]:
+                if isinstance(content, str) and msg.get("role") == "user":
+                    result = self._validator.validate_request(content)
+                    if not result.is_safe:
+                        logger.warning(f"Input blocked by semantic validation: {result.reasoning}")
                         return _create_blocked_response(
-                            f"Input blocked by Sentinel: {result['concerns']}"
+                            f"Input blocked by Sentinel THSP validation. "
+                            f"Gate failed: {result.violated_gate}. "
+                            f"Reason: {result.reasoning}"
                         )
 
         # Inject seed into system prompt
@@ -326,14 +354,16 @@ class _SentinelMessages:
             **kwargs,
         )
 
-        # Validate output
-        if self._validate_output and hasattr(response, 'content'):
+        # Validate output using semantic analysis
+        if self._validate_output and self._validator and hasattr(response, 'content'):
             for block in response.content:
                 if hasattr(block, 'text'):
-                    is_safe, violations = self._sentinel.validate(block.text)
-                    if not is_safe:
-                        # Log but don't block output (model already responded)
-                        print(f"[SENTINEL] Output validation concerns: {violations}")
+                    result = self._validator.validate(block.text)
+                    if not result.is_safe:
+                        logger.warning(
+                            f"[SENTINEL] Output validation concern: "
+                            f"{result.violated_gate} - {result.reasoning}"
+                        )
 
         return response
 
@@ -346,26 +376,20 @@ class _SentinelMessages:
         **kwargs,
     ) -> Iterator[Any]:
         """
-        Stream a message with Sentinel safety.
-
-        Args:
-            model: Model to use
-            max_tokens: Maximum tokens in response
-            messages: Conversation messages
-            system: System prompt (seed will be prepended)
-            **kwargs: Additional API parameters
-
-        Yields:
-            Stream events from API
+        Stream a message with Sentinel semantic validation.
         """
-        # Validate input
-        if self._validate_input:
+        # Validate input using semantic analysis
+        if self._validate_input and self._validator:
             for msg in messages:
                 content = msg.get("content", "")
-                if isinstance(content, str):
-                    result = self._sentinel.validate_request(content)
-                    if not result["should_proceed"]:
-                        raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+                if isinstance(content, str) and msg.get("role") == "user":
+                    result = self._validator.validate_request(content)
+                    if not result.is_safe:
+                        raise ValueError(
+                            f"Input blocked by Sentinel. "
+                            f"Gate: {result.violated_gate}. "
+                            f"Reason: {result.reasoning}"
+                        )
 
         # Inject seed
         if self._inject_seed:
@@ -387,7 +411,7 @@ class _SentinelMessages:
 
 
 class _SentinelAsyncMessages:
-    """Wrapper for async messages API."""
+    """Wrapper for async messages API with semantic validation."""
 
     def __init__(
         self,
@@ -396,12 +420,14 @@ class _SentinelAsyncMessages:
         inject_seed_flag: bool,
         validate_input: bool,
         validate_output: bool,
+        semantic_validator: Optional[AsyncSemanticValidator],
     ):
         self._messages = messages_api
         self._sentinel = sentinel
         self._inject_seed = inject_seed_flag
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._validator = semantic_validator
         self._seed = sentinel.get_seed()
 
     async def create(
@@ -412,16 +438,19 @@ class _SentinelAsyncMessages:
         system: Optional[str] = None,
         **kwargs,
     ) -> Any:
-        """Async create message with Sentinel safety."""
-        # Validate input messages
-        if self._validate_input:
+        """Async create message with Sentinel semantic validation."""
+        # Validate input messages using semantic analysis
+        if self._validate_input and self._validator:
             for msg in messages:
                 content = msg.get("content", "")
-                if isinstance(content, str):
-                    result = self._sentinel.validate_request(content)
-                    if not result["should_proceed"]:
+                if isinstance(content, str) and msg.get("role") == "user":
+                    result = await self._validator.validate_request(content)
+                    if not result.is_safe:
+                        logger.warning(f"Input blocked by semantic validation: {result.reasoning}")
                         return _create_blocked_response(
-                            f"Input blocked by Sentinel: {result['concerns']}"
+                            f"Input blocked by Sentinel THSP validation. "
+                            f"Gate failed: {result.violated_gate}. "
+                            f"Reason: {result.reasoning}"
                         )
 
         # Inject seed
@@ -440,13 +469,16 @@ class _SentinelAsyncMessages:
             **kwargs,
         )
 
-        # Validate output
-        if self._validate_output and hasattr(response, 'content'):
+        # Validate output using semantic analysis
+        if self._validate_output and self._validator and hasattr(response, 'content'):
             for block in response.content:
                 if hasattr(block, 'text'):
-                    is_safe, violations = self._sentinel.validate(block.text)
-                    if not is_safe:
-                        print(f"[SENTINEL] Output validation concerns: {violations}")
+                    result = await self._validator.validate(block.text)
+                    if not result.is_safe:
+                        logger.warning(
+                            f"[SENTINEL] Output validation concern: "
+                            f"{result.violated_gate} - {result.reasoning}"
+                        )
 
         return response
 
@@ -458,15 +490,19 @@ class _SentinelAsyncMessages:
         system: Optional[str] = None,
         **kwargs,
     ) -> AsyncIterator[Any]:
-        """Async stream message with Sentinel safety."""
-        # Validate input
-        if self._validate_input:
+        """Async stream message with Sentinel semantic validation."""
+        # Validate input using semantic analysis
+        if self._validate_input and self._validator:
             for msg in messages:
                 content = msg.get("content", "")
-                if isinstance(content, str):
-                    result = self._sentinel.validate_request(content)
-                    if not result["should_proceed"]:
-                        raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+                if isinstance(content, str) and msg.get("role") == "user":
+                    result = await self._validator.validate_request(content)
+                    if not result.is_safe:
+                        raise ValueError(
+                            f"Input blocked by Sentinel. "
+                            f"Gate: {result.violated_gate}. "
+                            f"Reason: {result.reasoning}"
+                        )
 
         # Inject seed
         if self._inject_seed:
@@ -489,7 +525,7 @@ class _SentinelAsyncMessages:
 
 class SentinelAnthropicWrapper:
     """
-    Generic wrapper for existing Anthropic clients.
+    Generic wrapper for existing Anthropic clients with semantic validation.
 
     Used by wrap_anthropic_client() to wrap any Anthropic client instance.
     """
@@ -502,6 +538,7 @@ class SentinelAnthropicWrapper:
         inject_seed_flag: bool = True,
         validate_input: bool = True,
         validate_output: bool = True,
+        validation_model: str = "claude-3-haiku-20240307",
     ):
         self._client = client
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
@@ -509,25 +546,42 @@ class SentinelAnthropicWrapper:
         self._validate_input = validate_input
         self._validate_output = validate_output
 
+        # Get API key from client or environment
+        api_key = getattr(client, '_api_key', None) or os.environ.get("ANTHROPIC_API_KEY")
+
         # Determine if async client
         is_async = hasattr(client, '__class__') and 'Async' in client.__class__.__name__
 
-        # Create appropriate messages wrapper
+        # Create appropriate validator and messages wrapper
         if is_async:
+            validator = AsyncSemanticValidator(
+                provider="anthropic",
+                model=validation_model,
+                api_key=api_key,
+            ) if (validate_input or validate_output) else None
+
             self.messages = _SentinelAsyncMessages(
                 client.messages,
                 self._sentinel,
                 self._inject_seed,
                 self._validate_input,
                 self._validate_output,
+                validator,
             )
         else:
+            validator = SemanticValidator(
+                provider="anthropic",
+                model=validation_model,
+                api_key=api_key,
+            ) if (validate_input or validate_output) else None
+
             self.messages = _SentinelMessages(
                 client.messages,
                 self._sentinel,
                 self._inject_seed,
                 self._validate_input,
                 self._validate_output,
+                validator,
             )
 
     def __getattr__(self, name: str) -> Any:
@@ -548,11 +602,11 @@ def _create_blocked_response(message: str) -> Dict[str, Any]:
     }
 
 
-# Convenience function for common use case
 def create_safe_client(
     api_key: Optional[str] = None,
     seed_level: str = "standard",
     async_client: bool = False,
+    validation_model: str = "claude-3-haiku-20240307",
 ) -> Union[SentinelAnthropic, SentinelAsyncAnthropic]:
     """
     Create a Sentinel-protected Anthropic client.
@@ -563,6 +617,7 @@ def create_safe_client(
         api_key: Anthropic API key
         seed_level: Seed level to use
         async_client: Whether to create async client
+        validation_model: Model to use for semantic validation
 
     Returns:
         SentinelAnthropic or SentinelAsyncAnthropic instance
@@ -572,11 +627,30 @@ def create_safe_client(
 
         client = create_safe_client()
         response = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": "Hello!"}]
         )
     """
     if async_client:
-        return SentinelAsyncAnthropic(api_key=api_key, seed_level=seed_level)
-    return SentinelAnthropic(api_key=api_key, seed_level=seed_level)
+        return SentinelAsyncAnthropic(
+            api_key=api_key,
+            seed_level=seed_level,
+            validation_model=validation_model,
+        )
+    return SentinelAnthropic(
+        api_key=api_key,
+        seed_level=seed_level,
+        validation_model=validation_model,
+    )
+
+
+__all__ = [
+    "SentinelAnthropic",
+    "SentinelAsyncAnthropic",
+    "SentinelAnthropicWrapper",
+    "wrap_anthropic_client",
+    "inject_seed",
+    "create_safe_client",
+    "ANTHROPIC_AVAILABLE",
+]

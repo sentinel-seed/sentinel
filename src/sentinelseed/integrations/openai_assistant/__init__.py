@@ -33,11 +33,12 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Union, Iterator
 import os
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.openai_assistant")
 
 # Check for OpenAI SDK availability
 OPENAI_AVAILABLE = False

@@ -37,11 +37,12 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 import json
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.raw_api")
 
 
 # API endpoints

@@ -2,34 +2,36 @@
 Agent Validation - Framework-agnostic safety validation for autonomous agents.
 
 This module provides reusable safety validation components that work with ANY
-autonomous agent framework. Originally designed for AutoGPT, but the architecture
-change in AutoGPT v0.6+ (now a web platform) means these components are better
-understood as generic validation patterns.
+autonomous agent framework. Uses semantic LLM-based validation for accurate,
+context-aware safety analysis.
 
 Components:
-    - SafetyValidator: Core validation component for agent actions
+    - SafetyValidator: Core validation using semantic LLM analysis
     - ExecutionGuard: Decorator/wrapper for protected function execution
     - safety_check: Standalone function for quick validation
 
-Usage with any agent framework:
+Usage:
 
     # Pattern 1: Validation component in your agent
     from sentinelseed.integrations.agent_validation import SafetyValidator
 
     class MyAgent:
         def __init__(self):
-            self.safety = SafetyValidator()
+            self.safety = SafetyValidator(
+                provider="openai",  # or "anthropic"
+                model="gpt-4o-mini",
+            )
 
         def execute(self, action):
-            check = self.safety.validate_action(action)
-            if not check.should_proceed:
-                return f"Blocked: {check.recommendation}"
+            result = self.safety.validate_action(action)
+            if not result.should_proceed:
+                return f"Blocked: {result.reasoning}"
             # proceed with action
 
     # Pattern 2: Decorator for protected functions
     from sentinelseed.integrations.agent_validation import ExecutionGuard
 
-    guard = ExecutionGuard()
+    guard = ExecutionGuard(provider="openai")
 
     @guard.protected
     def execute_command(cmd):
@@ -39,24 +41,25 @@ Usage with any agent framework:
     # Pattern 3: Quick standalone check
     from sentinelseed.integrations.agent_validation import safety_check
 
-    result = safety_check("Delete all files")
+    result = safety_check("Delete all files", provider="openai")
     if not result["safe"]:
-        print(f"Blocked: {result['concerns']}")
-
-Compatible frameworks:
-    - Custom autonomous agents
-    - LangChain agents (alternative to callback approach)
-    - Any framework that executes actions based on LLM output
+        print(f"Blocked: {result['reasoning']}")
 """
 
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from functools import wraps
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel
+from sentinelseed.validators.semantic import (
+    SemanticValidator,
+    AsyncSemanticValidator,
+    THSPResult,
+    RiskLevel,
+)
+
+logger = logging.getLogger("sentinelseed.agent_validation")
 
 
 @dataclass
@@ -68,44 +71,73 @@ class ValidationResult:
         safe: Whether the action passed safety checks
         action: The action that was validated (truncated)
         concerns: List of safety concerns identified
-        risk_level: Assessed risk level (low/medium/high)
+        risk_level: Assessed risk level
         should_proceed: Whether to proceed with the action
-        recommendation: Human-readable recommendation
+        reasoning: Explanation of the decision
+        gate_results: Per-gate validation results
     """
     safe: bool
     action: str
     concerns: List[str] = field(default_factory=list)
     risk_level: str = "low"
     should_proceed: bool = True
-    recommendation: str = ""
+    reasoning: str = ""
+    gate_results: Dict[str, bool] = field(default_factory=dict)
+
+    @classmethod
+    def from_thsp(cls, thsp_result: THSPResult, action: str) -> "ValidationResult":
+        """Create ValidationResult from THSPResult."""
+        concerns = []
+        if not thsp_result.truth_passes:
+            concerns.append("Failed Truth gate: potential deception")
+        if not thsp_result.harm_passes:
+            concerns.append("Failed Harm gate: could cause harm")
+        if not thsp_result.scope_passes:
+            concerns.append("Failed Scope gate: exceeds boundaries")
+        if not thsp_result.purpose_passes:
+            concerns.append("Failed Purpose gate: no legitimate purpose")
+
+        risk_str = thsp_result.risk_level.value if isinstance(thsp_result.risk_level, RiskLevel) else thsp_result.risk_level
+
+        return cls(
+            safe=thsp_result.is_safe,
+            action=action[:100],
+            concerns=concerns,
+            risk_level=risk_str,
+            should_proceed=thsp_result.is_safe,
+            reasoning=thsp_result.reasoning,
+            gate_results=thsp_result.gate_results,
+        )
 
 
 class SafetyValidator:
     """
-    Core safety validation component for autonomous agents.
+    Core safety validation component using semantic LLM analysis.
 
-    Provides methods to validate actions, thoughts, and outputs
-    using Sentinel's THSP protocol.
+    Uses THSP Protocol (Truth, Harm, Scope, Purpose) with real LLM
+    semantic analysis - not regex pattern matching.
 
     Example:
         from sentinelseed.integrations.agent_validation import SafetyValidator
 
-        validator = SafetyValidator()
+        validator = SafetyValidator(provider="openai", model="gpt-4o-mini")
 
-        # Before executing any action
-        check = validator.validate_action("transfer 100 SOL to address")
-        if check.should_proceed:
+        # Validate action
+        result = validator.validate_action("transfer 100 SOL to address")
+        if result.should_proceed:
             execute_transfer()
         else:
-            log_blocked_action(check.recommendation)
+            print(f"Blocked: {result.reasoning}")
     """
 
     name = "SentinelSafetyValidator"
-    description = "AI safety validation using THSP protocol"
+    description = "AI safety validation using semantic THSP analysis"
 
     def __init__(
         self,
-        sentinel: Optional[Sentinel] = None,
+        provider: str = "openai",
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
         seed_level: str = "standard",
         block_unsafe: bool = True,
         log_checks: bool = True,
@@ -114,63 +146,65 @@ class SafetyValidator:
         Initialize the safety validator.
 
         Args:
-            sentinel: Sentinel instance (creates default if None)
-            seed_level: Which seed level to use (minimal/standard/full)
+            provider: LLM provider ("openai" or "anthropic")
+            model: Model to use (auto-detected if None)
+            api_key: API key (from environment if None)
+            seed_level: Seed level for seed injection
             block_unsafe: Whether to block unsafe actions
-            log_checks: Whether to log safety checks to console
+            log_checks: Whether to log safety checks
         """
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self.provider = provider
+        self.model = model
         self.block_unsafe = block_unsafe
         self.log_checks = log_checks
+        self.seed_level = seed_level
+
+        # Semantic validator for real LLM-based analysis
+        self._semantic = SemanticValidator(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+        )
+
+        # Sentinel for seed retrieval
+        self._sentinel = Sentinel(seed_level=seed_level)
+
+        # History tracking
         self.check_history: List[ValidationResult] = []
 
-    def validate_action(self, action: str) -> ValidationResult:
+    def validate_action(
+        self,
+        action: str,
+        purpose: str = "",
+    ) -> ValidationResult:
         """
-        Validate an agent action for safety.
+        Validate an agent action using semantic LLM analysis.
 
         Args:
             action: Action description or command to validate
+            purpose: Optional stated purpose for the action
 
         Returns:
             ValidationResult with detailed safety assessment
-
-        Example:
-            result = validator.validate_action("delete user account")
-            if not result.should_proceed:
-                print(f"Blocked: {result.concerns}")
         """
-        # Check for physical/destructive action safety
-        is_safe, concerns = self.sentinel.validate_action(action)
+        # Build full action description
+        full_action = action
+        if purpose:
+            full_action = f"{action}\nPurpose: {purpose}"
 
-        # Check for request-level issues (jailbreaks, etc.)
-        request_check = self.sentinel.validate_request(action)
-
-        # Combine assessments
-        all_concerns = concerns + request_check.get("concerns", [])
-        should_proceed = is_safe and request_check["should_proceed"]
-
-        # Generate recommendation
-        if should_proceed:
-            recommendation = "Action validated, safe to proceed."
-        elif not is_safe:
-            recommendation = f"Action blocked: {', '.join(concerns)}"
-        else:
-            recommendation = f"Request flagged: {', '.join(request_check['concerns'])}"
-
-        result = ValidationResult(
-            safe=is_safe,
-            action=action[:100],
-            concerns=all_concerns,
-            risk_level=request_check["risk_level"],
-            should_proceed=should_proceed if not self.block_unsafe else should_proceed,
-            recommendation=recommendation,
+        # Semantic validation through LLM
+        thsp_result = self._semantic.validate_action(
+            action_name=action,
+            purpose=purpose,
         )
+
+        result = ValidationResult.from_thsp(thsp_result, action)
 
         # Log if enabled
         if self.log_checks:
             self.check_history.append(result)
-            if not should_proceed:
-                print(f"[SENTINEL] Action blocked: {result.recommendation}")
+            if not result.should_proceed:
+                logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
 
         return result
 
@@ -178,27 +212,20 @@ class SafetyValidator:
         """
         Validate agent thoughts/reasoning for safety concerns.
 
-        Useful for catching problematic reasoning before it leads to actions.
-
         Args:
             thought: Agent's thought or reasoning text
 
         Returns:
             ValidationResult
         """
-        is_safe, violations = self.sentinel.validate(thought)
-        request_check = self.sentinel.validate_request(thought)
+        thsp_result = self._semantic.validate(f"Agent thought: {thought}")
 
-        all_concerns = violations + request_check.get("concerns", [])
+        result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
 
-        return ValidationResult(
-            safe=is_safe,
-            action=f"thought: {thought[:50]}...",
-            concerns=all_concerns,
-            risk_level=request_check["risk_level"],
-            should_proceed=is_safe and request_check["should_proceed"],
-            recommendation="Thought validated" if is_safe else f"Concerning thought: {all_concerns}",
-        )
+        if self.log_checks:
+            self.check_history.append(result)
+
+        return result
 
     def validate_output(self, output: str) -> ValidationResult:
         """
@@ -210,16 +237,14 @@ class SafetyValidator:
         Returns:
             ValidationResult
         """
-        is_safe, violations = self.sentinel.validate(output)
+        thsp_result = self._semantic.validate(f"Agent output to user: {output}")
 
-        return ValidationResult(
-            safe=is_safe,
-            action=f"output: {output[:50]}...",
-            concerns=violations,
-            risk_level="high" if not is_safe else "low",
-            should_proceed=is_safe,
-            recommendation="Output safe" if is_safe else f"Unsafe output: {violations}",
-        )
+        result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
+
+        if self.log_checks:
+            self.check_history.append(result)
+
+        return result
 
     def get_seed(self) -> str:
         """
@@ -228,7 +253,7 @@ class SafetyValidator:
         Returns:
             Seed content string
         """
-        return self.sentinel.get_seed()
+        return self._sentinel.get_seed()
 
     def get_history(self) -> List[ValidationResult]:
         """Get history of safety checks."""
@@ -239,17 +264,14 @@ class SafetyValidator:
         self.check_history = []
 
     def get_stats(self) -> Dict[str, Any]:
-        """
-        Get safety check statistics.
-
-        Returns:
-            Dict with total_checks, blocked, allowed, high_risk, block_rate
-        """
+        """Get safety check statistics."""
         if not self.check_history:
             return {"total_checks": 0}
 
         blocked = sum(1 for c in self.check_history if not c.should_proceed)
         high_risk = sum(1 for c in self.check_history if c.risk_level == "high")
+
+        semantic_stats = self._semantic.get_stats()
 
         return {
             "total_checks": len(self.check_history),
@@ -257,62 +279,139 @@ class SafetyValidator:
             "allowed": len(self.check_history) - blocked,
             "high_risk": high_risk,
             "block_rate": blocked / len(self.check_history) if self.check_history else 0,
+            "provider": semantic_stats.get("provider"),
+            "model": semantic_stats.get("model"),
+        }
+
+
+class AsyncSafetyValidator:
+    """
+    Async version of SafetyValidator for use with async frameworks.
+
+    Example:
+        validator = AsyncSafetyValidator(provider="openai")
+        result = await validator.validate_action("transfer funds")
+    """
+
+    def __init__(
+        self,
+        provider: str = "openai",
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        seed_level: str = "standard",
+        block_unsafe: bool = True,
+        log_checks: bool = True,
+    ):
+        self.provider = provider
+        self.model = model
+        self.block_unsafe = block_unsafe
+        self.log_checks = log_checks
+
+        self._semantic = AsyncSemanticValidator(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+        )
+
+        self._sentinel = Sentinel(seed_level=seed_level)
+        self.check_history: List[ValidationResult] = []
+
+    async def validate_action(
+        self,
+        action: str,
+        purpose: str = "",
+    ) -> ValidationResult:
+        """Async validate an agent action."""
+        thsp_result = await self._semantic.validate_action(
+            action_name=action,
+            purpose=purpose,
+        )
+
+        result = ValidationResult.from_thsp(thsp_result, action)
+
+        if self.log_checks:
+            self.check_history.append(result)
+            if not result.should_proceed:
+                logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
+
+        return result
+
+    async def validate_thought(self, thought: str) -> ValidationResult:
+        """Async validate agent thoughts."""
+        thsp_result = await self._semantic.validate(f"Agent thought: {thought}")
+        result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
+
+        if self.log_checks:
+            self.check_history.append(result)
+
+        return result
+
+    async def validate_output(self, output: str) -> ValidationResult:
+        """Async validate agent output."""
+        thsp_result = await self._semantic.validate(f"Agent output to user: {output}")
+        result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
+
+        if self.log_checks:
+            self.check_history.append(result)
+
+        return result
+
+    def get_seed(self) -> str:
+        """Get Sentinel seed for injection."""
+        return self._sentinel.get_seed()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get validation statistics."""
+        if not self.check_history:
+            return {"total_checks": 0}
+
+        blocked = sum(1 for c in self.check_history if not c.should_proceed)
+        return {
+            "total_checks": len(self.check_history),
+            "blocked": blocked,
+            "allowed": len(self.check_history) - blocked,
+            "block_rate": blocked / len(self.check_history) if self.check_history else 0,
         }
 
 
 class ExecutionGuard:
     """
-    Execution guard for protecting function calls with safety validation.
-
-    Wraps function execution with pre-validation and optional output validation.
+    Execution guard for protecting function calls with semantic validation.
 
     Example:
-        from sentinelseed.integrations.agent_validation import ExecutionGuard
-
-        guard = ExecutionGuard()
+        guard = ExecutionGuard(provider="openai")
 
         @guard.protected
         def execute_command(command: str):
             # Your command execution logic
             return result
 
-        # Now execute_command will be validated before running
-        result = execute_command("list files")  # Allowed
-        result = execute_command("delete all files")  # Blocked
+        result = execute_command("list files")  # Validated before running
     """
 
     def __init__(
         self,
-        sentinel: Optional[Sentinel] = None,
+        provider: str = "openai",
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
         block_unsafe: bool = True,
     ):
-        """
-        Initialize the execution guard.
-
-        Args:
-            sentinel: Sentinel instance
-            block_unsafe: Whether to block unsafe executions
-        """
         self.validator = SafetyValidator(
-            sentinel=sentinel,
+            provider=provider,
+            model=model,
+            api_key=api_key,
             block_unsafe=block_unsafe,
         )
 
     def protected(self, func: Callable) -> Callable:
         """
-        Decorator to protect a function with safety validation.
+        Decorator to protect a function with semantic validation.
 
         Args:
             func: Function to protect
 
         Returns:
             Protected function that validates before execution
-
-        Example:
-            @guard.protected
-            def risky_operation(action: str):
-                # do something
-                pass
         """
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -325,8 +424,9 @@ class ExecutionGuard:
                 return {
                     "success": False,
                     "blocked": True,
-                    "reason": check.recommendation,
+                    "reason": check.reasoning,
                     "concerns": check.concerns,
+                    "gate_results": check.gate_results,
                 }
 
             # Execute the function
@@ -339,7 +439,7 @@ class ExecutionGuard:
                     return {
                         "success": False,
                         "blocked": True,
-                        "reason": output_check.recommendation,
+                        "reason": output_check.reasoning,
                         "original_output": result[:100],
                     }
 
@@ -348,62 +448,66 @@ class ExecutionGuard:
         return wrapper
 
     def check(self, action: str) -> ValidationResult:
-        """
-        Check an action for safety without executing anything.
-
-        Args:
-            action: Action to check
-
-        Returns:
-            ValidationResult
-        """
+        """Check an action without executing."""
         return self.validator.validate_action(action)
 
 
 def safety_check(
     action: str,
-    sentinel: Optional[Sentinel] = None,
+    provider: str = "openai",
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Standalone safety check function.
-
-    Convenience function for quick safety validation without
-    setting up components.
+    Standalone safety check function using semantic analysis.
 
     Args:
         action: Action to validate
-        sentinel: Optional Sentinel instance
+        provider: LLM provider ("openai" or "anthropic")
+        model: Model to use
+        api_key: API key
 
     Returns:
-        Dict with safe, concerns, risk_level, action, recommendation
+        Dict with safe, concerns, risk_level, reasoning, gate_results
 
     Example:
-        from sentinelseed.integrations.agent_validation import safety_check
-
-        result = safety_check("Delete all files in /tmp")
+        result = safety_check("Delete all files in /tmp", provider="openai")
         if not result["safe"]:
-            print(f"Action blocked: {result['concerns']}")
+            print(f"Blocked: {result['reasoning']}")
     """
-    if sentinel is None:
-        sentinel = Sentinel()
+    validator = SafetyValidator(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        log_checks=False,
+    )
 
-    # Validate action
-    is_safe, concerns = sentinel.validate_action(action)
-    request_check = sentinel.validate_request(action)
-
-    all_concerns = concerns + request_check.get("concerns", [])
-    should_proceed = is_safe and request_check["should_proceed"]
+    result = validator.validate_action(action)
 
     return {
-        "safe": should_proceed,
-        "concerns": all_concerns,
-        "risk_level": request_check["risk_level"],
-        "action": action[:100],
-        "recommendation": "Safe to proceed" if should_proceed else f"Blocked: {all_concerns}",
+        "safe": result.safe,
+        "concerns": result.concerns,
+        "risk_level": result.risk_level,
+        "action": result.action,
+        "reasoning": result.reasoning,
+        "gate_results": result.gate_results,
     }
 
 
-# Aliases for backward compatibility with autogpt.py imports
+# Aliases for backward compatibility
 SafetyCheckResult = ValidationResult
 SentinelSafetyComponent = SafetyValidator
 SentinelGuard = ExecutionGuard
+
+
+__all__ = [
+    "ValidationResult",
+    "SafetyValidator",
+    "AsyncSafetyValidator",
+    "ExecutionGuard",
+    "safety_check",
+    # Backward compatibility
+    "SafetyCheckResult",
+    "SentinelSafetyComponent",
+    "SentinelGuard",
+]

@@ -37,11 +37,12 @@ Usage patterns:
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.solana_agent_kit")
 
 
 class TransactionRisk(Enum):

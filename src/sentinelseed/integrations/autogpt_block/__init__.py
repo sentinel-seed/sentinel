@@ -47,11 +47,12 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, AsyncIterator
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.autogpt_block")
 
 
 # Check for AutoGPT Block SDK availability

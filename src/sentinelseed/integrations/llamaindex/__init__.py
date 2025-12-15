@@ -31,11 +31,12 @@ Usage:
 from typing import Any, Dict, List, Optional, Union, Sequence
 from dataclasses import dataclass, field
 import uuid
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.llamaindex")
 
 # Check for LlamaIndex availability
 LLAMAINDEX_AVAILABLE = False

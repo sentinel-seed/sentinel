@@ -19,11 +19,12 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Union, Literal
+import logging
 
-try:
-    from sentinel import Sentinel, SeedLevel
-except ImportError:
-    from sentinelseed import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+
+logger = logging.getLogger("sentinelseed.crewai")
 
 
 InjectionMethod = Literal["auto", "system_template", "backstory"]
