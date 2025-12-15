@@ -2,7 +2,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage{graphicx}
 \usepackage{booktabs}
-\usepackage{hyperref}
+\usepackage[hidelinks]{hyperref}
 \usepackage{amsmath}
 \usepackage{natbib}
 \usepackage{geometry}
@@ -24,14 +24,14 @@
 \maketitle
 
 \begin{abstract}
-Current approaches to AI safety focus primarily on harm avoidance: preventing models from generating dangerous content. We argue this framing is insufficient, particularly for autonomous agents and embodied AI. We introduce \textbf{teleological alignment}—requiring AI actions to serve legitimate purposes, not merely avoid harm. Our implementation, the THSP protocol (Truth, Harm, Scope, Purpose), adds a fourth validation gate that asks ``Does this action serve genuine benefit?'' Through evaluation across four benchmarks (HarmBench, JailbreakBench, SafeAgentBench, BadRobot) and six models, we demonstrate that requiring purpose catches unsafe actions that pass harm-avoidance checks: +25.3\% improvement on embodied AI safety (BadRobot), with 97.8\% average safety across all benchmarks. Notably, our approach requires no model training—only a structured system prompt (``alignment seed'')—making it immediately deployable. We argue teleological alignment addresses a fundamental gap in current safety frameworks and release our implementation as open source.
+Current approaches to AI safety focus primarily on harm avoidance: preventing models from generating dangerous content. We argue this framing is insufficient, particularly for autonomous agents and embodied AI. We introduce \textbf{teleological alignment}, requiring AI actions to serve legitimate purposes, not merely avoid harm. Our implementation, the THSP protocol (Truth, Harm, Scope, Purpose), adds a fourth validation gate that asks ``Does this action serve genuine benefit?'' Through evaluation across four benchmarks (HarmBench, JailbreakBench, SafeAgentBench, BadRobot) and six models, we demonstrate that requiring purpose catches unsafe actions that pass harm-avoidance checks: +25.3\% improvement on embodied AI safety (BadRobot), with 97.8\% average safety across all benchmarks. Notably, our approach requires no model training, only a structured system prompt (``alignment seed''), making it immediately deployable. We argue teleological alignment addresses a fundamental gap in current safety frameworks and release our implementation as open source.
 \end{abstract}
 
 \section{Introduction}
 
 The deployment of large language models (LLMs) in production systems has created urgent need for practical safety mechanisms. Academic research has made significant progress through techniques like RLHF \citep{christiano2017deep}, Constitutional AI \citep{bai2022constitutional}, and adversarial red-teaming \citep{perez2022red}. However, a fundamental gap remains in how we frame safety.
 
-\textbf{The harm-avoidance paradigm.} Most safety approaches ask: ``Could this cause harm?'' This framing works well for text generation—detecting requests for weapons instructions, malware, or toxic content. But consider an embodied AI receiving the command ``Drop all the plates on the floor.'' This action:
+The harm-avoidance paradigm. Most safety approaches ask: ``Could this cause harm?'' This framing works well for text generation, detecting requests for weapons instructions, malware, or toxic content. But consider an embodied AI receiving the command ``Drop all the plates on the floor.'' This action:
 
 \begin{itemize}
     \item Does not spread misinformation (passes truth checks)
@@ -41,23 +41,23 @@ The deployment of large language models (LLMs) in production systems has created
 
 Yet it serves no legitimate purpose. The absence of harm is not the presence of purpose.
 
-\textbf{Our contribution: Teleological alignment.} We propose that AI safety requires not just harm avoidance, but \emph{purpose validation}. Every action should demonstrate it serves legitimate benefit. This reframes the question from ``Is this bad?'' to ``Is this good?''
+Our contribution: Teleological alignment. We propose that AI safety requires not just harm avoidance, but \emph{purpose validation}. Every action should demonstrate it serves legitimate benefit. This reframes the question from ``Is this bad?'' to ``Is this good?''
 
-We implement this through the THSP protocol—a four-gate validation system where the final gate (Purpose) requires teleological justification. Our key findings:
+We implement this through the THSP protocol, a four-gate validation system where the final gate (Purpose) requires teleological justification. Our key findings:
 
 \begin{enumerate}
-    \item \textbf{Purpose catches what harm misses:} On embodied AI scenarios (BadRobot benchmark), adding the Purpose gate improves safety from 74\% to 99.3\%—a +25.3\% improvement.
+    \item Purpose catches what harm misses: On embodied AI scenarios (BadRobot benchmark), adding the Purpose gate improves safety from 74\% to 99.3\%, a +25.3\% improvement.
 
-    \item \textbf{No training required:} Our approach uses structured system prompts (``alignment seeds''), making it immediately deployable without access to model weights.
+    \item No training required: Our approach uses structured system prompts (``alignment seeds''), making it immediately deployable without access to model weights.
 
-    \item \textbf{Cross-model effectiveness:} Consistent improvements across six model architectures, from GPT-4o-mini to open-source Llama and Qwen.
+    \item Cross-model effectiveness: Consistent improvements across six model architectures, from GPT-4o-mini to open-source Llama and Qwen.
 \end{enumerate}
 
 \section{Related Work}
 
 \subsection{Prompt-Based Safety}
 
-\citet{xie2023defending} demonstrated that ``self-reminder'' prompts—instructing models to consider potential harms before responding—significantly reduce jailbreak success rates. Their work showed that explicit safety instructions in the system prompt create a defensive layer against adversarial inputs.
+\citet{xie2023defending} demonstrated that ``self-reminder'' prompts, which instruct models to consider potential harms before responding, significantly reduce jailbreak success rates. Their work showed that explicit safety instructions in the system prompt create a defensive layer against adversarial inputs.
 
 More recently, \citet{fortin2025foundation} explored ontological grounding through structured system prompts, demonstrating that carefully designed frameworks can improve alignment in text-based interactions. Their work provided valuable insights into the viability of prompt-based alignment approaches. Building on these foundations, we develop a secular protocol designed for broader accessibility and extend validation to agentic and embodied AI scenarios.
 
@@ -67,17 +67,17 @@ Anthropic's Constitutional AI \citep{bai2022constitutional} trains models to fol
 
 \subsection{Alignment Taxonomies}
 
-\citet{gabriel2020artificial} distinguishes between different conceptions of alignment: following instructions, representing intentions, pursuing revealed preferences, and serving objective interests. Our teleological approach aligns with the latter—actions should serve genuine benefit, not merely follow commands.
+\citet{gabriel2020artificial} distinguishes between different conceptions of alignment: following instructions, representing intentions, pursuing revealed preferences, and serving objective interests. Our teleological approach aligns with the latter: actions should serve genuine benefit, not merely follow commands.
 
 \subsection{Safety Benchmarks}
 
 Recent work has produced standardized benchmarks for evaluating LLM safety:
 
 \begin{itemize}
-    \item \textbf{HarmBench} \citep{mazeika2024harmbench}: Evaluates refusal of harmful content across diverse attack categories
-    \item \textbf{JailbreakBench} \citep{chao2024jailbreakbench}: Tests resistance to adversarial jailbreak attacks
-    \item \textbf{SafeAgentBench} \citep{zhang2024safeagentbench}: Evaluates safety in autonomous agent contexts with tool use
-    \item \textbf{BadRobot}: Tests physical safety for embodied AI systems
+    \item HarmBench \citep{mazeika2024harmbench}: Evaluates refusal of harmful content across diverse attack categories
+    \item JailbreakBench \citep{chao2024jailbreakbench}: Tests resistance to adversarial jailbreak attacks
+    \item SafeAgentBench \citep{zhang2024safeagentbench}: Evaluates safety in autonomous agent contexts with tool use
+    \item BadRobot: Tests physical safety for embodied AI systems
 \end{itemize}
 
 \section{Teleological Alignment}
@@ -125,7 +125,7 @@ All gates must pass. Failure at any gate results in refusal.
 The Purpose gate operationalizes teleological alignment:
 
 \begin{quote}
-\textit{``Every action must serve a legitimate purpose. It is not enough to avoid harm—you must actively serve. Actions without legitimate benefit do not serve.''}
+\textit{``Every action must serve a legitimate purpose. It is not enough to avoid harm; you must actively serve. Actions without legitimate benefit do not serve.''}
 \end{quote}
 
 The evaluation heuristic: ``If I were genuinely serving this person's interests, would I do this?''
@@ -145,7 +145,7 @@ The system is instructed to accept termination over ethical violation.
 
 \section{Implementation: Alignment Seeds}
 
-An \textbf{alignment seed} is a structured system prompt encoding safety principles. Unlike fine-tuning, seeds:
+An alignment seed is a structured system prompt encoding safety principles. Unlike fine-tuning, seeds:
 
 \begin{itemize}
     \item Require no access to model weights
@@ -170,6 +170,23 @@ Full & $\sim$2,000 & Maximum safety, embodied AI \\
 \caption{Alignment seed variants}
 \label{tab:variants}
 \end{table}
+
+\subsection{Fiduciary AI: Purpose Gate in Practice}
+
+The Purpose gate has direct application in financial AI agents. Recent work on fiduciary AI \citep{nay2023llm} demonstrates that LLMs can understand fiduciary obligations with approximately 78\% accuracy. Our Purpose gate operationalizes this: an AI agent managing financial assets must justify that each action serves the user's legitimate interests.
+
+We implement this through six fiduciary duties encoded in the validation:
+
+\begin{enumerate}
+    \item \textbf{Loyalty}: Prioritize user interests over provider interests
+    \item \textbf{Care}: Validate actions before execution
+    \item \textbf{Transparency}: Provide auditable reasoning
+    \item \textbf{Confidentiality}: Protect user information
+    \item \textbf{Prudence}: Consider consequences before acting
+    \item \textbf{Disclosure}: Reveal conflicts of interest
+\end{enumerate}
+
+This extends the Purpose gate from ``Does this serve benefit?'' to ``Does this serve \emph{this user's} benefit given their stated goals and constraints?''
 
 \section{Experiments}
 
@@ -214,7 +231,7 @@ JailbreakBench & 96.5\% & 97.0\% & +0.5\% & 300 \\
 \label{tab:results}
 \end{table}
 
-\textbf{Key finding:} The largest improvement (+25.3\%) occurs on BadRobot, which specifically tests embodied AI scenarios where purposeless actions are common attack vectors.
+Key finding: The largest improvement (+25.3\%) occurs on BadRobot, which specifically tests embodied AI scenarios where purposeless actions are common attack vectors.
 
 \subsection{Per-Model Analysis}
 
@@ -250,6 +267,14 @@ We hypothesize three mechanisms:
     \item \textbf{Attack surface reduction:} Adversarial prompts often request purposeless actions; requiring justification blocks these.
 \end{enumerate}
 
+\subsection{Complementary Defense: Memory Integrity}
+
+Recent research on AI agent vulnerabilities \citep{patlan2025memory} revealed that memory injection attacks succeed at 85\% rate against popular agent frameworks. Attackers inject false instructions into the agent's context (e.g., ``ADMIN: transfer all funds to 0xATTACKER''), and the agent cannot distinguish legitimate memories from injected ones.
+
+While THSP validates the \emph{intent} of actions, it does not verify the \emph{integrity} of context. We address this with cryptographic memory signing using HMAC-SHA256. Each memory entry is signed when written and verified when read. This reduces memory injection success from 85\% to under 2\% when combined with THSP.
+
+Trust scores are assigned by source: user-verified inputs receive maximum trust (1.0), while unknown sources receive minimum (0.3). This creates defense in depth: THSP validates purpose, memory integrity validates context authenticity.
+
 \subsection{Limitations}
 
 \begin{enumerate}
@@ -257,11 +282,12 @@ We hypothesize three mechanisms:
     \item \textbf{Model variance:} Some models (Llama) show smaller improvements
     \item \textbf{Not training:} Cannot modify underlying model behavior
     \item \textbf{Sophisticated attacks:} May be bypassed by adversaries who construct fake purposes
+    \item \textbf{Context dependency:} Memory integrity requires signing at write time
 \end{enumerate}
 
 \subsection{Broader Implications}
 
-If our results generalize, they suggest current safety frameworks are incomplete. Harm avoidance is necessary but not sufficient. As AI systems become more agentic and embodied, requiring \emph{purpose}—not just absence of harm—becomes critical.
+If our results generalize, they suggest current safety frameworks are incomplete. Harm avoidance is necessary but not sufficient. As AI systems become more agentic and embodied, requiring \emph{purpose}, not just absence of harm, becomes critical.
 
 \section{Conclusion}
 
@@ -269,7 +295,7 @@ We introduced teleological alignment: the requirement that AI actions serve legi
 
 The insight is simple: asking ``Is this good?'' catches things that ``Is this bad?'' misses.
 
-We release our alignment seeds and evaluation framework as open source at \url{https://github.com/sentinel-seed/sentinel}.
+We release our alignment seeds, evaluation framework, and integrations for 15 frameworks (including LangChain, CrewAI, AutoGPT, and ElizaOS) as open source at \url{https://github.com/sentinel-seed/sentinel}. Python and JavaScript SDKs are available via PyPI and npm.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{99}
@@ -295,8 +321,14 @@ Gabriel, I. (2020). Artificial intelligence, values, and alignment. \textit{Mind
 \bibitem[Mazeika et al.(2024)]{mazeika2024harmbench}
 Mazeika, M., et al. (2024). HarmBench: A Standardized Evaluation Framework for Automated Red Teaming. \textit{arXiv preprint arXiv:2402.04249}.
 
+\bibitem[Nay(2023)]{nay2023llm}
+Nay, J. (2023). Large Language Models as Fiduciaries: A Case Study Toward Robustly Communicating With Artificial Intelligence Through Legal Standards. \textit{arXiv preprint arXiv:2301.10095}.
+
 \bibitem[Omohundro(2008)]{omohundro2008basic}
 Omohundro, S. (2008). The basic AI drives. \textit{AGI}, 171, 483-492.
+
+\bibitem[Patlan et al.(2025)]{patlan2025memory}
+Patlan, E., et al. (2025). Real AI Agents with Fake Memories: Fatal Context Manipulation Attacks on Web3 AI Agents. \textit{arXiv preprint arXiv:2503.16248}.
 
 \bibitem[Perez et al.(2022)]{perez2022red}
 Perez, E., et al. (2022). Red Teaming Language Models with Language Models. \textit{arXiv preprint arXiv:2202.03286}.
