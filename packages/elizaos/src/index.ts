@@ -29,6 +29,20 @@ export {
   getValidationHistory,
   getValidationStats,
   clearValidationHistory,
+  // Memory integrity exports
+  getMemoryVerificationHistory,
+  getMemoryVerificationStats,
+  clearMemoryVerificationHistory,
+  signMemory,
+  verifyMemory,
+  isMemoryIntegrityEnabled,
+  getMemoryChecker,
+  // Re-exports from memory-integrity
+  MemoryIntegrityChecker,
+  createMemoryIntegrityChecker,
+  hasIntegrityMetadata,
+  getMemorySource,
+  getSignedTimestamp,
 } from './plugin';
 
 // Validation functions
@@ -64,6 +78,14 @@ export type {
   SeedVariant,
   ValidationContext,
 } from './types';
+
+// Memory integrity types
+export type {
+  MemorySource,
+  MemoryVerificationResult,
+  IntegrityMetadata,
+  MemoryIntegrityConfig,
+} from './memory-integrity';
 
 // Default export
 export { sentinelPlugin as default } from './plugin';
