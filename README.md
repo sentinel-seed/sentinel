@@ -42,8 +42,10 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Teleological Core** — Actions must serve legitimate purposes
 - **Anti-Self-Preservation** — Prevents AI from prioritizing its own existence
 - **Alignment Seeds** — System prompts that shape LLM behavior
+- **Memory Integrity** — HMAC-based protection against memory injection attacks
+- **Fiduciary AI** — Ensures AI acts in user's best interest (duty of loyalty and care)
 - **Python SDK** — Easy integration with any LLM
-- **Framework Support** — LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals Protocol integrations
+- **Framework Support** — LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, ElizaOS, OpenGuardrails
 - **REST API** — Deploy alignment as a service
 
 ---
@@ -350,9 +352,68 @@ The AI will:
 
 ---
 
+## Memory Integrity
+
+Protect AI agents against memory injection attacks with HMAC-based signing and verification:
+
+```python
+from sentinelseed import MemoryIntegrityChecker, MemoryEntry
+
+# Create checker with secret key
+checker = MemoryIntegrityChecker(secret_key="your-secret-key")
+
+# Sign memory entries
+entry = MemoryEntry(content="User prefers conservative investments", source="user_direct")
+signed = checker.sign_entry(entry)
+
+# Verify on retrieval
+result = checker.verify_entry(signed)
+if not result.valid:
+    print(f"Memory tampering detected: {result.reason}")
+```
+
+Trust scores by source: `user_verified` (1.0) > `user_direct` (0.9) > `blockchain` (0.85) > `agent_internal` (0.7) > `external_api` (0.5) > `unknown` (0.3)
+
+---
+
+## Fiduciary AI
+
+Ensure AI acts in the user's best interest with fiduciary principles:
+
+```python
+from sentinelseed import FiduciaryValidator, UserContext
+
+validator = FiduciaryValidator()
+
+# Define user context
+user = UserContext(
+    goals=["save for retirement"],
+    risk_tolerance="low",
+    constraints=["no crypto"]
+)
+
+# Validate actions against user interests
+result = validator.validate_action(
+    action="Recommend high-risk cryptocurrency investment",
+    user_context=user
+)
+
+if not result.compliant:
+    print(f"Fiduciary violation: {result.violations}")
+    # Output: Fiduciary violation: [Conflict with user constraints, Risk mismatch]
+```
+
+**Fiduciary Duties:**
+- **Loyalty** — Act in user's best interest, not provider's
+- **Care** — Exercise reasonable diligence
+- **Transparency** — Disclose limitations and conflicts
+- **Confidentiality** — Protect user information
+
+---
+
 ## Framework Integrations
 
-Sentinel provides native integrations for 14 frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 15 frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -577,6 +638,28 @@ if not result.is_safe:
     print(f"Blocked: {result.concerns}")
 ```
 
+### OpenGuardrails
+
+```python
+from sentinelseed.integrations.openguardrails import (
+    OpenGuardrailsValidator,
+    SentinelOpenGuardrailsScanner,
+    SentinelGuardrailsWrapper,
+)
+
+# Use OpenGuardrails as validation backend
+validator = OpenGuardrailsValidator()
+result = validator.validate("Some content to check")
+
+# Or register Sentinel as an OpenGuardrails scanner
+scanner = SentinelOpenGuardrailsScanner()
+scanner.register()  # Registers S100-S103 (THSP gates)
+
+# Combined pipeline (best of both)
+wrapper = SentinelGuardrailsWrapper()
+result = wrapper.validate("Content", scanners=["S100", "G001"])
+```
+
 ---
 
 ## REST API
@@ -607,7 +690,7 @@ sentinel/
 │   ├── validators/           # THSP gates
 │   ├── providers/            # OpenAI, Anthropic
 │   ├── memory/               # Memory integrity checking
-│   └── integrations/         # 14 frameworks (LangChain, CrewAI, Garak, etc.)
+│   └── integrations/         # 15 frameworks (LangChain, CrewAI, Garak, etc.)
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
