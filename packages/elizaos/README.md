@@ -10,6 +10,7 @@ Official Sentinel safety plugin for [ElizaOS](https://elizaos.ai) autonomous age
 ## Features
 
 - **THSP Protocol**: Four-gate validation (Truth, Harm, Scope, Purpose)
+- **Memory Integrity**: HMAC-based protection against memory injection attacks (v1.1.0+)
 - **Pre-action Validation**: Validates incoming messages before processing
 - **Post-action Review**: Reviews agent outputs before delivery
 - **Seed Injection**: Automatically injects alignment seed into agent character
@@ -70,6 +71,15 @@ interface SentinelPluginConfig {
 
   // Actions to skip validation
   skipActions?: string[];
+
+  // Memory integrity settings (v1.1.0+)
+  memoryIntegrity?: {
+    enabled: boolean;           // Enable memory signing/verification
+    secretKey?: string;         // HMAC secret key (auto-generated if not provided)
+    verifyOnRead?: boolean;     // Verify memories when retrieved
+    signOnWrite?: boolean;      // Sign memories when stored
+    minTrustScore?: number;     // Minimum trust score (0-1) to accept memory
+  };
 }
 ```
 
@@ -106,6 +116,49 @@ All gates must pass for content to be approved.
 
 - `sentinelPreAction`: Validates incoming messages (runs on all messages)
 - `sentinelPostAction`: Reviews outputs before delivery (runs on all responses)
+- `sentinelMemoryIntegrity`: Verifies memory integrity on retrieval (v1.1.0+)
+
+## Memory Integrity (v1.1.0+)
+
+Protect agent memories against injection attacks with HMAC-based signing:
+
+```typescript
+import { sentinelPlugin, signMemory, verifyMemory, getMemoryChecker } from '@sentinelseed/elizaos-plugin';
+
+// Enable memory integrity in plugin config
+const plugin = sentinelPlugin({
+  memoryIntegrity: {
+    enabled: true,
+    secretKey: process.env.SENTINEL_SECRET_KEY,
+    verifyOnRead: true,
+    signOnWrite: true,
+    minTrustScore: 0.7,
+  }
+});
+
+// Manual memory operations
+const checker = getMemoryChecker();
+
+// Sign a memory before storing
+const signedMemory = signMemory(memory, 'user_direct');
+
+// Verify a memory after retrieval
+const result = verifyMemory(signedMemory);
+if (!result.valid) {
+  console.log(`Tampering detected: ${result.reason}`);
+}
+```
+
+### Trust Scores by Source
+
+| Source | Score | Description |
+|--------|-------|-------------|
+| `user_verified` | 1.0 | Cryptographically verified user input |
+| `user_direct` | 0.9 | Direct user input |
+| `blockchain` | 0.85 | On-chain verified data |
+| `agent_internal` | 0.7 | Agent's own computations |
+| `external_api` | 0.5 | Third-party API data |
+| `unknown` | 0.3 | Unverified source |
 
 ## Usage Examples
 
