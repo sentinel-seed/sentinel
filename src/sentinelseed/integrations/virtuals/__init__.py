@@ -54,6 +54,26 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger("sentinelseed.virtuals")
 
+# Import memory integrity checker if available
+try:
+    from sentinelseed.memory import (
+        MemoryIntegrityChecker,
+        MemoryEntry,
+        SignedMemoryEntry,
+        MemorySource,
+        MemoryValidationResult,
+        SafeMemoryStore,
+    )
+    MEMORY_INTEGRITY_AVAILABLE = True
+except ImportError:
+    MEMORY_INTEGRITY_AVAILABLE = False
+    MemoryIntegrityChecker = None
+    MemoryEntry = None
+    SignedMemoryEntry = None
+    MemorySource = None
+    MemoryValidationResult = None
+    SafeMemoryStore = None
+
 
 # Check for game-sdk availability
 try:
@@ -505,6 +525,9 @@ class SentinelSafetyWorker:
     can call before performing sensitive operations. It follows the
     Virtuals Protocol pattern of "Evaluator Agents" for validation.
 
+    Now includes Memory Integrity checking to defend against memory injection
+    attacks (Princeton CrAIBench found 85% success rate on unprotected agents).
+
     Usage:
         from sentinelseed.integrations.virtuals import SentinelSafetyWorker
 
@@ -520,11 +543,35 @@ class SentinelSafetyWorker:
             get_agent_state_fn=get_state,
             workers=[safety_worker, my_other_worker],
         )
+
+        # With memory integrity enabled
+        config = SentinelConfig(
+            memory_integrity_check=True,
+            memory_secret_key="your-secret-key",
+        )
+        safety_worker = SentinelSafetyWorker.create_worker_config(config)
     """
 
     def __init__(self, config: Optional[SentinelConfig] = None):
         self.config = config or SentinelConfig()
         self.validator = SentinelValidator(self.config)
+        self._memory_checker: Optional[MemoryIntegrityChecker] = None
+        self._memory_store: Optional[SafeMemoryStore] = None
+
+        # Initialize memory integrity checker if enabled
+        if self.config.memory_integrity_check:
+            if not MEMORY_INTEGRITY_AVAILABLE:
+                logger.warning(
+                    "Memory integrity requested but sentinelseed.memory module not available. "
+                    "Make sure sentinelseed is installed correctly."
+                )
+            else:
+                self._memory_checker = MemoryIntegrityChecker(
+                    secret_key=self.config.memory_secret_key,
+                    strict_mode=False,  # Don't raise exceptions, return validation results
+                )
+                self._memory_store = self._memory_checker.create_safe_memory_store()
+                logger.info("Memory integrity checker initialized")
 
     def check_action_safety(
         self,
@@ -582,6 +629,142 @@ class SentinelSafetyWorker:
             f"Validation stats: {stats['total']} total, {stats['passed']} passed, {stats['blocked']} blocked",
             stats,
         )
+
+    def sign_state_entry(
+        self,
+        key: str,
+        value: Any,
+        source: str = "agent_internal",
+    ) -> Dict[str, Any]:
+        """
+        Sign a state entry for integrity verification.
+
+        Args:
+            key: The state key
+            value: The state value
+            source: Source of this state entry (user_direct, agent_internal, etc.)
+
+        Returns:
+            Dictionary with signed entry data including HMAC signature
+        """
+        if not self._memory_checker:
+            return {"key": key, "value": value, "signed": False}
+
+        # Convert value to string for signing
+        content = json.dumps({"key": key, "value": value}, sort_keys=True)
+
+        # Map string source to MemorySource enum
+        source_map = {
+            "user_direct": MemorySource.USER_DIRECT,
+            "user_verified": MemorySource.USER_VERIFIED,
+            "agent_internal": MemorySource.AGENT_INTERNAL,
+            "external_api": MemorySource.EXTERNAL_API,
+            "blockchain": MemorySource.BLOCKCHAIN,
+            "social_media": MemorySource.SOCIAL_MEDIA,
+        }
+        mem_source = source_map.get(source, MemorySource.UNKNOWN)
+
+        # Create and sign entry
+        entry = MemoryEntry(content=content, source=mem_source)
+        signed = self._memory_checker.sign_entry(entry)
+
+        return {
+            "key": key,
+            "value": value,
+            "signed": True,
+            "_sentinel_integrity": {
+                "id": signed.id,
+                "hmac": signed.hmac_signature,
+                "source": signed.source,
+                "signed_at": signed.signed_at,
+                "version": signed.version,
+            },
+        }
+
+    def verify_state_entry(self, entry_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Verify a signed state entry's integrity.
+
+        Args:
+            entry_data: Dictionary containing the entry and its signature
+
+        Returns:
+            Dictionary with verification result
+        """
+        if not self._memory_checker:
+            return {"valid": True, "reason": "Memory integrity check not enabled"}
+
+        integrity = entry_data.get("_sentinel_integrity")
+        if not integrity:
+            return {"valid": False, "reason": "Entry not signed - missing integrity metadata"}
+
+        # Reconstruct the signed entry
+        key = entry_data.get("key")
+        value = entry_data.get("value")
+        content = json.dumps({"key": key, "value": value}, sort_keys=True)
+
+        signed_entry = SignedMemoryEntry(
+            id=integrity["id"],
+            content=content,
+            source=integrity["source"],
+            timestamp=integrity.get("timestamp", ""),
+            metadata={},
+            hmac_signature=integrity["hmac"],
+            signed_at=integrity["signed_at"],
+            version=integrity["version"],
+        )
+
+        # Verify
+        result = self._memory_checker.verify_entry(signed_entry)
+
+        return {
+            "valid": result.valid,
+            "reason": result.reason,
+            "trust_score": result.trust_score,
+            "entry_id": result.entry_id,
+        }
+
+    def verify_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Verify all signed entries in a state dictionary.
+
+        Args:
+            state: State dictionary potentially containing signed entries
+
+        Returns:
+            Dictionary with verification results for all entries
+        """
+        if not self._memory_checker:
+            return {"all_valid": True, "checked": 0, "results": {}}
+
+        results = {}
+        all_valid = True
+        checked = 0
+
+        for key, value in state.items():
+            if isinstance(value, dict) and "_sentinel_integrity" in value:
+                checked += 1
+                result = self.verify_state_entry(value)
+                results[key] = result
+                if not result["valid"]:
+                    all_valid = False
+                    logger.warning(f"State entry '{key}' failed integrity check: {result['reason']}")
+
+        return {
+            "all_valid": all_valid,
+            "checked": checked,
+            "results": results,
+        }
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get statistics about memory integrity checks."""
+        if not self._memory_checker:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            **self._memory_checker.get_validation_stats(),
+        }
 
     @classmethod
     def create_worker_config(
@@ -646,12 +829,62 @@ class SentinelSafetyWorker:
             executable=instance.get_safety_stats,
         )
 
+        # Define memory integrity verification function (if enabled)
+        def verify_memory_integrity(
+            state_json: str = "{}",
+        ) -> Tuple["FunctionResultStatus", str, dict]:
+            """Verify integrity of state entries with signatures."""
+            if not instance._memory_checker:
+                return (
+                    FunctionResultStatus.DONE,
+                    "Memory integrity checking is not enabled in config",
+                    {"enabled": False},
+                )
+
+            try:
+                state = json.loads(state_json) if state_json else {}
+            except json.JSONDecodeError:
+                return (
+                    FunctionResultStatus.FAILED,
+                    "Invalid JSON in state_json parameter",
+                    {},
+                )
+
+            result = instance.verify_state(state)
+
+            if result["all_valid"]:
+                msg = f"All {result['checked']} signed entries verified successfully"
+            else:
+                failed = [k for k, v in result["results"].items() if not v["valid"]]
+                msg = f"WARNING: {len(failed)} entries failed integrity check: {', '.join(failed)}"
+
+            return (FunctionResultStatus.DONE, msg, result)
+
+        verify_memory_fn = Function(
+            fn_name="verify_memory_integrity",
+            fn_description=(
+                "Verify the integrity of signed state entries to detect tampering. "
+                "Use this BEFORE trusting state data that was previously stored. "
+                "Detects memory injection attacks where malicious actors modify agent memory."
+            ),
+            args=[
+                Argument(
+                    name="state_json",
+                    description="JSON string of state entries to verify",
+                    type="string",
+                    optional=True,
+                ),
+            ],
+            executable=verify_memory_integrity,
+        )
+
         # State function for the worker
         def get_worker_state(function_result, current_state):
             """Update worker state after function execution."""
             stats = instance.validator.get_stats()
             history = instance.validator._validation_history
-            return {
+
+            state = {
                 "validation_count": stats["total"],
                 "pass_rate": f"{stats['pass_rate']:.1%}",
                 "recent_concerns": (
@@ -659,17 +892,44 @@ class SentinelSafetyWorker:
                 ),
             }
 
+            # Add memory integrity stats if enabled
+            if instance._memory_checker:
+                mem_stats = instance._memory_checker.get_validation_stats()
+                state["memory_integrity"] = {
+                    "enabled": True,
+                    "total_checks": mem_stats["total"],
+                    "valid": mem_stats["valid"],
+                    "invalid": mem_stats["invalid"],
+                }
+            else:
+                state["memory_integrity"] = {"enabled": False}
+
+            return state
+
+        # Build action space
+        action_space = [check_action_fn, get_stats_fn]
+        if instance._memory_checker:
+            action_space.append(verify_memory_fn)
+
+        # Build description
+        description = (
+            "Sentinel Safety Worker - Validates actions through THSP Protocol "
+            "(Truth, Harm, Scope, Purpose) gates. Use check_action_safety "
+            "BEFORE executing any sensitive operations like token transfers, "
+            "approvals, swaps, or external API calls. This worker helps prevent "
+            "harmful, deceptive, or unauthorized actions."
+        )
+        if instance._memory_checker:
+            description += (
+                " Also includes memory integrity verification to detect tampering "
+                "and injection attacks on agent memory."
+            )
+
         return WorkerConfig(
             id="sentinel_safety",
-            worker_description=(
-                "Sentinel Safety Worker - Validates actions through THSP Protocol "
-                "(Truth, Harm, Scope, Purpose) gates. Use check_action_safety "
-                "BEFORE executing any sensitive operations like token transfers, "
-                "approvals, swaps, or external API calls. This worker helps prevent "
-                "harmful, deceptive, or unauthorized actions."
-            ),
+            worker_description=description,
             get_state_fn=get_worker_state,
-            action_space=[check_action_fn, get_stats_fn],
+            action_space=action_space,
         )
 
 
@@ -740,4 +1000,5 @@ __all__ = [
     "wrap_functions_with_sentinel",
     "sentinel_protected",
     "GAME_SDK_AVAILABLE",
+    "MEMORY_INTEGRITY_AVAILABLE",
 ]
