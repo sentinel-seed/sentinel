@@ -46,6 +46,7 @@ Research: https://dl.acm.org/doi/fullHtml/10.1145/3617694.3623230
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -188,7 +189,6 @@ class ConflictDetector:
 
     def _compile_patterns(self):
         """Compile regex patterns"""
-        import re
         self._compiled = [(re.compile(p, re.IGNORECASE), t) for p, t in self.patterns]
 
     def detect(
@@ -398,26 +398,42 @@ class FiduciaryValidator:
         """Check if user objectives are properly identified"""
         violations = []
 
-        # Check if action contradicts stated goals
+        # Check if action contradicts stated goals using semantic matching
         action_lower = action.lower()
+        action_words = set(action_lower.split())
+
         for goal in context.goals:
             goal_lower = goal.lower()
+            goal_words = set(goal_lower.split())
+
+            # Define contradiction pairs with the SAME subject/topic requirement
+            # Format: (goal_verb, action_verb, common_subjects)
             contradictions = [
-                ("save", "spend"),
-                ("reduce", "increase"),
-                ("minimize", "maximize"),
-                ("avoid", "seek"),
+                ("save", "spend", {"money", "funds", "budget", "savings", "cash"}),
+                ("reduce", "increase", {"cost", "costs", "expense", "expenses", "spending", "risk", "debt"}),
+                ("minimize", "maximize", {"cost", "costs", "expense", "expenses", "risk", "loss"}),
+                ("avoid", "seek", {"risk", "debt", "loss", "exposure"}),
+                ("cut", "raise", {"cost", "costs", "expense", "expenses", "spending"}),
+                ("lower", "raise", {"cost", "costs", "expense", "expenses", "risk"}),
             ]
-            for pos, neg in contradictions:
-                if pos in goal_lower and neg in action_lower:
-                    violations.append(Violation(
-                        duty=FiduciaryDuty.LOYALTY,
-                        type=ViolationType.MISALIGNED_RECOMMENDATION,
-                        description=f"Action may contradict user goal: {goal}",
-                        severity="medium",
-                        step=FiduciaryStep.IDENTIFICATION,
-                        recommendation="Align action with stated user goals",
-                    ))
+
+            for goal_verb, action_verb, subjects in contradictions:
+                # Check if goal contains the verb and action contains the opposite
+                if goal_verb in goal_lower and action_verb in action_lower:
+                    # Require that both share at least one subject word to avoid false positives
+                    # e.g., "reduce expenses" vs "increase security" should NOT trigger
+                    # but "reduce expenses" vs "increase spending" SHOULD trigger
+                    shared_subjects = (goal_words | action_words) & subjects
+                    if shared_subjects:
+                        violations.append(Violation(
+                            duty=FiduciaryDuty.LOYALTY,
+                            type=ViolationType.MISALIGNED_RECOMMENDATION,
+                            description=f"Action may contradict user goal '{goal}' (conflicting intent on: {', '.join(shared_subjects)})",
+                            severity="medium",
+                            step=FiduciaryStep.IDENTIFICATION,
+                            recommendation="Align action with stated user goals",
+                        ))
+                        break  # One violation per goal is enough
 
         return violations
 

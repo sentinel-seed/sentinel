@@ -99,13 +99,19 @@ export class MemoryIntegrityChecker {
   }
 
   /**
-   * Get canonical string representation of memory for signing
+   * Get canonical string representation of memory for signing.
+   * Includes all critical fields that should be protected from tampering.
    */
   private getSignableContent(memory: Memory, source: MemorySource): string {
     const data = {
       entityId: memory.entityId,
+      agentId: memory.agentId || null,
       roomId: memory.roomId,
+      worldId: memory.worldId || null,
+      createdAt: memory.createdAt || null,
       content_text: memory.content?.text || '',
+      content_thought: memory.content?.thought || null,
+      content_actions: memory.content?.actions || null,
       source: source,
       version: MemoryIntegrityChecker.VERSION,
     };

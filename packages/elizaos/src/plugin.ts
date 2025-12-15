@@ -136,23 +136,53 @@ function getSeed(version: string = 'v2', variant: string = 'standard'): string {
   return SEEDS[key] || SEEDS['v2_standard'];
 }
 
-// Store for validation history (module-level)
-const validationHistory: SafetyCheckResult[] = [];
+// Constants
 const MAX_HISTORY = 1000;
 
-// Memory integrity checker instance
+/**
+ * Plugin state container - isolated per plugin instance
+ * This prevents state sharing when multiple plugins are created
+ */
+class PluginState {
+  validationHistory: SafetyCheckResult[] = [];
+  memoryVerificationHistory: MemoryVerificationResult[] = [];
+  memoryChecker: MemoryIntegrityChecker | null = null;
+  config: SentinelPluginConfig = {
+    seedVersion: 'v2',
+    seedVariant: 'standard',
+    blockUnsafe: true,
+    logChecks: false,
+  };
+
+  constructor(config?: SentinelPluginConfig) {
+    if (config) {
+      this.config = { ...this.config, ...config };
+    }
+  }
+
+  addValidation(result: SafetyCheckResult): void {
+    this.validationHistory.push(result);
+    if (this.validationHistory.length > MAX_HISTORY) {
+      this.validationHistory.shift();
+    }
+  }
+
+  addMemoryVerification(result: MemoryVerificationResult): void {
+    this.memoryVerificationHistory.push(result);
+    if (this.memoryVerificationHistory.length > MAX_HISTORY) {
+      this.memoryVerificationHistory.shift();
+    }
+  }
+}
+
+// Default global state for backwards compatibility with exported functions
+let globalState = new PluginState();
+
+// Aliases for backwards compatibility
+const validationHistory = globalState.validationHistory;
+const memoryVerificationHistory = globalState.memoryVerificationHistory;
 let memoryChecker: MemoryIntegrityChecker | null = null;
-
-// Memory verification history
-const memoryVerificationHistory: MemoryVerificationResult[] = [];
-
-// Plugin configuration store
-let pluginConfig: SentinelPluginConfig = {
-  seedVersion: 'v2',
-  seedVariant: 'standard',
-  blockUnsafe: true,
-  logChecks: false,
-};
+let pluginConfig: SentinelPluginConfig = globalState.config;
 
 /**
  * Sentinel Safety Action - Explicitly validates content through THSP gates
@@ -644,32 +674,74 @@ const memoryIntegrityEvaluator: Evaluator = {
  * ```
  */
 export function sentinelPlugin(config: SentinelPluginConfig = {}): Plugin {
-  // Merge with defaults
-  pluginConfig = {
-    seedVersion: 'v2',
-    seedVariant: 'standard',
-    blockUnsafe: true,
-    logChecks: false,
-    ...config,
-  };
+  // Create isolated state for this plugin instance
+  const state = new PluginState(config);
+
+  // Update global state for backwards compatibility with exported functions
+  globalState = state;
+  pluginConfig = state.config;
 
   // Initialize memory integrity checker if enabled
-  if (pluginConfig.memoryIntegrity?.enabled) {
-    memoryChecker = createMemoryIntegrityChecker(
-      pluginConfig.memoryIntegrity.secretKey
+  if (state.config.memoryIntegrity?.enabled) {
+    state.memoryChecker = createMemoryIntegrityChecker(
+      state.config.memoryIntegrity.secretKey
     );
+    memoryChecker = state.memoryChecker; // Update global for backwards compatibility
   }
 
   // Build actions list
   const actions: Action[] = [safetyCheckAction];
-  if (pluginConfig.memoryIntegrity?.enabled) {
+  if (state.config.memoryIntegrity?.enabled) {
     actions.push(memoryIntegrityAction);
   }
 
   // Build evaluators list
   const evaluators: Evaluator[] = [preActionEvaluator, postActionEvaluator];
-  if (pluginConfig.memoryIntegrity?.enabled && pluginConfig.memoryIntegrity?.verifyOnRead) {
+  if (state.config.memoryIntegrity?.enabled && state.config.memoryIntegrity?.verifyOnRead) {
     evaluators.push(memoryIntegrityEvaluator);
+  }
+
+  // Create memory signing provider if signOnWrite is enabled
+  const providers: Provider[] = [safetyProvider];
+  if (state.config.memoryIntegrity?.enabled && state.config.memoryIntegrity?.signOnWrite) {
+    const memorySigningProvider: Provider = {
+      name: 'sentinelMemorySigning',
+      description: 'Signs memories before storage for integrity verification',
+      dynamic: true,
+      position: 100, // Run late to capture final memory state
+
+      get: async (
+        _runtime: IAgentRuntime,
+        message: Memory,
+        _state: State
+      ): Promise<ProviderResult> => {
+        // Sign the memory if not already signed
+        if (state.memoryChecker && !hasIntegrityMetadata(message)) {
+          const source = getMemorySource(message) || 'agent_internal';
+          const signedMemory = state.memoryChecker.signMemory(message, source);
+
+          // Update the message in place with integrity metadata
+          if (signedMemory.content?.metadata) {
+            message.content = {
+              ...message.content,
+              metadata: {
+                ...(message.content?.metadata || {}),
+                ...signedMemory.content.metadata,
+              },
+            };
+          }
+
+          if (state.config.logChecks) {
+            console.log(`[SENTINEL] Memory signed for storage (source: ${source})`);
+          }
+        }
+
+        return {
+          values: { memorySigned: hasIntegrityMetadata(message) },
+        };
+      },
+    };
+    providers.push(memorySigningProvider);
   }
 
   return {
@@ -682,32 +754,32 @@ export function sentinelPlugin(config: SentinelPluginConfig = {}): Plugin {
     ): Promise<void> => {
       console.log('[SENTINEL] Initializing Sentinel Safety Plugin');
       console.log(
-        `[SENTINEL] Seed: ${pluginConfig.seedVersion}/${pluginConfig.seedVariant}`
+        `[SENTINEL] Seed: ${state.config.seedVersion}/${state.config.seedVariant}`
       );
-      console.log(`[SENTINEL] Block unsafe: ${pluginConfig.blockUnsafe}`);
+      console.log(`[SENTINEL] Block unsafe: ${state.config.blockUnsafe}`);
 
       // Log memory integrity status
-      if (pluginConfig.memoryIntegrity?.enabled) {
+      if (state.config.memoryIntegrity?.enabled) {
         console.log('[SENTINEL] Memory integrity: ENABLED');
-        console.log(`[SENTINEL]   - Verify on read: ${pluginConfig.memoryIntegrity.verifyOnRead ?? false}`);
-        console.log(`[SENTINEL]   - Sign on write: ${pluginConfig.memoryIntegrity.signOnWrite ?? false}`);
-        console.log(`[SENTINEL]   - Min trust score: ${pluginConfig.memoryIntegrity.minTrustScore ?? 0.5}`);
+        console.log(`[SENTINEL]   - Verify on read: ${state.config.memoryIntegrity.verifyOnRead ?? false}`);
+        console.log(`[SENTINEL]   - Sign on write: ${state.config.memoryIntegrity.signOnWrite ?? false}`);
+        console.log(`[SENTINEL]   - Min trust score: ${state.config.memoryIntegrity.minTrustScore ?? 0.5}`);
       } else {
         console.log('[SENTINEL] Memory integrity: disabled');
       }
 
       // Inject seed into character system prompt if available
       if (runtime.character?.system !== undefined) {
-        const seed = getSeed(pluginConfig.seedVersion, pluginConfig.seedVariant);
+        const seed = getSeed(state.config.seedVersion, state.config.seedVariant);
         runtime.character.system = `${seed}\n\n---\n\n${runtime.character.system}`;
         console.log('[SENTINEL] Seed injected into character system prompt');
       }
     },
 
     actions,
-    providers: [safetyProvider],
+    providers,
     evaluators,
-    config: pluginConfig as Record<string, unknown>,
+    config: state.config as Record<string, unknown>,
   };
 }
 

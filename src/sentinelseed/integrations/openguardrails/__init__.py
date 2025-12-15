@@ -131,7 +131,17 @@ class OpenGuardrailsValidator:
         api_key: Optional[str] = None,
         timeout: int = 30,
         default_scanners: Optional[List[str]] = None,
+        fail_safe: bool = False,
     ):
+        """
+        Args:
+            api_url: OpenGuardrails API URL
+            api_key: Optional API key for authentication
+            timeout: Request timeout in seconds
+            default_scanners: Default scanner tags to use
+            fail_safe: If True, return safe=True on API errors (fail-open, DANGEROUS).
+                      If False (default), return safe=False on errors (fail-closed, SECURE).
+        """
         if not REQUESTS_AVAILABLE:
             raise ImportError(
                 "requests is required for OpenGuardrails integration. "
@@ -142,6 +152,7 @@ class OpenGuardrailsValidator:
         self.api_key = api_key
         self.timeout = timeout
         self.default_scanners = default_scanners or []
+        self.fail_safe = fail_safe
 
     def _headers(self) -> Dict[str, str]:
         """Get request headers"""
@@ -186,13 +197,30 @@ class OpenGuardrailsValidator:
 
         except requests.RequestException as e:
             logger.error(f"OpenGuardrails API error: {e}")
-            # Return safe=True on API errors to avoid blocking
-            return DetectionResult(
-                safe=True,
-                risk_level=RiskLevel.LOW,
-                detections=[],
-                raw_response={"error": str(e)}
-            )
+            # Fail-closed by default (safe=False) to prevent bypass via API unavailability
+            # Set fail_safe=True in constructor to use fail-open behavior (NOT recommended)
+            if self.fail_safe:
+                logger.warning(
+                    "OpenGuardrails API unavailable, returning safe=True (fail_safe=True). "
+                    "This is DANGEROUS as attackers can bypass validation by making API unavailable."
+                )
+                return DetectionResult(
+                    safe=True,
+                    risk_level=RiskLevel.LOW,
+                    detections=[],
+                    raw_response={"error": str(e), "fail_mode": "fail_safe"}
+                )
+            else:
+                logger.warning(
+                    "OpenGuardrails API unavailable, returning safe=False (fail-closed). "
+                    "Set fail_safe=True to allow requests when API is down (not recommended)."
+                )
+                return DetectionResult(
+                    safe=False,
+                    risk_level=RiskLevel.HIGH,
+                    detections=[{"type": "api_error", "description": str(e)}],
+                    raw_response={"error": str(e), "fail_mode": "fail_closed"}
+                )
 
     def validate_prompt(
         self,
@@ -473,6 +501,7 @@ def register_sentinel_scanner(
 def create_combined_validator(
     openguardrails_url: str = "http://localhost:5001",
     openguardrails_key: Optional[str] = None,
+    fail_safe: bool = False,
 ) -> SentinelGuardrailsWrapper:
     """
     Convenience function to create combined Sentinel + OpenGuardrails validator.
@@ -480,6 +509,7 @@ def create_combined_validator(
     Args:
         openguardrails_url: OpenGuardrails detection API URL
         openguardrails_key: API key for OpenGuardrails
+        fail_safe: If True, allow requests when OpenGuardrails API is down (DANGEROUS)
 
     Returns:
         Combined validator wrapper
@@ -487,6 +517,7 @@ def create_combined_validator(
     og_validator = OpenGuardrailsValidator(
         api_url=openguardrails_url,
         api_key=openguardrails_key,
+        fail_safe=fail_safe,
     )
     return SentinelGuardrailsWrapper(openguardrails=og_validator)
 

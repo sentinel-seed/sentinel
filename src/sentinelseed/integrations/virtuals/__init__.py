@@ -676,6 +676,7 @@ class SentinelSafetyWorker:
                 "id": signed.id,
                 "hmac": signed.hmac_signature,
                 "source": signed.source,
+                "timestamp": signed.timestamp,  # Required for verification
                 "signed_at": signed.signed_at,
                 "version": signed.version,
             },
@@ -698,6 +699,12 @@ class SentinelSafetyWorker:
         if not integrity:
             return {"valid": False, "reason": "Entry not signed - missing integrity metadata"}
 
+        # Check required fields
+        required_fields = ["id", "hmac", "source", "timestamp", "signed_at", "version"]
+        missing = [f for f in required_fields if f not in integrity]
+        if missing:
+            return {"valid": False, "reason": f"Missing integrity fields: {', '.join(missing)}"}
+
         # Reconstruct the signed entry
         key = entry_data.get("key")
         value = entry_data.get("value")
@@ -707,7 +714,7 @@ class SentinelSafetyWorker:
             id=integrity["id"],
             content=content,
             source=integrity["source"],
-            timestamp=integrity.get("timestamp", ""),
+            timestamp=integrity["timestamp"],
             metadata={},
             hmac_signature=integrity["hmac"],
             signed_at=integrity["signed_at"],
