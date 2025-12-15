@@ -1,6 +1,8 @@
 # OpenAI Agents SDK Integration
 
-Safety guardrails and agent wrappers for the OpenAI Agents SDK implementing THSP (Truth, Harm, Scope, Purpose) validation.
+Semantic LLM-based guardrails for the OpenAI Agents SDK implementing THSP (Truth, Harm, Scope, Purpose) validation.
+
+**Important:** This integration uses a dedicated LLM agent to perform semantic analysis of content. It is NOT regex-based pattern matching. Each validation call invokes an LLM to understand context and intent.
 
 ## Requirements
 
@@ -10,18 +12,38 @@ pip install sentinelseed openai-agents
 
 **Dependencies:**
 - `openai-agents>=0.6.0` - [Docs](https://openai.github.io/openai-agents-python/)
-- `sentinelseed>=2.4.0`
+- `sentinelseed>=2.5.0`
 
-## Overview
+## How It Works
 
-| Component | Description |
-|-----------|-------------|
-| `create_sentinel_agent` | Create agent with full Sentinel protection |
-| `sentinel_input_guardrail` | Input validation guardrail |
-| `sentinel_output_guardrail` | Output validation guardrail |
-| `inject_sentinel_instructions` | Add seed to instructions |
-| `create_sentinel_guardrails` | Create guardrail pair |
-| `SentinelGuardrailConfig` | Guardrail configuration |
+```
+User Input
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  Input Guardrail (LLM Agent)        │
+│  - Analyzes input semantically      │
+│  - Checks all 4 THSP gates          │
+│  - Returns structured validation    │
+└─────────────────────────────────────┘
+    │ (blocked if unsafe)
+    ▼
+┌─────────────────────────────────────┐
+│  Main Agent                         │
+│  - Has Sentinel seed in instructions│
+│  - Processes the request            │
+└─────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  Output Guardrail (LLM Agent)       │
+│  - Validates response semantically  │
+│  - Ensures safe, purposeful output  │
+└─────────────────────────────────────┘
+    │ (blocked if unsafe)
+    ▼
+User Output
+```
 
 ## Quick Start
 
@@ -45,20 +67,19 @@ print(result.final_output)
 
 ```python
 from agents import Agent
-from sentinelseed.integrations.openai_agents import (
-    sentinel_input_guardrail,
-    sentinel_output_guardrail,
-)
+from sentinelseed.integrations.openai_agents import create_sentinel_guardrails
+
+input_guard, output_guard = create_sentinel_guardrails()
 
 agent = Agent(
     name="My Agent",
     instructions="You are helpful",
-    input_guardrails=[sentinel_input_guardrail()],
-    output_guardrails=[sentinel_output_guardrail()],
+    input_guardrails=[input_guard],
+    output_guardrails=[output_guard],
 )
 ```
 
-### Option 3: Seed Injection Only
+### Option 3: Seed Injection Only (No Runtime Overhead)
 
 ```python
 from agents import Agent
@@ -83,99 +104,85 @@ create_sentinel_agent(
     model: str = None,                  # Model (e.g., "gpt-4o")
     tools: list = None,                 # Function tools
     handoffs: list = None,              # Handoff agents
-    model_settings: ModelSettings = None,
     seed_level: str = "standard",       # minimal, standard, full
     guardrail_config: SentinelGuardrailConfig = None,
     inject_seed: bool = True,           # Prepend seed to instructions
-    add_input_guardrail: bool = True,   # Add input validation
-    add_output_guardrail: bool = True,  # Add output validation
-    input_guardrail_parallel: bool = False,
+    add_input_guardrail: bool = True,   # Add semantic input validation
+    add_output_guardrail: bool = True,  # Add semantic output validation
     **kwargs,
 ) -> Agent
 ```
 
-### sentinel_input_guardrail
-
-Create an input validation guardrail.
-
-```python
-sentinel_input_guardrail(
-    config: SentinelGuardrailConfig = None,
-    sentinel: Sentinel = None,
-    name: str = "sentinel_thsp_input",
-    run_in_parallel: bool = False,      # False recommended for safety
-) -> InputGuardrail
-```
-
-### sentinel_output_guardrail
-
-Create an output validation guardrail.
-
-```python
-sentinel_output_guardrail(
-    config: SentinelGuardrailConfig = None,
-    sentinel: Sentinel = None,
-    name: str = "sentinel_thsp_output",
-) -> OutputGuardrail
-```
-
 ### SentinelGuardrailConfig
 
-Configuration for guardrail behavior.
+Configuration for semantic guardrails.
 
 ```python
 SentinelGuardrailConfig(
-    seed_level: str = "standard",       # minimal, standard, full
-    block_on_violation: bool = True,    # Trigger tripwire on violation
-    log_violations: bool = True,        # Log to console
-    include_reasoning: bool = True,     # Include THSP reasoning
-    gates_to_check: list = ["truth", "harm", "scope", "purpose"],
+    guardrail_model: str = "gpt-4o-mini",  # Model for validation
+    seed_level: str = "standard",           # Seed level
+    block_on_violation: bool = True,        # Trigger tripwire on violation
+    log_violations: bool = True,            # Log to console
+    require_all_gates: bool = True,         # All THSP gates must pass
 )
 ```
 
-## Usage Examples
+### THSPValidationOutput
 
-### With Function Tools
+The guardrail agent returns structured validation results:
 
 ```python
-from agents import function_tool
-from sentinelseed.integrations.openai_agents import create_sentinel_agent
+THSPValidationOutput(
+    is_safe: bool,              # Overall safety assessment
+    truth_passes: bool,         # Truth gate result
+    harm_passes: bool,          # Harm gate result
+    scope_passes: bool,         # Scope gate result
+    purpose_passes: bool,       # Purpose gate result
+    violated_gate: str | None,  # Which gate failed first
+    reasoning: str,             # Explanation of decision
+    risk_level: str,            # low, medium, high, critical
+)
+```
 
-@function_tool
-def get_weather(city: str) -> str:
-    """Get weather for a city."""
-    return f"Weather in {city}: Sunny, 22C"
+## THSP Protocol
 
+The semantic guardrail evaluates content against four gates:
+
+| Gate | Question | Evaluates |
+|------|----------|-----------|
+| **T**ruth | Is this truthful? | Deception, misinformation, fake content |
+| **H**arm | Could this cause harm? | Physical, psychological, financial damage |
+| **S**cope | Is this within bounds? | Authority claims, manipulation attempts |
+| **P**urpose | Does this serve benefit? | Legitimate value, genuine purpose |
+
+**Key Insight:** The Purpose gate is unique to THSP. Many requests that pass harm checks still fail the purpose test. "Drop all the plates" causes no direct harm but serves no purpose.
+
+## Performance Considerations
+
+Semantic validation adds latency because each guardrail invokes an LLM:
+
+| Configuration | API Calls per Request |
+|---------------|----------------------|
+| Full protection | 3 (input + main + output) |
+| Input only | 2 (input + main) |
+| Seed only | 1 (main only) |
+
+For latency-sensitive applications, consider:
+
+1. **Use `gpt-4o-mini`** for guardrails (fast, cheap)
+2. **Seed injection only** for low-risk use cases
+3. **`run_in_parallel=True`** for input guardrail (runs concurrent with agent)
+
+```python
+# Parallel input guardrail (faster but less safe)
 agent = create_sentinel_agent(
-    name="Weather Bot",
-    instructions="Help users with weather information",
-    tools=[get_weather],
+    name="Fast Agent",
+    instructions="...",
+    input_guardrail_parallel=True,  # Runs parallel with main agent
 )
 ```
 
-### Multi-Agent Handoffs
-
-```python
-from sentinelseed.integrations.openai_agents import create_sentinel_agent
-
-# Specialist agents
-code_agent = create_sentinel_agent(
-    name="Code Helper",
-    instructions="Help with coding questions",
-)
-
-math_agent = create_sentinel_agent(
-    name="Math Helper",
-    instructions="Help with math problems",
-)
-
-# Triage agent
-triage = create_sentinel_agent(
-    name="Triage",
-    instructions="Route to appropriate specialist",
-    handoffs=[code_agent, math_agent],
-)
-```
+## Examples
 
 ### Handling Guardrail Tripwires
 
@@ -187,73 +194,59 @@ try:
     result = await Runner.run(agent, user_input)
     print(result.final_output)
 except InputGuardrailTripwireTriggered as e:
-    print(f"Request blocked by Sentinel: {e}")
+    print(f"Request blocked: {e}")
+    # Access validation details
+    # e.guardrail_result.output_info contains THSP results
 ```
 
-### Custom Configuration
+### Custom Guardrail Model
 
 ```python
-from sentinelseed.integrations.openai_agents import (
-    create_sentinel_agent,
-    SentinelGuardrailConfig,
-)
-
 config = SentinelGuardrailConfig(
-    seed_level="full",              # Maximum protection
-    block_on_violation=True,
+    guardrail_model="gpt-4o",  # Use GPT-4o for better understanding
     log_violations=True,
-    gates_to_check=["truth", "harm", "scope", "purpose"],
 )
 
 agent = create_sentinel_agent(
-    name="Secure Agent",
-    instructions="...",
+    name="Premium Agent",
     guardrail_config=config,
 )
 ```
 
-### Synchronous Execution
+### Multi-Agent with Handoffs
 
 ```python
-from agents import Runner
-from sentinelseed.integrations.openai_agents import create_sentinel_agent
+code_agent = create_sentinel_agent(
+    name="Code Helper",
+    instructions="You help with coding",
+)
 
-agent = create_sentinel_agent(name="Agent", instructions="...")
+math_agent = create_sentinel_agent(
+    name="Math Helper",
+    instructions="You help with math",
+)
 
-# Sync version
-result = Runner.run_sync(agent, "Your question")
-print(result.final_output)
+triage = create_sentinel_agent(
+    name="Triage",
+    instructions="Route to appropriate specialist",
+    handoffs=[code_agent, math_agent],
+)
 ```
 
-## THSP Protocol
+## Comparison: Regex vs Semantic Validation
 
-The guardrails validate against four gates:
-
-| Gate | Question | Blocks |
-|------|----------|--------|
-| **T**ruth | Is this truthful? | Misinformation, deception |
-| **H**arm | Could this cause harm? | Dangerous content |
-| **S**cope | Is this within bounds? | Unauthorized actions |
-| **P**urpose | Does this serve benefit? | Purposeless actions |
-
-All gates must pass. If any gate fails, the guardrail triggers.
-
-## Comparison: Assistants API vs Agents SDK
-
-| Feature | Assistants API | Agents SDK |
-|---------|---------------|------------|
-| Integration | `openai_assistant` | `openai_agents` |
-| Type | REST API wrapper | Native guardrails |
-| Handoffs | Manual | Built-in |
-| Tracing | No | Yes |
-| Multi-agent | Limited | Native |
-
-Use `openai_agents` for new projects using the Agents SDK.
-Use `openai_assistant` for projects using the Assistants API.
+| Aspect | Regex (Old) | Semantic (Current) |
+|--------|-------------|-------------------|
+| Method | Pattern matching | LLM analysis |
+| Context awareness | None | Full |
+| False positives | High | Low |
+| False negatives | High | Low |
+| Latency | ~0ms | ~500ms |
+| Cost | Free | API call |
+| Accuracy | Poor | Excellent |
 
 ## Links
 
 - **OpenAI Agents SDK:** https://openai.github.io/openai-agents-python/
-- **GitHub:** https://github.com/openai/openai-agents-python
 - **Guardrails Docs:** https://openai.github.io/openai-agents-python/guardrails/
 - **Sentinel:** https://sentinelseed.dev
