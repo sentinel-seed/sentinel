@@ -413,7 +413,7 @@ if not result.compliant:
 
 ## Framework Integrations
 
-Sentinel provides native integrations for 15 frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 21+ frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -660,6 +660,72 @@ wrapper = SentinelGuardrailsWrapper()
 result = wrapper.validate("Content", scanners=["S100", "G001"])
 ```
 
+### ROS2 Robotics
+
+```python
+from sentinelseed.integrations.ros2 import (
+    SentinelSafetyNode,
+    CommandSafetyFilter,
+    VelocityLimits,
+)
+
+# Create safety node for velocity commands
+node = SentinelSafetyNode(
+    input_topic='/cmd_vel_raw',
+    output_topic='/cmd_vel',
+    max_linear_vel=1.0,
+    max_angular_vel=0.5,
+    mode='clamp',  # clamp, block, or warn
+)
+
+# Or use standalone filter
+filter = CommandSafetyFilter(
+    velocity_limits=VelocityLimits.differential_drive(),
+    mode='clamp',
+)
+safe_twist, result = filter.filter(twist_msg)
+```
+
+### Isaac Lab (NVIDIA Robot Learning)
+
+```python
+from sentinelseed.integrations.isaac_lab import (
+    SentinelSafetyWrapper,
+    RobotConstraints,
+    JointLimits,
+)
+
+# Wrap Isaac Lab environment with safety validation
+env = gym.make("Isaac-Reach-Franka-v0", cfg=cfg)
+env = SentinelSafetyWrapper(
+    env,
+    constraints=RobotConstraints.franka_default(),
+    mode="clamp",  # clamp, block, warn, or monitor
+)
+
+# Actions are now validated through THSP gates
+obs, reward, done, truncated, info = env.step(action)
+
+# Pre-built robot constraints
+constraints = RobotConstraints.franka_default()  # Franka Panda
+constraints = RobotConstraints.ur10_default()    # UR10
+
+# Custom constraints
+constraints = RobotConstraints(
+    joint_limits=JointLimits(
+        num_joints=7,
+        position_lower=[-3.14] * 7,
+        position_upper=[3.14] * 7,
+        velocity_max=[2.0] * 7,
+    ),
+)
+
+# Training callbacks
+from sentinelseed.integrations.isaac_lab import SentinelSB3Callback
+callback = SentinelSB3Callback(env, log_interval=1000)
+model.learn(callback=callback.get_sb3_callback())
+```
+
 ---
 
 ## REST API
@@ -690,7 +756,7 @@ sentinel/
 │   ├── validators/           # THSP gates
 │   ├── providers/            # OpenAI, Anthropic
 │   ├── memory/               # Memory integrity checking
-│   └── integrations/         # 15 frameworks (LangChain, CrewAI, Garak, etc.)
+│   └── integrations/         # 21+ frameworks (LangChain, CrewAI, ROS2, Isaac Lab, etc.)
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
@@ -786,7 +852,7 @@ Add this badge to your project's README to show it uses Sentinel for AI safety:
 We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 Areas we need help:
-- **Robotics integration** — ROS2, Isaac Sim, PyBullet
+- **Robotics expansion** — PyBullet, MuJoCo, Gazebo (ROS2 & Isaac Lab done ✓)
 - **New benchmarks** — Testing on additional safety datasets
 - **Multi-agent safety** — Coordination between multiple agents
 - **Documentation** — Tutorials and examples
