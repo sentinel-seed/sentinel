@@ -26,6 +26,7 @@ Available integrations:
     from sentinelseed.integrations.pyrit import SentinelTHSPScorer  # PyRIT scorers
     from sentinelseed.integrations.dspy import SentinelGuard, SentinelPredict  # DSPy modules
     from sentinelseed.integrations.ros2 import SentinelSafetyNode  # ROS2 safety node
+    from sentinelseed.integrations.isaac_lab import SentinelSafetyWrapper  # Isaac Lab safety wrapper
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -50,6 +51,14 @@ ROS2 Robotics:
         CommandSafetyFilter,
         VelocityLimits,
     )
+
+Isaac Lab (NVIDIA Robot Learning):
+    from sentinelseed.integrations.isaac_lab import (
+        SentinelSafetyWrapper,
+        RobotConstraints,
+        JointLimits,
+        THSPRobotValidator,
+    )
 """
 
 __all__ = [
@@ -60,6 +69,7 @@ __all__ = [
     'crewai',
     'dspy',
     'garak',
+    'isaac_lab',
     'langchain',
     'langgraph',
     'llamaindex',
