@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.7.0"
-description = "AI safety toolkit with THSP protocol, memory integrity, and fiduciary AI - Practical alignment for developers"
+version = "2.9.0"
+description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -41,6 +41,17 @@ keywords = [
     "ros2",
     "robotics",
     "robot-safety",
+    "humanoid",
+    "humanoid-robot",
+    "isaac-lab",
+    "isaac-sim",
+    "nvidia",
+    "iso-15066",
+    "collaborative-robot",
+    "cobot",
+    "tesla-optimus",
+    "boston-dynamics",
+    "figure-ai",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
