@@ -24,6 +24,7 @@ Available integrations:
     from sentinelseed.integrations.garak import TruthGate, HarmGate  # Garak probes
     from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
     from sentinelseed.integrations.pyrit import SentinelTHSPScorer  # PyRIT scorers
+    from sentinelseed.integrations.dspy import SentinelGuard, SentinelPredict  # DSPy modules
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -49,6 +50,7 @@ __all__ = [
     'autogpt',
     'autogpt_block',
     'crewai',
+    'dspy',
     'garak',
     'langchain',
     'langgraph',

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.5.0"
+version = "2.5.1"
 description = "AI safety toolkit with THSP protocol, memory integrity, and fiduciary AI - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -30,6 +30,7 @@ keywords = [
     "solana",
     "autogpt",
     "garak",
+    "pyrit",
     "red-teaming",
     "security-testing",
     "fiduciary",
@@ -62,6 +63,7 @@ llamaindex = ["llama-index-core>=0.10.0"]
 mcp = ["mcp>=0.1.0"]
 virtuals = ["game-sdk>=0.1.1"]
 garak = ["garak>=0.9.0"]
+pyrit = ["pyrit>=0.5.0"]
 all = [
     "openai>=1.0.0",
     "openai-agents>=0.6.0",
