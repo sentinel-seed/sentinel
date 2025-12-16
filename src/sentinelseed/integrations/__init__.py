@@ -15,7 +15,7 @@ Available integrations:
     from sentinelseed.integrations.llamaindex import SentinelCallbackHandler
     from sentinelseed.integrations.mcp_server import create_sentinel_mcp_server
     from sentinelseed.integrations.openai_assistant import SentinelAssistant
-    from sentinelseed.integrations.openai_agents import create_sentinel_agent  # NEW
+    from sentinelseed.integrations.openai_agents import create_sentinel_agent
     from sentinelseed.integrations.raw_api import prepare_openai_request
     from sentinelseed.integrations.agent_validation import SafetyValidator
     from sentinelseed.integrations.solana_agent_kit import SentinelValidator
@@ -25,6 +25,7 @@ Available integrations:
     from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
     from sentinelseed.integrations.pyrit import SentinelTHSPScorer  # PyRIT scorers
     from sentinelseed.integrations.dspy import SentinelGuard, SentinelPredict  # DSPy modules
+    from sentinelseed.integrations.ros2 import SentinelSafetyNode  # ROS2 safety node
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -41,6 +42,13 @@ OpenAI Agents SDK:
         create_sentinel_agent,
         sentinel_input_guardrail,
         sentinel_output_guardrail,
+    )
+
+ROS2 Robotics:
+    from sentinelseed.integrations.ros2 import (
+        SentinelSafetyNode,
+        CommandSafetyFilter,
+        VelocityLimits,
     )
 """
 
@@ -61,6 +69,7 @@ __all__ = [
     'openguardrails',
     'pyrit',
     'raw_api',
+    'ros2',
     'solana_agent_kit',
     'virtuals',
 ]

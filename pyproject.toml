@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.6.0"
+version = "2.7.0"
 description = "AI safety toolkit with THSP protocol, memory integrity, and fiduciary AI - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -38,6 +38,9 @@ keywords = [
     "fiduciary",
     "openguardrails",
     "memory-integrity",
+    "ros2",
+    "robotics",
+    "robot-safety",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
