@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.5.1"
+version = "2.6.0"
 description = "AI safety toolkit with THSP protocol, memory integrity, and fiduciary AI - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -31,6 +31,8 @@ keywords = [
     "autogpt",
     "garak",
     "pyrit",
+    "dspy",
+    "stanford",
     "red-teaming",
     "security-testing",
     "fiduciary",
@@ -64,6 +66,7 @@ mcp = ["mcp>=0.1.0"]
 virtuals = ["game-sdk>=0.1.1"]
 garak = ["garak>=0.9.0"]
 pyrit = ["pyrit>=0.5.0"]
+dspy = ["dspy>=3.0.0"]
 all = [
     "openai>=1.0.0",
     "openai-agents>=0.6.0",

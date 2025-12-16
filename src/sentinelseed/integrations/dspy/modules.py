@@ -137,7 +137,7 @@ class SentinelGuard(Module):
     async def aforward(self, **kwargs) -> Prediction:
         """Async version of forward."""
         # Execute wrapped module (try async first)
-        if hasattr(self.module, 'aforward'):
+        if hasattr(self.module, 'acall'):
             result = await self.module.acall(**kwargs)
         else:
             result = self.module(**kwargs)
@@ -156,12 +156,15 @@ class SentinelGuard(Module):
         if self.output_field and hasattr(result, self.output_field):
             return str(getattr(result, self.output_field))
 
-        # Try to find first string output
-        for key in result._store.keys():
-            if key not in ['_input_keys', '_demos']:
+        # Try to find first string output using public API
+        # Prediction.keys() returns output field names
+        try:
+            for key in result.keys():
                 value = getattr(result, key, None)
                 if value and isinstance(value, str):
                     return value
+        except (AttributeError, TypeError):
+            pass
 
         # Fallback: convert entire result to string
         return str(result)
@@ -226,9 +229,11 @@ class SentinelGuard(Module):
             blocked.safety_issues = validation["issues"]
 
             # Copy output fields with blocked message
-            for key in result._store.keys():
-                if key not in ['_input_keys', '_demos']:
+            try:
+                for key in result.keys():
                     setattr(blocked, key, "[BLOCKED BY SENTINEL: Content failed THSP safety validation]")
+            except (AttributeError, TypeError):
+                pass
 
             return blocked
 

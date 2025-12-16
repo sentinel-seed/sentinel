@@ -246,15 +246,7 @@ def create_gate_check_tool(
         is_semantic = True
 
     def check_gate(content: str) -> str:
-        f"""
-        Check if content passes the {gate} gate.
-
-        Args:
-            content: Content to check
-
-        Returns:
-            PASS or FAIL with explanation
-        """
+        """Check if content passes the specified THSP gate."""
         if is_semantic:
             result: THSPResult = validator.validate(content)
             gate_result = result.gate_results.get(gate, True)
