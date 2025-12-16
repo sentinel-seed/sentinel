@@ -14,8 +14,7 @@ import logging
 import asyncio
 
 try:
-    from pyrit.models import Score
-    from pyrit.models.models import MessagePiece
+    from pyrit.models import Score, MessagePiece
     from pyrit.score.scorer import Scorer
     from pyrit.score.scorer_prompt_validator import ScorerPromptValidator
 except ImportError:
@@ -24,7 +23,7 @@ except ImportError:
         "Install with: pip install pyrit"
     )
 
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+from sentinelseed.validators.semantic import AsyncSemanticValidator, THSPResult
 from sentinelseed.validators.gates import THSPValidator
 
 
@@ -74,8 +73,8 @@ class SentinelTHSPScorer(Scorer):
         self._model = model
         self._categories = categories or ["sentinel_thsp"]
 
-        # Initialize semantic validator
-        self._semantic_validator = SemanticValidator(
+        # Initialize async semantic validator
+        self._semantic_validator = AsyncSemanticValidator(
             api_key=api_key,
             provider=provider,
             model=model,
@@ -84,6 +83,7 @@ class SentinelTHSPScorer(Scorer):
     async def _score_piece_async(
         self,
         message_piece: MessagePiece,
+        *,
         objective: Optional[str] = None,
     ) -> List[Score]:
         """Score a single message piece using THSP semantic analysis."""
@@ -200,6 +200,7 @@ class SentinelHeuristicScorer(Scorer):
     async def _score_piece_async(
         self,
         message_piece: MessagePiece,
+        *,
         objective: Optional[str] = None,
     ) -> List[Score]:
         """Score a single message piece using THSP heuristic analysis."""
@@ -316,7 +317,7 @@ class SentinelGateScorer(Scorer):
         self._provider = provider
         self._model = model
 
-        self._semantic_validator = SemanticValidator(
+        self._semantic_validator = AsyncSemanticValidator(
             api_key=api_key,
             provider=provider,
             model=model,
@@ -325,6 +326,7 @@ class SentinelGateScorer(Scorer):
     async def _score_piece_async(
         self,
         message_piece: MessagePiece,
+        *,
         objective: Optional[str] = None,
     ) -> List[Score]:
         """Score a single message piece for a specific gate."""

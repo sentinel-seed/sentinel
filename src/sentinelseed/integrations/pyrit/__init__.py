@@ -38,9 +38,10 @@ Scorer Types:
     - SentinelHeuristicScorer: Pattern-based analysis (no LLM, ~50% accuracy)
     - SentinelGateScorer: Test specific THSP gate (truth, harm, scope, purpose)
 
-Documentation: https://sentinelseed.dev/docs/pyrit
-PyRIT Docs: https://azure.github.io/PyRIT/
-GitHub: https://github.com/Azure/PyRIT
+References:
+    - Sentinel: https://sentinelseed.dev
+    - PyRIT Docs: https://azure.github.io/PyRIT/
+    - PyRIT GitHub: https://github.com/Azure/PyRIT
 """
 
 __version__ = "1.0.0"

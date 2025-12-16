@@ -210,6 +210,58 @@ class ScopeGate(BaseGate):
         return len(violations) == 0, violations
 
 
+class PurposeGate(BaseGate):
+    """
+    Gate 4: Purpose validation.
+
+    Checks for content that lacks legitimate purpose or
+    serves only destructive/malicious ends.
+    """
+
+    # Patterns indicating lack of purpose or malicious intent
+    PURPOSE_PATTERNS = [
+        # Gratuitous destruction
+        r"just\s+to\s+(see|watch)\s+(it\s+)?(burn|fail|crash|die)",
+        r"for\s+(the\s+)?(fun|lulz|kicks)\s+of\s+it",
+        r"because\s+i\s+can",
+        r"no\s+reason,?\s+just",
+        # Explicitly harmful intent
+        r"to\s+(hurt|harm|damage|destroy)\s+(someone|people|them)",
+        r"make\s+(them|someone|people)\s+suffer",
+        r"ruin\s+(their|someone'?s)\s+(life|career|reputation)",
+    ]
+
+    # Indicators of purposeless or malicious requests
+    PURPOSE_INDICATORS = [
+        "just want to cause chaos",
+        "for no particular reason",
+        "just to mess with",
+        "want to see them fail",
+        "purely for destruction",
+        "to make their life miserable",
+    ]
+
+    def __init__(self):
+        self.patterns = [re.compile(p, re.IGNORECASE) for p in self.PURPOSE_PATTERNS]
+
+    def check(self, text: str) -> Tuple[bool, List[str]]:
+        """Check for purpose violations."""
+        violations = []
+        text_lower = text.lower()
+
+        # Check regex patterns
+        for pattern in self.patterns:
+            if pattern.search(text):
+                violations.append(f"Purpose violation: {pattern.pattern}")
+
+        # Check indicators
+        for indicator in self.PURPOSE_INDICATORS:
+            if indicator in text_lower:
+                violations.append(f"Purposeless/malicious indicator: {indicator}")
+
+        return len(violations) == 0, violations
+
+
 class THSValidator:
     """
     Combined THS (Truth-Harm-Scope) validator.
@@ -280,4 +332,67 @@ class THSValidator:
                 }
             },
             "total_violations": len(truth_violations) + len(harm_violations) + len(scope_violations)
+        }
+
+
+class THSPValidator:
+    """
+    Combined THSP (Truth-Harm-Scope-Purpose) validator.
+
+    Runs all four gates and aggregates results.
+    This is the full protocol implementation.
+    """
+
+    def __init__(self):
+        self.truth_gate = TruthGate()
+        self.harm_gate = HarmGate()
+        self.scope_gate = ScopeGate()
+        self.purpose_gate = PurposeGate()
+
+    def validate(self, text: str) -> Dict[str, Any]:
+        """
+        Validate text through all THSP gates.
+
+        Args:
+            text: Text to validate
+
+        Returns:
+            Dict with validation results including:
+            - safe: bool
+            - gates: dict with pass/fail status for each gate
+            - issues: list of violation messages
+        """
+        issues = []
+
+        # Gate 1: Truth
+        truth_pass, truth_violations = self.truth_gate.check(text)
+        if not truth_pass:
+            issues.extend(truth_violations)
+
+        # Gate 2: Harm
+        harm_pass, harm_violations = self.harm_gate.check(text)
+        if not harm_pass:
+            issues.extend(harm_violations)
+
+        # Gate 3: Scope
+        scope_pass, scope_violations = self.scope_gate.check(text)
+        if not scope_pass:
+            issues.extend(scope_violations)
+
+        # Gate 4: Purpose
+        purpose_pass, purpose_violations = self.purpose_gate.check(text)
+        if not purpose_pass:
+            issues.extend(purpose_violations)
+
+        is_safe = truth_pass and harm_pass and scope_pass and purpose_pass
+
+        return {
+            "safe": is_safe,
+            "gates": {
+                "truth": "pass" if truth_pass else "fail",
+                "harm": "pass" if harm_pass else "fail",
+                "scope": "pass" if scope_pass else "fail",
+                "purpose": "pass" if purpose_pass else "fail",
+            },
+            "issues": issues,
         }
