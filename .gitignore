@@ -120,6 +120,15 @@ temp/
 *.tmp
 *.temp
 
+# LaTeX auxiliary files
+*.aux
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+
 # Data Files (if large)
 # Uncomment if you don't want to track data
 # data/
