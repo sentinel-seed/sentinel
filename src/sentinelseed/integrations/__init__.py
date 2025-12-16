@@ -23,6 +23,7 @@ Available integrations:
     from sentinelseed.integrations.autogpt_block import SentinelValidationBlock
     from sentinelseed.integrations.garak import TruthGate, HarmGate  # Garak probes
     from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
+    from sentinelseed.integrations.pyrit import SentinelTHSPScorer  # PyRIT scorers
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -56,6 +57,7 @@ __all__ = [
     'openai_agents',
     'openai_assistant',
     'openguardrails',
+    'pyrit',
     'raw_api',
     'solana_agent_kit',
     'virtuals',
