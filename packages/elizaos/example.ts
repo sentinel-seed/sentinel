@@ -13,14 +13,16 @@
  * ```
  */
 
-// Import from the plugin (in real usage, import from '@sentinelseed/elizaos-plugin')
+// Import from the plugin package
+// When developing locally, this resolves to ./src/index.ts
+// When installed as a package, this resolves to @sentinelseed/elizaos-plugin
 import {
   sentinelPlugin,
   validateContent,
   quickCheck,
   getValidationStats,
   type SafetyCheckResult,
-} from '../integrations/elizaos/src';
+} from './src';
 
 // Example 1: Basic Plugin Configuration
 console.log('=== Example 1: Plugin Configuration ===\n');

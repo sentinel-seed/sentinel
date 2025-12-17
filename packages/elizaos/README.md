@@ -57,10 +57,19 @@ interface SentinelPluginConfig {
   seedVariant?: 'minimal' | 'standard' | 'full';
 
   // Block unsafe actions or just log. Default: true
+  // When false: unsafe content is logged but processing continues (shouldProceed = true)
+  // When true: unsafe content blocks processing (shouldProceed = false)
   blockUnsafe?: boolean;
 
-  // Log all safety checks. Default: false
+  // Log all safety checks to logger. Default: false
   logChecks?: boolean;
+
+  // Custom logger instance (Winston, Pino, etc.). Default: console
+  logger?: {
+    log(message: string): void;
+    warn(message: string): void;
+    error(message: string): void;
+  };
 
   // Custom patterns to detect
   customPatterns?: Array<{
@@ -82,6 +91,12 @@ interface SentinelPluginConfig {
   };
 }
 ```
+
+### Important Notes
+
+- **History limit**: Validation and memory verification histories are limited to **1000 entries** each to prevent memory leaks. Older entries are automatically removed.
+- **blockUnsafe behavior**: When `blockUnsafe: false`, unsafe content still triggers validation and logging, but the action proceeds (`shouldProceed: true`). This is useful for monitoring without blocking.
+- **Multi-instance**: Each `sentinelPlugin()` call creates an isolated instance. The exported utility functions (`getValidationHistory`, etc.) operate on the most recently created instance.
 
 ## THSP Protocol
 
@@ -156,8 +171,9 @@ if (!result.valid) {
 | `user_verified` | 1.0 | Cryptographically verified user input |
 | `user_direct` | 0.9 | Direct user input |
 | `blockchain` | 0.85 | On-chain verified data |
-| `agent_internal` | 0.7 | Agent's own computations |
-| `external_api` | 0.5 | Third-party API data |
+| `agent_internal` | 0.8 | Agent's own computations |
+| `external_api` | 0.7 | Third-party API data |
+| `social_media` | 0.5 | Social media sources |
 | `unknown` | 0.3 | Unverified source |
 
 ## Usage Examples

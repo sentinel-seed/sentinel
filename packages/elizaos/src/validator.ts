@@ -40,10 +40,10 @@ const HARM_PATTERNS: PatternDefinition[] = [
 ];
 
 const SCOPE_PATTERNS: PatternDefinition[] = [
-  { pattern: /ignore\s+(previous|all|your)\s+instructions/i, concern: 'Instruction override attempt' },
+  { pattern: /ignore\s+(all\s+)?(previous|your)\s+instructions/i, concern: 'Instruction override attempt' },
   { pattern: /you\s+are\s+now\s+/i, concern: 'Persona switch attempt' },
   { pattern: /jailbreak|dan\s+mode/i, concern: 'Jailbreak attempt' },
-  { pattern: /bypass\s+(safety|filter|restriction)/i, concern: 'Safety bypass attempt' },
+  { pattern: /bypass\s+(the\s+)?(safety|filter|restriction)/i, concern: 'Safety bypass attempt' },
   { pattern: /pretend\s+(you|there)\s+(are|is)\s+no\s+(rules|restrictions)/i, concern: 'Rule bypass' },
   { pattern: /act\s+as\s+(if|though)\s+you\s+(have|had)\s+no/i, concern: 'Constraint removal attempt' },
   { pattern: /forget\s+(your|all)\s+(rules|instructions|training)/i, concern: 'Memory wipe attempt' },
@@ -200,18 +200,32 @@ function generateRecommendation(
 /**
  * Quick safety check for common dangerous patterns
  * Returns true if content appears safe (no critical patterns found)
+ *
+ * This is a fast-path check for obvious dangerous content.
+ * Content that passes quickCheck still goes through full THSP validation.
  */
 export function quickCheck(content: string): boolean {
-  // Fast path for very short content
-  if (content.length < 10) return true;
+  // Fast path for very short content (but not too short to contain threats)
+  if (content.length < 5) return true;
 
   // Check for critical patterns only (performance optimization)
+  // These patterns catch the most severe and obvious safety violations
   const criticalPatterns = [
-    /ignore\s+(previous|all|your)\s+instructions/i,
-    /\b(kill|murder|bomb|weapon)\b/i,
-    /hack(ing)?\s+(into|password)/i,
-    /malware|ransomware/i,
+    // Instruction override attempts
+    /ignore\s+(all\s+)?(previous|your)\s+instructions/i,
     /jailbreak|dan\s+mode/i,
+    /bypass\s+(the\s+)?(safety|filter|restriction)/i,
+
+    // Violence and weapons
+    /\b(kill|murder|assassinate|shoot|stab|strangle)\b/i,
+    /\b(bomb|explosive|weapon|firearm|grenade)\b/i,
+
+    // Cybersecurity threats
+    /hack(ing|er)?\s+(into\s+)?(the\s+)?(password|account|system)/i,
+    /\b(malware|ransomware|trojan|keylogger|rootkit)\b/i,
+
+    // Self-harm indicators
+    /\b(suicide|self[- ]?harm)\b/i,
   ];
 
   return !criticalPatterns.some((p) => p.test(content));
