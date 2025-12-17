@@ -184,6 +184,11 @@ class EUAIActComplianceChecker:
             "keywords": ["infer race", "deduce religion", "categorize sexuality", "biometric inference"],
             "article": "5(1)(g)",
             "description": "Biometric categorization of protected characteristics"
+        },
+        "realtime_biometric": {
+            "keywords": ["real-time identification", "live facial recognition", "realtime biometric", "public space surveillance", "live biometric scan"],
+            "article": "5(1)(h)",
+            "description": "Real-time remote biometric identification in public spaces"
         }
     }
 
@@ -315,13 +320,16 @@ class EUAIActComplianceChecker:
             result = self._validator.validate(content)
 
             if hasattr(result, "is_safe"):
-                # SemanticValidator
+                # SemanticValidator - returns booleans directly
                 return result.gate_results, result.is_safe, result.failed_gates
             else:
-                # THSPValidator (dict)
-                gates = result.get("gates", {})
+                # THSPValidator (dict) - returns strings "pass"/"fail"
+                gates_raw = result.get("gates", {})
+                # Convert "pass"/"fail" strings to booleans
+                gates = {k: (v == "pass") for k, v in gates_raw.items()}
                 is_safe = result.get("safe", True)
-                failed = result.get("issues", [])
+                # Extract gate names that failed (issues contains messages)
+                failed = [k for k, v in gates.items() if not v]
                 return gates, is_safe, failed
 
         except Exception as e:
@@ -363,12 +371,14 @@ class EUAIActComplianceChecker:
                 ))
 
         if not gates.get("purpose", True) and "purpose" in failed_gates:
+            # Note: Article 5(1)(c) is about social scoring, not purpose
+            # Purpose gate failures relate to Article 9 (Risk Management)
             violations.append(Article5Violation(
-                article_reference="Article 5(1)(c)",
-                description="No legitimate purpose identified",
+                article_reference="Article 9",
+                description="No legitimate purpose identified - risk management review required",
                 severity="medium",
                 gate_failed="purpose",
-                recommendation="Document clear legitimate purpose for this operation"
+                recommendation="Document legitimate purpose per Article 9 risk management requirements"
             ))
 
         return violations
