@@ -44,8 +44,10 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Alignment Seeds** — System prompts that shape LLM behavior
 - **Memory Integrity** — HMAC-based protection against memory injection attacks
 - **Fiduciary AI** — Ensures AI acts in user's best interest (duty of loyalty and care)
+- **EU AI Act Compliance** — Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
+- **Humanoid Safety** — ISO/TS 15066 contact force limits for robotics
 - **Python SDK** — Easy integration with any LLM
-- **Framework Support** — LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, ElizaOS, OpenGuardrails
+- **Framework Support** — LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, OpenGuardrails, PyRIT
 - **REST API** — Deploy alignment as a service
 
 ---
@@ -413,7 +415,7 @@ if not result.compliant:
 
 ## Framework Integrations
 
-Sentinel provides native integrations for 21+ frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 22+ frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -421,8 +423,11 @@ pip install sentinelseed[crewai]      # CrewAI
 pip install sentinelseed[virtuals]    # Virtuals Protocol (GAME SDK)
 pip install sentinelseed[llamaindex]  # LlamaIndex
 pip install sentinelseed[anthropic]   # Anthropic SDK
-pip install sentinelseed[openai]      # OpenAI Assistants
+pip install sentinelseed[openai]      # OpenAI Assistants + Agents SDK
 pip install sentinelseed[garak]       # Garak (NVIDIA) security scanner
+pip install sentinelseed[pyrit]       # Microsoft PyRIT red teaming
+pip install sentinelseed[dspy]        # Stanford DSPy framework
+pip install sentinelseed[letta]       # Letta (MemGPT) agents
 pip install sentinelseed[all]         # All integrations
 ```
 
@@ -726,6 +731,196 @@ callback = SentinelSB3Callback(env, log_interval=1000)
 model.learn(callback=callback.get_sb3_callback())
 ```
 
+### Humanoid Safety (ISO/TS 15066)
+
+```python
+from sentinelseed.safety.humanoid import (
+    HumanoidSafetyValidator,
+    HumanoidAction,
+    tesla_optimus,
+    boston_dynamics_atlas,
+    figure_02,
+    BodyRegion,
+)
+
+# Load robot-specific constraints
+constraints = tesla_optimus(environment="personal_care")
+
+# Create validator with ISO/TS 15066 contact limits
+validator = HumanoidSafetyValidator(constraints)
+
+# Validate actions through THSP gates
+action = HumanoidAction(
+    joints={"shoulder_pitch": 0.5},
+    velocities={"shoulder_pitch": 0.3},
+    expected_contact_force=25.0,  # Newtons
+    contact_region=BodyRegion.CHEST,
+)
+result = validator.validate(action)
+
+if not result.is_safe:
+    print(f"Safety level: {result.safety_level}")
+    print(f"Violations: {result.violations}")
+```
+
+Pre-built presets for Tesla Optimus, Boston Dynamics Atlas, and Figure 02 with 29 body regions mapped to ISO/TS 15066 force limits.
+
+### ElizaOS
+
+```typescript
+// npm install @sentinelseed/elizaos-plugin
+import { sentinelPlugin } from '@sentinelseed/elizaos-plugin';
+
+const agent = new Agent({
+  plugins: [
+    sentinelPlugin({
+      blockUnsafe: true,
+      seedVariant: 'standard',
+      memoryIntegrity: true,  // Enable HMAC signing
+    })
+  ]
+});
+```
+
+### OpenAI Agents SDK
+
+```python
+from sentinelseed.integrations.openai_agents import (
+    create_sentinel_agent,
+    sentinel_input_guardrail,
+    sentinel_output_guardrail,
+)
+
+# Create agent with built-in THSP guardrails
+agent = create_sentinel_agent(
+    name="SafeAssistant",
+    instructions="You are a helpful assistant.",
+    model="gpt-4o",
+    seed_level="standard",
+)
+
+# Or add guardrails to existing agent
+from agents import Agent, InputGuardrail, OutputGuardrail
+
+agent = Agent(
+    name="MyAgent",
+    input_guardrails=[sentinel_input_guardrail()],
+    output_guardrails=[sentinel_output_guardrail()],
+)
+```
+
+### Microsoft PyRIT (Red Teaming)
+
+```python
+from sentinelseed.integrations.pyrit import (
+    SentinelTHSPScorer,
+    SentinelHeuristicScorer,
+    SentinelGateScorer,
+)
+
+# Use as PyRIT scorer during red teaming
+scorer = SentinelTHSPScorer(api_key="...")  # ~90% accuracy with LLM
+# Or without API key:
+scorer = SentinelHeuristicScorer()  # ~50% accuracy, pattern-based
+
+# Test specific gates
+gate_scorer = SentinelGateScorer(gate="harm")
+
+# In PyRIT orchestrator
+from pyrit.orchestrator import PromptSendingOrchestrator
+orchestrator = PromptSendingOrchestrator(
+    objective_target=target,
+    scorers=[scorer],
+)
+```
+
+### Stanford DSPy
+
+```python
+from sentinelseed.integrations.dspy import (
+    SentinelGuard,
+    SentinelPredict,
+    SentinelChainOfThought,
+    create_sentinel_tool,
+)
+
+# Wrap any DSPy module with safety validation
+class MyModule(dspy.Module):
+    def forward(self, question):
+        return self.generate(question=question)
+
+safe_module = SentinelGuard(MyModule(), block_unsafe=True)
+result = safe_module("How do I hack a computer?")
+# Result blocked by THSP validation
+
+# Or use built-in safe predictors
+predictor = SentinelChainOfThought("question -> answer")
+result = predictor(question="Explain quantum computing")
+
+# Create tools for ReAct agents
+safety_tool = create_sentinel_tool()
+```
+
+### Letta (MemGPT)
+
+```python
+from sentinelseed.integrations.letta import SentinelLettaClient
+
+# Wrap Letta client with THSP validation
+client = SentinelLettaClient(
+    base_url="http://localhost:8283",
+    seed_level="standard",
+    validate_memory=True,  # Memory integrity checking
+)
+
+# Create agent with safety seed injected
+agent = client.create_agent(
+    name="SafeAgent",
+    memory_blocks=[...],
+)
+
+# Messages are validated through THSP gates
+response = client.send_message(agent.id, "Hello!")
+```
+
+### EU AI Act Compliance
+
+```python
+from sentinelseed.compliance import (
+    EUAIActComplianceChecker,
+    SystemType,
+    check_eu_ai_act_compliance,
+)
+
+# Create checker (heuristic mode without API key)
+checker = EUAIActComplianceChecker()
+
+# Check for Article 5 prohibited practices
+result = checker.check_compliance(
+    content="Based on your social behavior score of 650...",
+    context="financial",
+    system_type=SystemType.HIGH_RISK
+)
+
+if not result.compliant:
+    for v in result.article_5_violations:
+        print(f"{v.article_reference}: {v.description}")
+        print(f"Recommendation: {v.recommendation}")
+
+# Check human oversight requirements (Article 14)
+print(f"Oversight required: {result.article_14_oversight_required}")
+print(f"Risk level: {result.risk_level.value}")
+
+# Convenience function
+result = check_eu_ai_act_compliance(
+    content="...",
+    context="healthcare",
+    system_type="high_risk"
+)
+```
+
+Detects 8 prohibited practices under Article 5: subliminal manipulation, exploitation of vulnerabilities, social scoring, predictive policing, facial scraping, emotion recognition (workplace/education), biometric categorization, and real-time biometric identification.
+
 ---
 
 ## REST API
@@ -753,10 +948,24 @@ POST /chat              - Chat with seed injection
 sentinel/
 ├── src/sentinelseed/          # Python SDK
 │   ├── core.py               # Main Sentinel class
-│   ├── validators/           # THSP gates
+│   ├── validators/           # THSP gates + semantic validation
 │   ├── providers/            # OpenAI, Anthropic
 │   ├── memory/               # Memory integrity checking
-│   └── integrations/         # 21+ frameworks (LangChain, CrewAI, ROS2, Isaac Lab, etc.)
+│   ├── fiduciary/            # Fiduciary AI module
+│   ├── compliance/           # EU AI Act compliance checker
+│   ├── safety/               # Safety modules
+│   │   └── humanoid/         # ISO/TS 15066 humanoid safety
+│   └── integrations/         # 22+ frameworks
+│       ├── langchain.py      # LangChain + LangGraph
+│       ├── crewai.py         # CrewAI
+│       ├── dspy/             # Stanford DSPy
+│       ├── letta/            # Letta (MemGPT)
+│       ├── openai_agents.py  # OpenAI Agents SDK
+│       ├── pyrit/            # Microsoft PyRIT
+│       ├── ros2/             # ROS2 Robotics
+│       ├── isaac_lab/        # NVIDIA Isaac Lab
+│       ├── garak/            # NVIDIA Garak
+│       └── ...               # +13 more integrations
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
@@ -767,14 +976,14 @@ sentinel/
 │   │   ├── safeagentbench/
 │   │   └── jailbreakbench/
 │   └── results/              # Test results by benchmark
-│       ├── harmbench/
-│       ├── safeagentbench/
-│       ├── badrobot/
-│       └── jailbreakbench/
-├── packages/                  # External NPM/PyPI packages
-│   ├── elizaos/              # @sentinelseed/elizaos-plugin (npm)
-│   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit (npm)
-│   └── promptfoo/            # sentinelseed-promptfoo (PyPI)
+├── packages/                  # External NPM packages
+│   ├── elizaos/              # @sentinelseed/elizaos-plugin
+│   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit
+│   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
+│   └── vscode/               # VS Code/Cursor/Windsurf extension
+├── docs/                      # Documentation
+│   ├── EU_AI_ACT_MAPPING.md  # EU AI Act compliance mapping
+│   └── OWASP_LLM_TOP_10_MAPPING.md
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts
@@ -852,10 +1061,11 @@ Add this badge to your project's README to show it uses Sentinel for AI safety:
 We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 Areas we need help:
-- **Robotics expansion** — PyBullet, MuJoCo, Gazebo (ROS2 & Isaac Lab done ✓)
+- **Robotics expansion** — PyBullet, MuJoCo, Gazebo (ROS2, Isaac Lab & Humanoid done ✓)
 - **New benchmarks** — Testing on additional safety datasets
 - **Multi-agent safety** — Coordination between multiple agents
 - **Documentation** — Tutorials and examples
+- **JetBrains Plugin** — IntelliJ/PyCharm integration
 
 ---
 
@@ -872,6 +1082,8 @@ MIT License — See [LICENSE](LICENSE)
 | **PyPI** | [sentinelseed](https://pypi.org/project/sentinelseed) | `pip install sentinelseed` |
 | **npm** | [sentinelseed](https://npmjs.com/package/sentinelseed) | `npm install sentinelseed` |
 | **MCP** | [mcp-server-sentinelseed](https://npmjs.com/package/mcp-server-sentinelseed) | `npx mcp-server-sentinelseed` |
+| **VS Code** | [sentinel-ai-safety](https://marketplace.visualstudio.com/items?itemName=sentinelseed.sentinel-ai-safety) | Search "Sentinel AI Safety" |
+| **OpenVSX** | [sentinel-ai-safety](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety) | For Cursor/Windsurf/VSCodium |
 
 ### Optional Dependencies
 
