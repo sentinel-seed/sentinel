@@ -21,14 +21,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
-import sys
-from pathlib import Path
 
-# Add sdk to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
-
-from sentinel import Sentinel, SeedLevel
-from sentinel.validators import THSValidator
+from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validators import THSValidator
 
 # Create app
 app = FastAPI(

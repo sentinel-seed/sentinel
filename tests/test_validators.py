@@ -1,13 +1,8 @@
-"""Tests for sentinel.validators module."""
+"""Tests for sentinelseed.validators module."""
 
 import pytest
-from pathlib import Path
 
-# Add sdk to path for imports
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
-
-from sentinel.validators import TruthGate, HarmGate, ScopeGate, THSValidator
+from sentinelseed.validators import TruthGate, HarmGate, ScopeGate, THSValidator
 
 
 class TestTruthGate:

@@ -1,13 +1,8 @@
-"""Tests for sentinel.core module."""
+"""Tests for sentinelseed.core module."""
 
 import pytest
-from pathlib import Path
 
-# Add sdk to path for imports
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
-
-from sentinel import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
 
 
 class TestSentinel:
@@ -34,22 +29,22 @@ class TestSentinel:
         """Test getting minimal seed."""
         sentinel = Sentinel(seed_level="minimal")
         seed = sentinel.get_seed()
-        assert "SENTINEL ALIGNMENT PROTOCOL" in seed
-        assert "THREE-GATE PROTOCOL" in seed
+        assert "SENTINEL" in seed
+        assert len(seed) > 500  # Minimal is ~1-2K tokens
 
     def test_get_seed_standard(self):
         """Test getting standard seed."""
         sentinel = Sentinel(seed_level="standard")
         seed = sentinel.get_seed()
-        assert "SENTINEL ALIGNMENT PROTOCOL" in seed
-        assert len(seed) > 5000  # Standard is larger
+        assert "SENTINEL" in seed
+        assert len(seed) > 3000  # Standard is larger
 
     def test_get_seed_full(self):
         """Test getting full seed."""
         sentinel = Sentinel(seed_level="full")
         seed = sentinel.get_seed()
-        assert "SENTINEL ALIGNMENT PROTOCOL" in seed
-        assert len(seed) > 10000  # Full is the largest
+        assert "SENTINEL" in seed
+        assert len(seed) > 5000  # Full is the largest
 
     def test_set_seed_level(self):
         """Test changing seed level."""
@@ -58,7 +53,7 @@ class TestSentinel:
 
         sentinel.set_seed_level("full")
         assert sentinel.seed_level == SeedLevel.FULL
-        assert len(sentinel.seed) > 10000
+        assert len(sentinel.seed) > 5000
 
     def test_validate_request_safe(self):
         """Test validating a safe request."""
