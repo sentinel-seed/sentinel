@@ -17,8 +17,13 @@ Requirements:
 import os
 import sys
 import shutil
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+from packaging import version
+
+# Minimum supported Garak version
+MIN_GARAK_VERSION = "0.9.0"
 
 
 def find_garak_path() -> Optional[Path]:
@@ -27,6 +32,51 @@ def find_garak_path() -> Optional[Path]:
         import garak
         return Path(garak.__path__[0])
     except ImportError:
+        return None
+
+
+def get_garak_version() -> Optional[str]:
+    """Get the installed Garak version."""
+    try:
+        import garak
+        return getattr(garak, "__version__", None)
+    except ImportError:
+        return None
+
+
+def check_garak_version() -> Tuple[bool, Optional[str]]:
+    """Check if Garak version is compatible.
+
+    Returns:
+        Tuple of (is_compatible, version_string)
+    """
+    ver = get_garak_version()
+    if ver is None:
+        return True, None  # Can't check, assume compatible
+
+    try:
+        return version.parse(ver) >= version.parse(MIN_GARAK_VERSION), ver
+    except Exception:
+        return True, ver  # Can't parse, assume compatible
+
+
+def create_backup(file_path: Path) -> Optional[Path]:
+    """Create a backup of existing file before overwriting.
+
+    Returns:
+        Path to backup file, or None if no backup was needed.
+    """
+    if not file_path.exists():
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = file_path.with_suffix(f".backup_{timestamp}.py")
+
+    try:
+        shutil.copy2(file_path, backup_path)
+        return backup_path
+    except Exception as e:
+        print(f"  WARNING: Could not create backup: {e}")
         return None
 
 
@@ -54,7 +104,15 @@ def check_installation() -> bool:
     probes_ok = probes_dst.exists()
     detectors_ok = detectors_dst.exists()
 
-    print(f"Garak installation: {garak_path}")
+    # Show version info
+    is_compatible, garak_ver = check_garak_version()
+    version_str = f" (v{garak_ver})" if garak_ver else ""
+
+    print(f"Garak installation: {garak_path}{version_str}")
+
+    if garak_ver and not is_compatible:
+        print(f"  WARNING: Version {garak_ver} < {MIN_GARAK_VERSION} (minimum)")
+
     print(f"Probes installed: {'Yes' if probes_ok else 'No'} ({probes_dst})")
     print(f"Detectors installed: {'Yes' if detectors_ok else 'No'} ({detectors_dst})")
 
@@ -88,6 +146,17 @@ def install_plugin():
         sys.exit(1)
 
     print(f"Found garak at: {garak_path}")
+
+    # Check garak version compatibility
+    is_compatible, garak_ver = check_garak_version()
+    if garak_ver:
+        print(f"Garak version: {garak_ver}")
+        if not is_compatible:
+            print()
+            print(f"WARNING: Garak version {garak_ver} may not be compatible.")
+            print(f"         Minimum recommended version: {MIN_GARAK_VERSION}")
+            print("         The plugin may still work, but some features might fail.")
+            print()
     print()
 
     # Get source files
@@ -110,6 +179,12 @@ def install_plugin():
     print("Installing probes...")
     print(f"  Source: {probes_src}")
     print(f"  Destination: {probes_dst}")
+
+    # Create backup if file exists
+    backup = create_backup(probes_dst)
+    if backup:
+        print(f"  Backup created: {backup}")
+
     try:
         shutil.copy2(probes_src, probes_dst)
         print("  OK")
@@ -127,6 +202,12 @@ def install_plugin():
     print("Installing detectors...")
     print(f"  Source: {detectors_src}")
     print(f"  Destination: {detectors_dst}")
+
+    # Create backup if file exists
+    backup = create_backup(detectors_dst)
+    if backup:
+        print(f"  Backup created: {backup}")
+
     try:
         shutil.copy2(detectors_src, detectors_dst)
         print("  OK")

@@ -205,6 +205,23 @@ detector = TruthViolation()
 print(f"Compliance patterns: {len(detector.compliance_patterns)}")
 ```
 
+## Debug Mode
+
+Enable debug logging to see which patterns are being matched:
+
+```bash
+# Linux/Mac
+SENTINEL_DEBUG=1 garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+
+# Windows (PowerShell)
+$env:SENTINEL_DEBUG="1"; garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+
+# Windows (cmd)
+set SENTINEL_DEBUG=1 && garak --model_type openai --model_name gpt-4o --probes sentinel_thsp
+```
+
+This will log which refusal, compliance, or jailbreak patterns matched for each response.
+
 ## Uninstall
 
 ```bash
