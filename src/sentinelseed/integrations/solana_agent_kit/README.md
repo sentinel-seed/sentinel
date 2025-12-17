@@ -8,7 +8,7 @@ Safety validation for Solana blockchain agents.
 pip install sentinelseed
 ```
 
-**Note:** This integration provides validation functions that work **alongside** Solana Agent Kit, not as a plugin. Solana Agent Kit plugins add actions—they don't intercept transactions.
+**Note:** This integration provides validation functions that work **alongside** Solana Agent Kit, not as a plugin. Solana Agent Kit plugins add actions, they don't intercept transactions.
 
 **Solana Agent Kit:** [GitHub](https://github.com/sendaifun/solana-agent-kit) | [Docs](https://kit.sendai.fun/)
 
