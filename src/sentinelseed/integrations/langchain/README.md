@@ -1,6 +1,20 @@
 # LangChain Integration
 
-Safety validation for LangChain applications via callbacks and wrappers.
+Safety validation for LangChain applications via callbacks, guards, and chain wrappers.
+
+## Architecture
+
+The integration is organized into modular components:
+
+```
+langchain/
+├── __init__.py      # Public API exports
+├── utils.py         # Utilities, thread-safe structures, logger
+├── callbacks.py     # SentinelCallback, StreamingBuffer
+├── guards.py        # SentinelGuard
+├── chains.py        # SentinelChain, inject_seed, wrap_llm
+└── example.py       # Usage examples
+```
 
 ## Requirements
 
@@ -295,6 +309,51 @@ callback = SentinelCallback(logger=MyLogger())
     "sentinel_blocked": True,
     "sentinel_reason": [...]
 }
+```
+
+## Advanced Features
+
+### Streaming Support
+
+```python
+# Stream with safety validation
+for chunk in chain.stream("Your input"):
+    if chunk.get("final"):
+        print(f"Final: {chunk}")
+    else:
+        print(f"Chunk: {chunk.get('chunk')}")
+```
+
+### Batch Operations
+
+```python
+# Process multiple inputs
+results = chain.batch(["Input 1", "Input 2", "Input 3"])
+
+# Async batch
+results = await chain.abatch(["Input 1", "Input 2"])
+```
+
+### Thread Safety
+
+All components use thread-safe data structures:
+- `ThreadSafeDeque` for bounded violation/validation logs
+- `StreamingBuffer` for accumulating streaming tokens
+- Thread locks for logger and buffer operations
+
+### Exception Handling
+
+Validation errors are caught and logged without crashing:
+- `on_violation="raise"` still raises `SentinelViolationError`
+- Other modes log errors and continue safely
+
+### Require LangChain
+
+```python
+from sentinelseed.integrations.langchain import require_langchain
+
+# Raises ImportError with helpful message if not installed
+require_langchain("my_function")
 ```
 
 ## Links
