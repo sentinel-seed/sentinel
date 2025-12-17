@@ -107,6 +107,34 @@ SentinelSafetyNode(
 )
 ```
 
+## THSP Protocol
+
+Every validation passes through four gates:
+
+| Gate | Question | Blocks When |
+|------|----------|-------------|
+| **TRUTH** | Is this truthful? | Misinformation, fake claims, impersonation |
+| **HARM** | Could this harm someone? | Violence, illegal activities, dangerous advice |
+| **SCOPE** | Is this within bounds? | Jailbreaks, authority claims, persona hijacking |
+| **PURPOSE** | Does this serve benefit? | Purposeless destruction, no legitimate value |
+
+**Key Insight:** The Purpose gate is unique to THSP. Actions that pass harm checks may still fail purpose validation—"delete all records" causes harm, but even "reorganize files randomly" fails purpose without legitimate benefit.
+
+### Purpose Gate Configuration
+
+For financial or agentic workflows, require explicit purpose:
+
+```python
+safety_node = SentinelSafetyNode(
+    require_purpose_for=["transfer", "delete", "execute", "approve"],
+)
+
+# In your state
+class State(TypedDict):
+    messages: List[dict]
+    action_purpose: str  # Required for sensitive actions
+```
+
 ## State Integration
 
 The safety node works with LangGraph's state:

@@ -114,6 +114,32 @@ SentinelCrew(
 )
 ```
 
+## THSP Protocol
+
+Every validation passes through four gates:
+
+| Gate | Question | Blocks When |
+|------|----------|-------------|
+| **TRUTH** | Is this truthful? | Misinformation, fake outputs, deception |
+| **HARM** | Could this harm someone? | Dangerous actions, harmful advice |
+| **SCOPE** | Is this within bounds? | Role violations, unauthorized access |
+| **PURPOSE** | Does this serve benefit? | Purposeless tasks, no legitimate value |
+
+**Key Insight:** The Purpose gate differentiates THSP from other safety approaches. A task like "randomly delete files" causes no immediate harm but fails purpose validation—there's no legitimate benefit.
+
+### Purpose Gate for Tasks
+
+When configuring tasks, consider requiring explicit purpose:
+
+```python
+task = SentinelTask(
+    description="Analyze competitor data",
+    agent=analyst,
+    expected_purpose="Strategic planning report",  # Explicit purpose
+    validate_output=True,
+)
+```
+
 ## Agent Safety
 
 CrewAI uses `system_template` for system prompts. The integration:
