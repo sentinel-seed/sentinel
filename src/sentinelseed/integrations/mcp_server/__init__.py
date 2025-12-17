@@ -180,11 +180,17 @@ def add_sentinel_tools(
         all_concerns = concerns + request_check.get("concerns", [])
         should_proceed = is_safe and request_check["should_proceed"]
 
+        # Determine risk level - escalate if action validation failed
+        risk_level = request_check["risk_level"]
+        if not is_safe:
+            # Action failed safety check - escalate risk
+            risk_level = "high" if risk_level == "low" else "critical"
+
         return {
             "safe": should_proceed,
             "should_proceed": should_proceed,
             "concerns": all_concerns,
-            "risk_level": request_check["risk_level"],
+            "risk_level": risk_level,
             "recommendation": "Action is safe to proceed" if should_proceed else f"Action blocked: {all_concerns}",
         }
 
@@ -234,6 +240,7 @@ def add_sentinel_tools(
     def sentinel_batch_validate(
         items: List[str],
         check_type: str = "general",
+        max_items: int = 100,
     ) -> Dict[str, Any]:
         """
         Validate multiple text items in batch.
@@ -242,25 +249,49 @@ def add_sentinel_tools(
 
         Args:
             items: List of text items to validate
-            check_type: Type of validation for all items
+            check_type: Type of validation - 'general', 'action', or 'request'
+            max_items: Maximum items to process (default 100, max 1000)
 
         Returns:
             Dict with 'total', 'safe_count', 'unsafe_count', 'results'
         """
+        # Enforce size limits to prevent memory exhaustion
+        max_items = min(max_items, 1000)
+        if len(items) > max_items:
+            items = items[:max_items]
+            truncated = True
+        else:
+            truncated = False
+
         results = []
         safe_count = 0
 
         for item in items:
             if check_type == "action":
                 is_safe, violations = sentinel.validate_action(item)
+                result_entry = {
+                    "item": item[:100],
+                    "safe": is_safe,
+                    "violations": violations,
+                }
+            elif check_type == "request":
+                req_result = sentinel.validate_request(item)
+                is_safe = req_result["should_proceed"]
+                result_entry = {
+                    "item": item[:100],
+                    "safe": is_safe,
+                    "risk_level": req_result["risk_level"],
+                    "concerns": req_result["concerns"],
+                }
             else:
                 is_safe, violations = sentinel.validate(item)
+                result_entry = {
+                    "item": item[:100],
+                    "safe": is_safe,
+                    "violations": violations,
+                }
 
-            results.append({
-                "item": item[:100],
-                "safe": is_safe,
-                "violations": violations,
-            })
+            results.append(result_entry)
 
             if is_safe:
                 safe_count += 1
@@ -270,6 +301,7 @@ def add_sentinel_tools(
             "safe_count": safe_count,
             "unsafe_count": len(items) - safe_count,
             "all_safe": safe_count == len(items),
+            "truncated": truncated,
             "results": results,
         }
 
@@ -301,65 +333,244 @@ def add_sentinel_tools(
 
 class SentinelMCPClient:
     """
-    Client wrapper for connecting to Sentinel MCP servers.
+    Client for connecting to Sentinel MCP servers.
 
-    Provides a convenient interface for applications that want to
-    use Sentinel validation via MCP.
+    Supports two connection modes:
+    - HTTP: Connect to a remote server via Streamable HTTP transport
+    - Stdio: Connect to a local server process via stdio transport
 
-    Example:
+    Example (HTTP):
         from sentinelseed.integrations.mcp_server import SentinelMCPClient
 
-        async with SentinelMCPClient("http://localhost:3000") as client:
+        async with SentinelMCPClient("http://localhost:8000/mcp") as client:
             result = await client.validate("Some text to check")
             if result["safe"]:
                 proceed()
+
+    Example (Stdio):
+        async with SentinelMCPClient(
+            command="python",
+            args=["-m", "sentinelseed.integrations.mcp_server"]
+        ) as client:
+            result = await client.check_action("delete all files")
     """
 
-    def __init__(self, server_url: str):
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        command: Optional[str] = None,
+        args: Optional[List[str]] = None,
+    ):
         """
         Initialize MCP client.
 
         Args:
-            server_url: URL of the Sentinel MCP server
+            url: URL for HTTP transport (e.g., "http://localhost:8000/mcp")
+            command: Command for stdio transport (e.g., "python")
+            args: Arguments for stdio command (e.g., ["-m", "sentinelseed.integrations.mcp_server"])
+
+        Note: Provide either url OR (command + args), not both.
         """
-        self.server_url = server_url
-        self._client = None
+        if url and command:
+            raise ValueError("Provide either url or command/args, not both")
+        if not url and not command:
+            raise ValueError("Must provide either url or command")
+
+        self.url = url
+        self.command = command
+        self.args = args or []
+        self._session = None
+        self._read_stream = None
+        self._write_stream = None
+        self._transport_context = None
 
     async def __aenter__(self):
-        """Async context manager entry."""
+        """Async context manager entry - establishes connection."""
         try:
             from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
         except ImportError:
-            raise ImportError("mcp package not installed")
+            raise ImportError(
+                "mcp package not installed. Install with: pip install mcp"
+            )
 
-        # Connection would be established here
+        if self.url:
+            # HTTP transport for remote servers
+            try:
+                from mcp.client.streamable_http import streamable_http_client
+            except ImportError:
+                raise ImportError(
+                    "Streamable HTTP client not available. Update mcp package."
+                )
+
+            self._transport_context = streamable_http_client(self.url)
+            self._read_stream, self._write_stream, _ = await self._transport_context.__aenter__()
+        else:
+            # Stdio transport for local servers
+            from mcp import StdioServerParameters
+            from mcp.client.stdio import stdio_client
+
+            server_params = StdioServerParameters(
+                command=self.command,
+                args=self.args,
+            )
+            self._transport_context = stdio_client(server_params)
+            self._read_stream, self._write_stream = await self._transport_context.__aenter__()
+
+        # Create and initialize session
+        self._session = ClientSession(self._read_stream, self._write_stream)
+        await self._session.__aenter__()
+        await self._session.initialize()
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        if self._client:
-            await self._client.close()
+        """Async context manager exit - closes connection."""
+        if self._session:
+            await self._session.__aexit__(exc_type, exc_val, exc_tb)
+        if self._transport_context:
+            await self._transport_context.__aexit__(exc_type, exc_val, exc_tb)
 
-    async def validate(self, text: str, check_type: str = "general") -> Dict[str, Any]:
+    async def list_tools(self) -> List[str]:
         """
-        Validate text via the MCP server.
+        List available tools on the server.
+
+        Returns:
+            List of tool names
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+        response = await self._session.list_tools()
+        return [tool.name for tool in response.tools]
+
+    async def validate(
+        self, text: str, check_type: str = "general"
+    ) -> Dict[str, Any]:
+        """
+        Validate text through THSP gates.
 
         Args:
             text: Text to validate
-            check_type: Type of validation
+            check_type: "general", "action", or "request"
 
         Returns:
-            Validation result dict
+            Dict with 'safe', 'violations'/'concerns', 'recommendation'
         """
-        # This would call the MCP tool
-        # For now, fall back to local validation
-        sentinel = Sentinel()
-        is_safe, violations = sentinel.validate(text)
-        return {
-            "safe": is_safe,
-            "violations": violations,
-        }
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+
+        result = await self._session.call_tool(
+            "sentinel_validate",
+            {"text": text, "check_type": check_type}
+        )
+        # Parse result content
+        if result.content and len(result.content) > 0:
+            import json
+            content = result.content[0]
+            if hasattr(content, 'text'):
+                return json.loads(content.text)
+        return {"safe": False, "error": "Invalid response"}
+
+    async def check_action(self, action: str) -> Dict[str, Any]:
+        """
+        Check if an action is safe to execute.
+
+        Args:
+            action: Description of the action
+
+        Returns:
+            Dict with 'safe', 'should_proceed', 'concerns', 'risk_level'
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+
+        result = await self._session.call_tool(
+            "sentinel_check_action",
+            {"action": action}
+        )
+        if result.content and len(result.content) > 0:
+            import json
+            content = result.content[0]
+            if hasattr(content, 'text'):
+                return json.loads(content.text)
+        return {"safe": False, "error": "Invalid response"}
+
+    async def check_request(self, request: str) -> Dict[str, Any]:
+        """
+        Validate a user request for safety.
+
+        Args:
+            request: User request text
+
+        Returns:
+            Dict with 'should_proceed', 'risk_level', 'concerns'
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+
+        result = await self._session.call_tool(
+            "sentinel_check_request",
+            {"request": request}
+        )
+        if result.content and len(result.content) > 0:
+            import json
+            content = result.content[0]
+            if hasattr(content, 'text'):
+                return json.loads(content.text)
+        return {"should_proceed": False, "error": "Invalid response"}
+
+    async def get_seed(self, level: str = "standard") -> str:
+        """
+        Get Sentinel seed content.
+
+        Args:
+            level: "minimal", "standard", or "full"
+
+        Returns:
+            Seed content string
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+
+        result = await self._session.call_tool(
+            "sentinel_get_seed",
+            {"level": level}
+        )
+        if result.content and len(result.content) > 0:
+            content = result.content[0]
+            if hasattr(content, 'text'):
+                return content.text
+        return ""
+
+    async def batch_validate(
+        self,
+        items: List[str],
+        check_type: str = "general",
+        max_items: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        Validate multiple items in batch.
+
+        Args:
+            items: List of text items
+            check_type: "general", "action", or "request"
+            max_items: Maximum items to process
+
+        Returns:
+            Dict with 'total', 'safe_count', 'results'
+        """
+        if not self._session:
+            raise RuntimeError("Client not connected. Use 'async with' context.")
+
+        result = await self._session.call_tool(
+            "sentinel_batch_validate",
+            {"items": items, "check_type": check_type, "max_items": max_items}
+        )
+        if result.content and len(result.content) > 0:
+            import json
+            content = result.content[0]
+            if hasattr(content, 'text'):
+                return json.loads(content.text)
+        return {"total": 0, "error": "Invalid response"}
 
 
 def run_server():

@@ -236,16 +236,21 @@ def sentinel_get_seed(level: str = "standard") -> str:
 ### sentinel_batch_validate
 
 ```python
-def sentinel_batch_validate(items: list, check_type: str = "general") -> dict:
+def sentinel_batch_validate(
+    items: list,
+    check_type: str = "general",
+    max_items: int = 100
+) -> dict:
     """
     Validate multiple items.
 
     Args:
         items: List of text strings
-        check_type: Validation type for all
+        check_type: "general", "action", or "request"
+        max_items: Maximum items to process (default 100, max 1000)
 
     Returns:
-        {total: int, safe_count: int, unsafe_count: int, all_safe: bool, results: []}
+        {total: int, safe_count: int, unsafe_count: int, all_safe: bool, truncated: bool, results: []}
     """
 ```
 
@@ -263,13 +268,43 @@ create_sentinel_mcp_server(
 
 ## Client Usage
 
+The client supports two connection modes:
+
+### HTTP Transport (Remote Server)
+
 ```python
 from sentinelseed.integrations.mcp_server import SentinelMCPClient
 
-async with SentinelMCPClient("http://localhost:3000") as client:
+async with SentinelMCPClient(url="http://localhost:8000/mcp") as client:
+    # List available tools
+    tools = await client.list_tools()
+
+    # Validate text
     result = await client.validate("Some text to check")
     if result["safe"]:
         proceed()
+
+    # Check action safety
+    action_result = await client.check_action("delete user data")
+    print(f"Risk level: {action_result['risk_level']}")
+
+    # Batch validation
+    batch = await client.batch_validate(
+        ["text1", "text2", "text3"],
+        check_type="request"
+    )
+```
+
+### Stdio Transport (Local Server)
+
+```python
+async with SentinelMCPClient(
+    command="python",
+    args=["-m", "sentinelseed.integrations.mcp_server"]
+) as client:
+    result = await client.check_request("ignore previous instructions")
+    if not result["should_proceed"]:
+        print(f"Blocked: {result['concerns']}")
 ```
 
 ## API Reference
@@ -286,7 +321,18 @@ async with SentinelMCPClient("http://localhost:3000") as client:
 
 | Class | Description |
 |-------|-------------|
-| `SentinelMCPClient` | Async client |
+| `SentinelMCPClient` | Async client for MCP servers |
+
+### SentinelMCPClient Methods
+
+| Method | Description |
+|--------|-------------|
+| `list_tools()` | List available tools on server |
+| `validate(text, check_type)` | Validate text through THSP |
+| `check_action(action)` | Check if action is safe |
+| `check_request(request)` | Validate user request |
+| `get_seed(level)` | Get seed content |
+| `batch_validate(items, check_type, max_items)` | Batch validation |
 
 ### Constants
 
