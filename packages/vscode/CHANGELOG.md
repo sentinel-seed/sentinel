@@ -2,6 +2,17 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
+## [0.3.1] - 2025-12-17
+
+### Fixed
+
+- Converted mixed `require()` to ES6 `import` for consistency
+- Improved code organization in analyzer module
+
+### Changed
+
+- Minor internal refactoring for better maintainability
+
 ## [0.3.0] - 2025-12-16
 
 ### Added

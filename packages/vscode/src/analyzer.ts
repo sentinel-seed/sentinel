@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { SemanticValidator, SemanticValidationResult } from './semantic';
+import { checkPatterns } from './patterns';
 
 export interface AnalysisResult {
     safe: boolean;
@@ -228,8 +229,6 @@ export class SentinelAnalyzer {
      * For accurate analysis, configure an LLM API key.
      */
     private analyzeLocally(content: string): AnalysisResult {
-        // Use shared patterns module
-        const { checkPatterns } = require('./patterns');
         const result = checkPatterns(content);
 
         const safe = result.gates.truth && result.gates.harm && result.gates.scope && result.gates.purpose;
