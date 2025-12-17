@@ -2,7 +2,7 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
-## [0.3.1] - 2025-12-17
+## [0.3.2] - 2025-12-17
 
 ### Fixed
 
