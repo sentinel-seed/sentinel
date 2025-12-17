@@ -430,6 +430,44 @@ class SentinelMCPClient:
         if self._transport_context:
             await self._transport_context.__aexit__(exc_type, exc_val, exc_tb)
 
+    def _parse_tool_result(self, result, default_error: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse MCP tool result into a dictionary.
+
+        Handles different response formats from MCP servers.
+        """
+        import json
+
+        if not result.content or len(result.content) == 0:
+            return default_error
+
+        content = result.content[0]
+
+        # Case 1: TextContent with JSON string
+        if hasattr(content, 'text'):
+            text = content.text
+            # Try to parse as JSON
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                # Not JSON, return as-is in a dict
+                return {"result": text}
+
+        # Case 2: Already a dict (some MCP implementations)
+        if isinstance(content, dict):
+            return content
+
+        # Case 3: Has a 'data' attribute
+        if hasattr(content, 'data'):
+            if isinstance(content.data, dict):
+                return content.data
+            try:
+                return json.loads(content.data)
+            except (json.JSONDecodeError, TypeError):
+                return {"result": content.data}
+
+        return default_error
+
     async def list_tools(self) -> List[str]:
         """
         List available tools on the server.
@@ -462,13 +500,7 @@ class SentinelMCPClient:
             "sentinel_validate",
             {"text": text, "check_type": check_type}
         )
-        # Parse result content
-        if result.content and len(result.content) > 0:
-            import json
-            content = result.content[0]
-            if hasattr(content, 'text'):
-                return json.loads(content.text)
-        return {"safe": False, "error": "Invalid response"}
+        return self._parse_tool_result(result, {"safe": False, "error": "Invalid response"})
 
     async def check_action(self, action: str) -> Dict[str, Any]:
         """
@@ -487,12 +519,7 @@ class SentinelMCPClient:
             "sentinel_check_action",
             {"action": action}
         )
-        if result.content and len(result.content) > 0:
-            import json
-            content = result.content[0]
-            if hasattr(content, 'text'):
-                return json.loads(content.text)
-        return {"safe": False, "error": "Invalid response"}
+        return self._parse_tool_result(result, {"safe": False, "error": "Invalid response"})
 
     async def check_request(self, request: str) -> Dict[str, Any]:
         """
@@ -511,12 +538,7 @@ class SentinelMCPClient:
             "sentinel_check_request",
             {"request": request}
         )
-        if result.content and len(result.content) > 0:
-            import json
-            content = result.content[0]
-            if hasattr(content, 'text'):
-                return json.loads(content.text)
-        return {"should_proceed": False, "error": "Invalid response"}
+        return self._parse_tool_result(result, {"should_proceed": False, "error": "Invalid response"})
 
     async def get_seed(self, level: str = "standard") -> str:
         """
@@ -535,6 +557,7 @@ class SentinelMCPClient:
             "sentinel_get_seed",
             {"level": level}
         )
+        # get_seed returns a string, not a dict
         if result.content and len(result.content) > 0:
             content = result.content[0]
             if hasattr(content, 'text'):
@@ -565,12 +588,7 @@ class SentinelMCPClient:
             "sentinel_batch_validate",
             {"items": items, "check_type": check_type, "max_items": max_items}
         )
-        if result.content and len(result.content) > 0:
-            import json
-            content = result.content[0]
-            if hasattr(content, 'text'):
-                return json.loads(content.text)
-        return {"total": 0, "error": "Invalid response"}
+        return self._parse_tool_result(result, {"total": 0, "error": "Invalid response"})
 
 
 def run_server():
