@@ -76,7 +76,11 @@ def my_custom_tool():
 mcp.run()
 ```
 
-### Option 3: npm Package (Claude Desktop)
+### Option 3: IDE Configuration
+
+#### Claude Desktop
+
+Add to `claude_desktop_config.json`:
 
 ```json
 {
@@ -84,6 +88,83 @@ mcp.run()
     "sentinel": {
       "command": "npx",
       "args": ["mcp-server-sentinelseed"]
+    }
+  }
+}
+```
+
+#### Cursor
+
+Add to `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global):
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "python",
+      "args": ["-m", "sentinelseed.integrations.mcp_server"],
+      "env": {}
+    }
+  }
+}
+```
+
+Or using npm:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "npx",
+      "args": ["mcp-server-sentinelseed"]
+    }
+  }
+}
+```
+
+After adding, restart Cursor and the Sentinel tools will be available to the AI agent.
+
+#### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "python",
+      "args": ["-m", "sentinelseed.integrations.mcp_server"],
+      "env": {}
+    }
+  }
+}
+```
+
+Or using npm:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "npx",
+      "args": ["mcp-server-sentinelseed"]
+    }
+  }
+}
+```
+
+After adding, click the hammer icon in Cascade to enable MCP tools.
+
+#### VS Code (with Continue or similar)
+
+Add to your MCP-compatible extension's config:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "command": "python",
+      "args": ["-m", "sentinelseed.integrations.mcp_server"]
     }
   }
 }
