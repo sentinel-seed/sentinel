@@ -6,8 +6,9 @@ A comprehensive AI safety toolkit providing:
 - Response validation (THSP gates: Truth, Harm, Scope, Purpose)
 - Memory integrity checking (defense against memory injection)
 - Fiduciary AI principles (duty of loyalty and care)
+- Regulatory compliance (EU AI Act, OWASP LLM Top 10)
 - Provider integrations (OpenAI, Anthropic)
-- Framework integrations (LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, AutoGPT, Garak, OpenGuardrails)
+- Framework integrations (LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, AutoGPT, Garak, OpenGuardrails, Letta)
 
 Quick Start:
     from sentinelseed import Sentinel
@@ -39,6 +40,18 @@ Fiduciary AI (ensure AI acts in user's best interest):
     if not result.compliant:
         print(f"Fiduciary violation: {result.violations}")
 
+EU AI Act Compliance:
+    from sentinelseed.compliance import EUAIActComplianceChecker
+
+    checker = EUAIActComplianceChecker(api_key="...")
+    result = checker.check_compliance(
+        content="Based on your social behavior...",
+        context="financial",
+        system_type="high_risk"
+    )
+    if not result.compliant:
+        print(f"Violations: {result.article_5_violations}")
+
 Framework Integrations:
     from sentinelseed.integrations.virtuals import SentinelSafetyWorker
     from sentinelseed.integrations.langchain import SentinelCallback
@@ -46,6 +59,7 @@ Framework Integrations:
     from sentinelseed.integrations.crewai import safe_agent, SentinelCrew
     from sentinelseed.integrations.openguardrails import OpenGuardrailsValidator
     from sentinelseed.integrations.openai_agents import create_sentinel_agent
+    from sentinelseed.integrations.letta import SentinelLettaClient
 
 Documentation: https://sentinelseed.dev/docs
 GitHub: https://github.com/sentinel-seed/sentinel
@@ -67,8 +81,15 @@ from sentinelseed.fiduciary import (
     validate_fiduciary,
     is_fiduciary_compliant,
 )
+from sentinelseed.compliance import (
+    EUAIActComplianceChecker,
+    ComplianceResult,
+    RiskLevel,
+    SystemType,
+    check_eu_ai_act_compliance,
+)
 
-__version__ = "2.5.0"
+__version__ = "2.11.0"
 
 
 def get_seed(level: str = "standard") -> str:
@@ -112,4 +133,10 @@ __all__ = [
     "UserContext",
     "validate_fiduciary",
     "is_fiduciary_compliant",
+    # Compliance
+    "EUAIActComplianceChecker",
+    "ComplianceResult",
+    "RiskLevel",
+    "SystemType",
+    "check_eu_ai_act_compliance",
 ]

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.10.0"
-description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - Practical alignment for developers"
+version = "2.11.0"
+description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - EU AI Act compliance and practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -55,6 +55,13 @@ keywords = [
     "tesla-optimus",
     "boston-dynamics",
     "figure-ai",
+    "eu-ai-act",
+    "ai-regulation",
+    "compliance",
+    "article-5",
+    "high-risk-ai",
+    "human-oversight",
+    "risk-management",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
