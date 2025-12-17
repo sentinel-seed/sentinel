@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.9.0"
+version = "2.10.0"
 description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - Practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -33,6 +33,9 @@ keywords = [
     "pyrit",
     "dspy",
     "stanford",
+    "letta",
+    "memgpt",
+    "stateful-agents",
     "red-teaming",
     "security-testing",
     "fiduciary",
@@ -81,6 +84,7 @@ virtuals = ["game-sdk>=0.1.1"]
 garak = ["garak>=0.9.0"]
 pyrit = ["pyrit>=0.5.0"]
 dspy = ["dspy>=3.0.0"]
+letta = ["letta-client>=1.0.0"]
 all = [
     "openai>=1.0.0",
     "openai-agents>=0.6.0",

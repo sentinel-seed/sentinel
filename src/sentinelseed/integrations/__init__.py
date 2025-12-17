@@ -27,6 +27,7 @@ Available integrations:
     from sentinelseed.integrations.dspy import SentinelGuard, SentinelPredict  # DSPy modules
     from sentinelseed.integrations.ros2 import SentinelSafetyNode  # ROS2 safety node
     from sentinelseed.integrations.isaac_lab import SentinelSafetyWrapper  # Isaac Lab safety wrapper
+    from sentinelseed.integrations.letta import SentinelLettaClient, create_safe_agent  # Letta/MemGPT
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -59,6 +60,14 @@ Isaac Lab (NVIDIA Robot Learning):
         JointLimits,
         THSPRobotValidator,
     )
+
+Letta (formerly MemGPT):
+    from sentinelseed.integrations.letta import (
+        SentinelLettaClient,
+        create_safe_agent,
+        create_sentinel_tool,
+        sentinel_approval_handler,
+    )
 """
 
 __all__ = [
@@ -72,6 +81,7 @@ __all__ = [
     'isaac_lab',
     'langchain',
     'langgraph',
+    'letta',
     'llamaindex',
     'mcp_server',
     'openai_agents',
