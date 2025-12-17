@@ -129,8 +129,11 @@ export class SentinelValidator {
       },
     };
 
-    // Store in history
+    // Store in history (with size limit to prevent memory growth)
     this.history.push(result);
+    if (this.history.length > this.config.maxHistorySize) {
+      this.history.shift();
+    }
 
     // Call optional callback
     if (this.config.onValidation) {

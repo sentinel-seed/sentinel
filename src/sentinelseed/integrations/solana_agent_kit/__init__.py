@@ -109,9 +109,9 @@ class SentinelValidator:
             print(f"Blocked: {result.concerns}")
     """
 
-    # Default actions that require explicit purpose
+    # Default actions that require explicit purpose (synced with TypeScript version)
     DEFAULT_REQUIRE_PURPOSE = [
-        "transfer", "send", "approve", "swap", "bridge", "withdraw", "stake",
+        "transfer", "swap", "approve", "bridge", "withdraw", "stake",
     ]
 
     def __init__(
@@ -122,6 +122,7 @@ class SentinelValidator:
         blocked_addresses: Optional[List[str]] = None,
         allowed_programs: Optional[List[str]] = None,
         require_purpose_for: Optional[List[str]] = None,
+        max_history_size: int = 1000,
         memory_integrity_check: bool = False,
         memory_secret_key: Optional[str] = None,
     ):
@@ -135,6 +136,7 @@ class SentinelValidator:
             blocked_addresses: List of blocked wallet addresses
             allowed_programs: Whitelist of allowed program IDs (empty = all allowed)
             require_purpose_for: Actions that require explicit purpose/reason
+            max_history_size: Maximum validation history entries (prevents memory growth)
             memory_integrity_check: Enable memory integrity verification
             memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
         """
@@ -144,6 +146,7 @@ class SentinelValidator:
         self.blocked_addresses = set(blocked_addresses or [])
         self.allowed_programs = set(allowed_programs or [])
         self.require_purpose_for = require_purpose_for or self.DEFAULT_REQUIRE_PURPOSE
+        self.max_history_size = max_history_size
         self.memory_integrity_check = memory_integrity_check
         self.memory_secret_key = memory_secret_key
         self.history: List[TransactionSafetyResult] = []
@@ -210,10 +213,17 @@ class SentinelValidator:
             keyword.lower() in action.lower()
             for keyword in self.require_purpose_for
         )
-        if requires_purpose and not purpose and not kwargs.get("reason"):
+        effective_purpose = purpose or kwargs.get("reason", "")
+        if requires_purpose and not effective_purpose:
             concerns.append(
                 f"Action '{action}' requires explicit purpose/reason "
                 f"(set purpose= or reason= parameter)"
+            )
+            if risk_level < TransactionRisk.MEDIUM:
+                risk_level = TransactionRisk.MEDIUM
+        elif effective_purpose and len(effective_purpose.strip()) < 10:
+            concerns.append(
+                "Purpose explanation is too brief - provide meaningful justification"
             )
             if risk_level < TransactionRisk.MEDIUM:
                 risk_level = TransactionRisk.MEDIUM
@@ -257,7 +267,10 @@ class SentinelValidator:
             requires_confirmation=requires_confirmation,
         )
 
+        # Store in history (with size limit to prevent memory growth)
         self.history.append(result)
+        if len(self.history) > self.max_history_size:
+            self.history.pop(0)
         return result
 
     def _describe_action(

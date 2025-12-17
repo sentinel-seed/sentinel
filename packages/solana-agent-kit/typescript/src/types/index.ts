@@ -96,6 +96,13 @@ export interface SentinelPluginConfig {
   strictMode?: boolean;
 
   /**
+   * Maximum number of validation results to keep in history
+   * Older entries are removed when limit is exceeded
+   * @default 1000
+   */
+  maxHistorySize?: number;
+
+  /**
    * Custom suspicious patterns to detect
    */
   customPatterns?: SuspiciousPattern[];
@@ -159,6 +166,7 @@ export const DEFAULT_CONFIG: Required<
   allowedPrograms: [],
   requirePurposeFor: ["transfer", "swap", "approve", "bridge", "withdraw", "stake"],
   strictMode: false,
+  maxHistorySize: 1000,
   customPatterns: [],
 };
 
@@ -192,7 +200,7 @@ export const DEFAULT_SUSPICIOUS_PATTERNS: SuspiciousPattern[] = [
   },
   {
     name: "bulk_transfer",
-    pattern: /all|entire|whole.*transfer|send/i,
+    pattern: /(?:send|transfer).*(?:all|entire|whole)|(?:all|entire|whole).*(?:send|transfer)/i,
     riskLevel: RiskLevel.HIGH,
     message: "Bulk transfer operation detected",
   },

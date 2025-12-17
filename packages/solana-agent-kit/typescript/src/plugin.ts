@@ -35,6 +35,7 @@ import {
   unblockAddress,
   clearValidationHistory,
   updateSafetyConfig,
+  initializeValidator,
 } from "./tools/functions";
 import {
   sentinelActions,
@@ -97,6 +98,9 @@ export function SentinelPlugin(config: SentinelPluginConfig = {}): Plugin {
     initialize(agent: SolanaAgentKit): void {
       // Initialize validator with agent instance
       validator.initialize(agent);
+
+      // Initialize the shared validator used by methods (fixes config propagation)
+      initializeValidator(agent, config);
 
       // Share validator instance with all actions
       setValidatorForValidate(validator);
