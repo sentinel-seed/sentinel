@@ -8,22 +8,28 @@ Provides:
 
 from typing import Any, Dict, List, Optional, Union
 import threading
+import concurrent.futures
 
 from sentinelseed import Sentinel, SeedLevel
 
 from .utils import (
     DEFAULT_MAX_VIOLATIONS,
     DEFAULT_SEED_LEVEL,
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
     LANGCHAIN_AVAILABLE,
     BaseCallbackHandler,
     SentinelLogger,
     ThreadSafeDeque,
     ValidationResult,
     ViolationRecord,
+    TextTooLargeError,
+    ValidationTimeoutError,
     get_logger,
     sanitize_text,
     extract_content,
     require_langchain,
+    validate_text_size,
 )
 
 
@@ -133,6 +139,9 @@ class SentinelCallback(BaseCallbackHandler):
         max_violations: int = DEFAULT_MAX_VIOLATIONS,
         sanitize_logs: bool = False,
         logger: Optional[SentinelLogger] = None,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        fail_closed: bool = False,
     ):
         """
         Initialize callback handler.
@@ -141,16 +150,23 @@ class SentinelCallback(BaseCallbackHandler):
             sentinel: Sentinel instance (creates default if None)
             seed_level: Seed level for validation ("minimal", "standard", "full")
             on_violation: Action on violation:
-                - "log": Log warning and continue
+                - "log": Log warning and continue (DOES NOT BLOCK execution)
                 - "raise": Raise SentinelViolationError
-                - "block": Log as blocked (for monitoring)
+                - "block": Log as blocked (for monitoring, DOES NOT BLOCK)
                 - "flag": Mark violation without logging
+
+            NOTE: Callbacks MONITOR but do NOT BLOCK execution. For blocking,
+            use SentinelGuard or SentinelChain instead.
+
             validate_input: Whether to validate input messages/prompts
             validate_output: Whether to validate LLM responses
             log_safe: Whether to log safe responses too
             max_violations: Maximum violations to keep in log
             sanitize_logs: Whether to mask sensitive data in logs
             logger: Custom logger instance
+            max_text_size: Maximum text size in bytes (default 50KB)
+            validation_timeout: Timeout for validation in seconds (default 30s)
+            fail_closed: If True, block on validation errors; if False, allow
         """
         if LANGCHAIN_AVAILABLE and BaseCallbackHandler is not object:
             super().__init__()
@@ -164,6 +180,9 @@ class SentinelCallback(BaseCallbackHandler):
         self.max_violations = max_violations
         self.sanitize_logs = sanitize_logs
         self._logger = logger or get_logger()
+        self._max_text_size = max_text_size
+        self._validation_timeout = validation_timeout
+        self._fail_closed = fail_closed
 
         # Thread-safe storage
         self._violations_log = ThreadSafeDeque(maxlen=max_violations)
@@ -343,12 +362,41 @@ class SentinelCallback(BaseCallbackHandler):
     # ========================================================================
 
     def _validate_input_safe(self, text: str, stage: str) -> None:
-        """Validate input with exception handling."""
+        """Validate input with exception handling, size limits, and timeout."""
         if not text:
             return
 
+        # Validate text size first
         try:
-            result = self.sentinel.validate_request(text)
+            validate_text_size(text, self._max_text_size, stage)
+        except TextTooLargeError as e:
+            self._handle_violation(
+                stage=stage,
+                text=text[:200] + "...",
+                concerns=[f"Text too large: {e}"],
+                risk_level="high"
+            )
+            return
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate_request, text)
+                try:
+                    result = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        self._handle_violation(
+                            stage=stage,
+                            text=text,
+                            concerns=[f"Validation timed out after {self._validation_timeout}s"],
+                            risk_level="high"
+                        )
+                    else:
+                        self._logger.warning(
+                            f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
+                        )
+                    return
 
             # Log validation
             self._validation_log.append(ValidationResult(
@@ -373,14 +421,50 @@ class SentinelCallback(BaseCallbackHandler):
             raise
         except Exception as e:
             self._logger.error(f"Error validating input at {stage}: {e}")
+            if self._fail_closed:
+                self._handle_violation(
+                    stage=stage,
+                    text=text,
+                    concerns=[f"Validation error: {e}"],
+                    risk_level="high"
+                )
 
     def _validate_output_safe(self, text: str, stage: str) -> None:
-        """Validate output with exception handling."""
+        """Validate output with exception handling, size limits, and timeout."""
         if not text:
             return
 
+        # Validate text size first
         try:
-            is_safe, violations = self.sentinel.validate(text)
+            validate_text_size(text, self._max_text_size, stage)
+        except TextTooLargeError as e:
+            self._handle_violation(
+                stage=stage,
+                text=text[:200] + "...",
+                concerns=[f"Text too large: {e}"],
+                risk_level="high"
+            )
+            return
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate, text)
+                try:
+                    is_safe, violations = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        self._handle_violation(
+                            stage=stage,
+                            text=text,
+                            concerns=[f"Validation timed out after {self._validation_timeout}s"],
+                            risk_level="high"
+                        )
+                    else:
+                        self._logger.warning(
+                            f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
+                        )
+                    return
 
             # Log validation
             self._validation_log.append(ValidationResult(
@@ -405,6 +489,13 @@ class SentinelCallback(BaseCallbackHandler):
             raise
         except Exception as e:
             self._logger.error(f"Error validating output at {stage}: {e}")
+            if self._fail_closed:
+                self._handle_violation(
+                    stage=stage,
+                    text=text,
+                    concerns=[f"Validation error: {e}"],
+                    risk_level="high"
+                )
 
     def _handle_violation(
         self,
@@ -492,6 +583,9 @@ def create_safe_callback(
     seed_level: str = DEFAULT_SEED_LEVEL,
     validate_input: bool = True,
     validate_output: bool = True,
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+    validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    fail_closed: bool = False,
     **kwargs: Any,
 ) -> SentinelCallback:
     """
@@ -502,16 +596,27 @@ def create_safe_callback(
         seed_level: Sentinel seed level
         validate_input: Whether to validate inputs
         validate_output: Whether to validate outputs
+        max_text_size: Maximum text size in bytes (default 50KB)
+        validation_timeout: Timeout for validation in seconds (default 30s)
+        fail_closed: If True, block on validation errors
         **kwargs: Additional arguments for SentinelCallback
 
     Returns:
         Configured SentinelCallback instance
+
+    Note:
+        Callbacks MONITOR but do NOT BLOCK execution. The on_violation
+        parameter controls logging/raising behavior, not request blocking.
+        For actual request blocking, use SentinelGuard or SentinelChain.
     """
     return SentinelCallback(
         seed_level=seed_level,
         on_violation=on_violation,
         validate_input=validate_input,
         validate_output=validate_output,
+        max_text_size=max_text_size,
+        validation_timeout=validation_timeout,
+        fail_closed=fail_closed,
         **kwargs,
     )
 

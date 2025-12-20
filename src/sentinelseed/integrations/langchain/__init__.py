@@ -36,7 +36,13 @@ from .utils import (
     # Constants
     DEFAULT_MAX_VIOLATIONS,
     DEFAULT_SEED_LEVEL,
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
+    DEFAULT_STREAMING_VALIDATION_INTERVAL,
     LANGCHAIN_AVAILABLE,
+    # Exceptions
+    TextTooLargeError,
+    ValidationTimeoutError,
     # LangChain types (may be None if not installed)
     BaseCallbackHandler,
     SystemMessage,
@@ -51,6 +57,7 @@ from .utils import (
     extract_content,
     get_message_role,
     is_system_message,
+    validate_text_size,
     # Classes
     SentinelLogger,
     ThreadSafeDeque,
@@ -85,7 +92,13 @@ __all__ = [
     # Constants
     "DEFAULT_MAX_VIOLATIONS",
     "DEFAULT_SEED_LEVEL",
+    "DEFAULT_MAX_TEXT_SIZE",
+    "DEFAULT_VALIDATION_TIMEOUT",
+    "DEFAULT_STREAMING_VALIDATION_INTERVAL",
     "LANGCHAIN_AVAILABLE",
+    # Exceptions
+    "TextTooLargeError",
+    "ValidationTimeoutError",
     # Classes
     "SentinelCallback",
     "SentinelGuard",
@@ -107,6 +120,7 @@ __all__ = [
     "extract_content",
     "get_message_role",
     "is_system_message",
+    "validate_text_size",
     # For backward compatibility
     "_sanitize_text",
 ]

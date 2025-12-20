@@ -174,8 +174,15 @@ SentinelCallback(
     max_violations=1000,        # Max violations to store (prevents memory leak)
     sanitize_logs=False,        # Mask emails, phones, tokens in logs
     logger=None,                # Custom logger instance
+    max_text_size=50*1024,      # Max text size in bytes (50KB default)
+    validation_timeout=30.0,    # Timeout for validation (seconds)
+    fail_closed=False,          # Block on validation errors (vs fail-open)
 )
 ```
+
+> **IMPORTANT**: Callbacks MONITOR but do NOT BLOCK execution. The `on_violation`
+> parameter controls logging/raising behavior, not request blocking. For actual
+> request blocking, use `SentinelGuard` or `SentinelChain` instead.
 
 ### SentinelGuard
 
@@ -189,6 +196,9 @@ SentinelGuard(
     validate_output=True,       # Validate outputs
     inject_seed=False,          # Inject seed (for internal processing)
     logger=None,                # Custom logger instance
+    max_text_size=50*1024,      # Max text size in bytes (50KB default)
+    validation_timeout=30.0,    # Timeout for validation (seconds)
+    fail_closed=False,          # Block on validation errors (vs fail-open)
 )
 ```
 
@@ -204,6 +214,10 @@ SentinelChain(
     validate_input=True,        # Validate inputs
     validate_output=True,       # Validate outputs
     logger=None,                # Custom logger instance
+    max_text_size=50*1024,      # Max text size in bytes (50KB default)
+    validation_timeout=30.0,    # Timeout for validation (seconds)
+    fail_closed=False,          # Block on validation errors (vs fail-open)
+    streaming_validation_interval=500,  # Characters between incremental validations
 )
 ```
 
@@ -355,6 +369,77 @@ from sentinelseed.integrations.langchain import require_langchain
 # Raises ImportError with helpful message if not installed
 require_langchain("my_function")
 ```
+
+## Safety Options
+
+### Fail-Closed Mode
+
+By default, validation errors (timeouts, exceptions) allow content through if heuristic passed (fail-open). Enable `fail_closed=True` for stricter behavior:
+
+```python
+guard = SentinelGuard(
+    agent=agent,
+    fail_closed=True,  # Block on any validation error
+)
+```
+
+### Timeout Configuration
+
+Configure validation timeout to prevent hangs:
+
+```python
+chain = SentinelChain(
+    llm=llm,
+    validation_timeout=10.0,  # 10 second timeout
+)
+```
+
+### Text Size Limits
+
+Prevent DoS attacks by limiting input text size:
+
+```python
+callback = SentinelCallback(
+    max_text_size=10 * 1024,  # 10KB limit
+)
+```
+
+### Incremental Streaming Validation
+
+SentinelChain validates streaming output incrementally, not just at the end:
+
+```python
+chain = SentinelChain(
+    llm=llm,
+    streaming_validation_interval=500,  # Validate every 500 chars
+)
+```
+
+## Error Handling
+
+```python
+from sentinelseed.integrations.langchain import (
+    TextTooLargeError,
+    ValidationTimeoutError,
+)
+
+# TextTooLargeError includes size details
+try:
+    # ... validation
+except TextTooLargeError as e:
+    print(f"Size: {e.size}, Max: {e.max_size}")
+
+# ValidationTimeoutError includes timeout info
+except ValidationTimeoutError as e:
+    print(f"Timeout after {e.timeout}s on {e.operation}")
+```
+
+## Limitations
+
+- **Text size limit**: Default 50KB per request. Configure with `max_text_size`.
+- **Timeout**: Default 30s for validation. Configure with `validation_timeout`.
+- **Callback behavior**: Callbacks MONITOR but do NOT BLOCK execution. Use `SentinelGuard` or `SentinelChain` for blocking.
+- **Streaming validation**: Validated incrementally every N characters (configurable).
 
 ## Links
 

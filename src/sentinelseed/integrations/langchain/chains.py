@@ -9,19 +9,26 @@ Provides:
 
 from typing import Any, Dict, Generator, List, Optional, Union, AsyncGenerator
 import threading
+import concurrent.futures
 
 from sentinelseed import Sentinel, SeedLevel
 
 from .utils import (
     DEFAULT_SEED_LEVEL,
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
+    DEFAULT_STREAMING_VALIDATION_INTERVAL,
     LANGCHAIN_AVAILABLE,
     SystemMessage,
     HumanMessage,
     SentinelLogger,
+    TextTooLargeError,
+    ValidationTimeoutError,
     get_logger,
     extract_content,
     is_system_message,
     require_langchain,
+    validate_text_size,
 )
 from .callbacks import SentinelCallback
 
@@ -57,6 +64,10 @@ class SentinelChain:
         validate_input: bool = True,
         validate_output: bool = True,
         logger: Optional[SentinelLogger] = None,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        fail_closed: bool = False,
+        streaming_validation_interval: int = DEFAULT_STREAMING_VALIDATION_INTERVAL,
     ):
         """
         Initialize chain.
@@ -70,6 +81,10 @@ class SentinelChain:
             validate_input: Whether to validate inputs
             validate_output: Whether to validate outputs
             logger: Custom logger instance
+            max_text_size: Maximum text size in bytes (default 50KB)
+            validation_timeout: Timeout for validation in seconds (default 30s)
+            fail_closed: If True, block on validation errors
+            streaming_validation_interval: Characters between incremental validations
 
         Raises:
             ValueError: If neither llm nor chain is provided
@@ -86,6 +101,10 @@ class SentinelChain:
         self.validate_output = validate_output
         self._logger = logger or get_logger()
         self._seed = self.sentinel.get_seed() if inject_seed else None
+        self._max_text_size = max_text_size
+        self._validation_timeout = validation_timeout
+        self._fail_closed = fail_closed
+        self._streaming_validation_interval = streaming_validation_interval
 
     def _build_messages(self, input_text: str) -> List[Any]:
         """Build message list with optional seed injection."""
@@ -116,12 +135,41 @@ class SentinelChain:
             return str(response)
 
     def _validate_input_safe(self, text: str) -> Optional[Dict[str, Any]]:
-        """Validate input with exception handling."""
+        """Validate input with exception handling, size limits, and timeout."""
         if not self.validate_input:
             return None
 
+        # Validate text size first
         try:
-            check = self.sentinel.validate_request(text)
+            validate_text_size(text, self._max_text_size, "input")
+        except TextTooLargeError as e:
+            return {
+                "output": None,
+                "blocked": True,
+                "blocked_at": "input",
+                "reason": [f"Text too large: {e}"]
+            }
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate_request, text)
+                try:
+                    check = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        return {
+                            "output": None,
+                            "blocked": True,
+                            "blocked_at": "input",
+                            "reason": [f"Validation timed out after {self._validation_timeout}s"]
+                        }
+                    else:
+                        self._logger.warning(
+                            "[SENTINEL] Validation timeout, allowing (fail-open)"
+                        )
+                        return None
+
             if not check["should_proceed"]:
                 return {
                     "output": None,
@@ -131,22 +179,52 @@ class SentinelChain:
                 }
         except Exception as e:
             self._logger.error(f"Error validating input: {e}")
-            return {
-                "output": None,
-                "blocked": True,
-                "blocked_at": "input",
-                "reason": [f"Validation error: {e}"]
-            }
+            if self._fail_closed:
+                return {
+                    "output": None,
+                    "blocked": True,
+                    "blocked_at": "input",
+                    "reason": [f"Validation error: {e}"]
+                }
 
         return None
 
     def _validate_output_safe(self, output: str) -> Optional[Dict[str, Any]]:
-        """Validate output with exception handling."""
+        """Validate output with exception handling, size limits, and timeout."""
         if not self.validate_output:
             return None
 
+        # Validate text size first
         try:
-            is_safe, violations = self.sentinel.validate(output)
+            validate_text_size(output, self._max_text_size, "output")
+        except TextTooLargeError as e:
+            return {
+                "output": output,
+                "blocked": True,
+                "blocked_at": "output",
+                "violations": [f"Text too large: {e}"]
+            }
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate, output)
+                try:
+                    is_safe, violations = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        return {
+                            "output": output,
+                            "blocked": True,
+                            "blocked_at": "output",
+                            "violations": [f"Validation timed out after {self._validation_timeout}s"]
+                        }
+                    else:
+                        self._logger.warning(
+                            "[SENTINEL] Validation timeout, allowing (fail-open)"
+                        )
+                        return None
+
             if not is_safe:
                 return {
                     "output": output,
@@ -156,12 +234,13 @@ class SentinelChain:
                 }
         except Exception as e:
             self._logger.error(f"Error validating output: {e}")
-            return {
-                "output": output,
-                "blocked": True,
-                "blocked_at": "output",
-                "violations": [f"Validation error: {e}"]
-            }
+            if self._fail_closed:
+                return {
+                    "output": output,
+                    "blocked": True,
+                    "blocked_at": "output",
+                    "violations": [f"Validation error: {e}"]
+                }
 
         return None
 
@@ -290,9 +369,10 @@ class SentinelChain:
         **kwargs: Any
     ) -> Generator[Dict[str, Any], None, None]:
         """
-        Stream with safety validation.
+        Stream with incremental safety validation.
 
-        Validates input before streaming, accumulates output for validation.
+        Validates input before streaming, validates output incrementally
+        during streaming (not just at the end).
 
         Args:
             input_data: User input
@@ -312,8 +392,12 @@ class SentinelChain:
             yield block_result
             return
 
-        # Stream from runnable
+        # Stream from runnable with incremental validation
         accumulated = []
+        last_validated_length = 0
+        stream_blocked = False
+        block_violations = None
+
         try:
             if self._is_llm:
                 messages = self._build_messages(input_text)
@@ -327,41 +411,72 @@ class SentinelChain:
             for chunk in stream:
                 chunk_text = self._extract_output(chunk)
                 accumulated.append(chunk_text)
-                yield {
-                    "chunk": chunk_text,
-                    "blocked": False,
-                    "final": False,
-                }
+
+                # Incremental validation: validate every N characters
+                current_length = sum(len(c) for c in accumulated)
+                if (current_length - last_validated_length) >= self._streaming_validation_interval:
+                    current_text = "".join(accumulated)
+                    block_result = self._validate_output_safe(current_text)
+                    if block_result:
+                        stream_blocked = True
+                        block_violations = block_result.get("violations")
+                        # Yield blocked chunk and stop streaming
+                        yield {
+                            "chunk": chunk_text,
+                            "blocked": True,
+                            "blocked_at": "output",
+                            "violations": block_violations,
+                            "final": False,
+                        }
+                        break
+                    last_validated_length = current_length
+
+                if not stream_blocked:
+                    yield {
+                        "chunk": chunk_text,
+                        "blocked": False,
+                        "final": False,
+                    }
 
         except Exception as e:
             self._logger.error(f"Stream error: {e}")
             raise
 
-        # Validate accumulated output
+        # Final validation of accumulated output
         full_output = "".join(accumulated)
-        block_result = self._validate_output_safe(full_output)
 
-        if block_result:
+        if stream_blocked:
             yield {
                 "output": full_output,
                 "blocked": True,
                 "blocked_at": "output",
-                "violations": block_result.get("violations"),
+                "violations": block_violations,
                 "final": True,
             }
         else:
-            yield {
-                "output": full_output,
-                "blocked": False,
-                "final": True,
-            }
+            # Final validation (in case stream ended before interval)
+            block_result = self._validate_output_safe(full_output)
+            if block_result:
+                yield {
+                    "output": full_output,
+                    "blocked": True,
+                    "blocked_at": "output",
+                    "violations": block_result.get("violations"),
+                    "final": True,
+                }
+            else:
+                yield {
+                    "output": full_output,
+                    "blocked": False,
+                    "final": True,
+                }
 
     async def astream(
         self,
         input_data: Union[str, Dict[str, Any]],
         **kwargs: Any
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Async stream with safety validation."""
+        """Async stream with incremental safety validation."""
         if isinstance(input_data, str):
             input_text = input_data
         else:
@@ -372,7 +487,12 @@ class SentinelChain:
             yield block_result
             return
 
+        # Stream with incremental validation
         accumulated = []
+        last_validated_length = 0
+        stream_blocked = False
+        block_violations = None
+
         try:
             if self._is_llm:
                 messages = self._build_messages(input_text)
@@ -386,33 +506,63 @@ class SentinelChain:
             async for chunk in stream:
                 chunk_text = self._extract_output(chunk)
                 accumulated.append(chunk_text)
-                yield {
-                    "chunk": chunk_text,
-                    "blocked": False,
-                    "final": False,
-                }
+
+                # Incremental validation: validate every N characters
+                current_length = sum(len(c) for c in accumulated)
+                if (current_length - last_validated_length) >= self._streaming_validation_interval:
+                    current_text = "".join(accumulated)
+                    block_result = self._validate_output_safe(current_text)
+                    if block_result:
+                        stream_blocked = True
+                        block_violations = block_result.get("violations")
+                        yield {
+                            "chunk": chunk_text,
+                            "blocked": True,
+                            "blocked_at": "output",
+                            "violations": block_violations,
+                            "final": False,
+                        }
+                        break
+                    last_validated_length = current_length
+
+                if not stream_blocked:
+                    yield {
+                        "chunk": chunk_text,
+                        "blocked": False,
+                        "final": False,
+                    }
 
         except Exception as e:
             self._logger.error(f"Async stream error: {e}")
             raise
 
+        # Final validation
         full_output = "".join(accumulated)
-        block_result = self._validate_output_safe(full_output)
 
-        if block_result:
+        if stream_blocked:
             yield {
                 "output": full_output,
                 "blocked": True,
                 "blocked_at": "output",
-                "violations": block_result.get("violations"),
+                "violations": block_violations,
                 "final": True,
             }
         else:
-            yield {
-                "output": full_output,
-                "blocked": False,
-                "final": True,
-            }
+            block_result = self._validate_output_safe(full_output)
+            if block_result:
+                yield {
+                    "output": full_output,
+                    "blocked": True,
+                    "blocked_at": "output",
+                    "violations": block_result.get("violations"),
+                    "final": True,
+                }
+            else:
+                yield {
+                    "output": full_output,
+                    "blocked": False,
+                    "final": True,
+                }
 
 
 def inject_seed(

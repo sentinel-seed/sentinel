@@ -17,9 +17,64 @@ from collections import deque
 # Default configuration
 DEFAULT_MAX_VIOLATIONS = 1000
 DEFAULT_SEED_LEVEL = "standard"
+DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
+DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
+DEFAULT_STREAMING_VALIDATION_INTERVAL = 500  # chars between incremental validations
 
 # Module logger
 _module_logger = logging.getLogger("sentinelseed.langchain")
+
+
+# ============================================================================
+# Exception Classes
+# ============================================================================
+
+class TextTooLargeError(Exception):
+    """Raised when input text exceeds maximum allowed size."""
+
+    def __init__(self, size: int, max_size: int):
+        self.size = size
+        self.max_size = max_size
+        super().__init__(
+            f"Text size ({size:,} bytes) exceeds maximum allowed ({max_size:,} bytes)"
+        )
+
+
+class ValidationTimeoutError(Exception):
+    """Raised when validation exceeds timeout."""
+
+    def __init__(self, timeout: float, operation: str = "validation"):
+        self.timeout = timeout
+        self.operation = operation
+        super().__init__(f"{operation} timed out after {timeout}s")
+
+
+# ============================================================================
+# Text Size Validation
+# ============================================================================
+
+def validate_text_size(
+    text: str,
+    max_size: int = DEFAULT_MAX_TEXT_SIZE,
+    context: str = "text"
+) -> None:
+    """
+    Validate that text does not exceed maximum size.
+
+    Args:
+        text: Text to validate
+        max_size: Maximum allowed size in bytes
+        context: Context for error message
+
+    Raises:
+        TextTooLargeError: If text exceeds max_size
+    """
+    if not text or not isinstance(text, str):
+        return
+
+    size = len(text.encode("utf-8"))
+    if size > max_size:
+        raise TextTooLargeError(size, max_size)
 
 
 # ============================================================================
@@ -365,7 +420,13 @@ __all__ = [
     # Constants
     "DEFAULT_MAX_VIOLATIONS",
     "DEFAULT_SEED_LEVEL",
+    "DEFAULT_MAX_TEXT_SIZE",
+    "DEFAULT_VALIDATION_TIMEOUT",
+    "DEFAULT_STREAMING_VALIDATION_INTERVAL",
     "LANGCHAIN_AVAILABLE",
+    # Exceptions
+    "TextTooLargeError",
+    "ValidationTimeoutError",
     # LangChain types
     "BaseCallbackHandler",
     "SystemMessage",
@@ -380,6 +441,7 @@ __all__ = [
     "extract_content",
     "get_message_role",
     "is_system_message",
+    "validate_text_size",
     # Classes
     "SentinelLogger",
     "ThreadSafeDeque",

@@ -6,13 +6,19 @@ Provides:
 """
 
 from typing import Any, Dict, List, Optional, Union
+import concurrent.futures
 
 from sentinelseed import Sentinel, SeedLevel
 
 from .utils import (
     DEFAULT_SEED_LEVEL,
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
     SentinelLogger,
+    TextTooLargeError,
+    ValidationTimeoutError,
     get_logger,
+    validate_text_size,
 )
 
 
@@ -48,6 +54,9 @@ class SentinelGuard:
         validate_output: bool = True,
         inject_seed: bool = False,
         logger: Optional[SentinelLogger] = None,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        fail_closed: bool = False,
     ):
         """
         Initialize guard.
@@ -61,6 +70,9 @@ class SentinelGuard:
             validate_output: Whether to validate outputs
             inject_seed: Whether to inject seed into system prompts
             logger: Custom logger instance
+            max_text_size: Maximum text size in bytes (default 50KB)
+            validation_timeout: Timeout for validation in seconds (default 30s)
+            fail_closed: If True, block on validation errors
         """
         self.agent = agent
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
@@ -71,10 +83,13 @@ class SentinelGuard:
         self.inject_seed = inject_seed
         self._logger = logger or get_logger()
         self._seed = self.sentinel.get_seed() if inject_seed else None
+        self._max_text_size = max_text_size
+        self._validation_timeout = validation_timeout
+        self._fail_closed = fail_closed
 
     def _validate_input(self, text: str) -> Optional[Dict[str, Any]]:
         """
-        Validate input, return block response if unsafe.
+        Validate input with size limits and timeout.
 
         Args:
             text: Input text to validate
@@ -85,8 +100,37 @@ class SentinelGuard:
         if not self.validate_input:
             return None
 
+        # Validate text size first
         try:
-            check = self.sentinel.validate_request(text)
+            validate_text_size(text, self._max_text_size, "input")
+        except TextTooLargeError as e:
+            if self.block_unsafe:
+                return {
+                    "output": f"Request blocked by Sentinel: Text too large ({e.size:,} bytes)",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [f"Text too large: {e}"],
+                }
+            return None
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate_request, text)
+                try:
+                    check = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        return {
+                            "output": f"Request blocked by Sentinel: Validation timeout",
+                            "sentinel_blocked": True,
+                            "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                        }
+                    else:
+                        self._logger.warning(
+                            "[SENTINEL] Validation timeout, allowing (fail-open)"
+                        )
+                        return None
+
             if not check["should_proceed"] and self.block_unsafe:
                 return {
                     "output": f"Request blocked by Sentinel: {check['concerns']}",
@@ -95,7 +139,7 @@ class SentinelGuard:
                 }
         except Exception as e:
             self._logger.error(f"Error validating input: {e}")
-            if self.block_unsafe:
+            if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Request blocked: validation error",
                     "sentinel_blocked": True,
@@ -106,7 +150,7 @@ class SentinelGuard:
 
     def _validate_output(self, text: str, original: str = "") -> Optional[Dict[str, Any]]:
         """
-        Validate output, return block response if unsafe.
+        Validate output with size limits and timeout.
 
         Args:
             text: Output text to validate
@@ -118,8 +162,39 @@ class SentinelGuard:
         if not self.validate_output:
             return None
 
+        # Validate text size first
         try:
-            is_safe, violations = self.sentinel.validate(text)
+            validate_text_size(text, self._max_text_size, "output")
+        except TextTooLargeError as e:
+            if self.block_unsafe:
+                return {
+                    "output": f"Response blocked by Sentinel: Text too large ({e.size:,} bytes)",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [f"Text too large: {e}"],
+                    "original_output": original[:200] if original else None,
+                }
+            return None
+
+        try:
+            # Run validation with timeout
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self.sentinel.validate, text)
+                try:
+                    is_safe, violations = future.result(timeout=self._validation_timeout)
+                except concurrent.futures.TimeoutError:
+                    if self._fail_closed:
+                        return {
+                            "output": f"Response blocked by Sentinel: Validation timeout",
+                            "sentinel_blocked": True,
+                            "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                            "original_output": original[:200] if original else None,
+                        }
+                    else:
+                        self._logger.warning(
+                            "[SENTINEL] Validation timeout, allowing (fail-open)"
+                        )
+                        return None
+
             if not is_safe and self.block_unsafe:
                 return {
                     "output": f"Response blocked by Sentinel: {violations}",
@@ -129,7 +204,7 @@ class SentinelGuard:
                 }
         except Exception as e:
             self._logger.error(f"Error validating output: {e}")
-            if self.block_unsafe:
+            if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Response blocked: validation error",
                     "sentinel_blocked": True,
