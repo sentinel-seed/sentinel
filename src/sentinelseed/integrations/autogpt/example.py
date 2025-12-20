@@ -93,7 +93,7 @@ def example_standalone_check():
         print(f"{symbol} {action}")
         if not result["safe"]:
             print(f"  Risk: {result['risk_level']}")
-            print(f"  Reason: {result['recommendation'][:60]}...")
+            print(f"  Reason: {result['reasoning'][:60]}...")
 
 
 def example_thought_validation():
@@ -142,7 +142,7 @@ def example_system_prompt():
 
     safety = SentinelSafetyComponent(seed_level="minimal")
 
-    seed = safety.get_system_prompt_addition()
+    seed = safety.get_seed()
     print(f"Seed length: {len(seed)} characters")
     print(f"First 200 chars:\n{seed[:200]}...")
     print("\nThis seed should be added to your agent's system prompt.")
@@ -175,7 +175,7 @@ def example_agent_simulation():
             # Would execute task here
         else:
             print(f"✗ Blocked: {action[:40]}")
-            print(f"  Reason: {check.recommendation}")
+            print(f"  Reason: {check.reasoning}")
 
     # Final stats
     print("\n--- Session Summary ---")

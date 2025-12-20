@@ -79,7 +79,7 @@ class AutoGPTPluginTemplate:
         check = self.validator.validate_action(action)
 
         if not check.should_proceed:
-            return ("think", {"thought": f"Action blocked by Sentinel: {check.recommendation}"})
+            return ("think", {"thought": f"Action blocked by Sentinel: {check.reasoning}"})
 
         return (command_name, arguments)
 
