@@ -89,7 +89,7 @@ llamaindex = ["llama-index-core>=0.10.0"]
 mcp = ["mcp>=0.1.0"]
 virtuals = ["game-sdk>=0.1.1"]
 garak = ["garak>=0.9.0"]
-pyrit = ["pyrit>=0.5.0"]
+pyrit = ["pyrit>=0.10.0"]
 dspy = ["dspy>=3.0.0"]
 letta = ["letta-client>=1.0.0"]
 all = [

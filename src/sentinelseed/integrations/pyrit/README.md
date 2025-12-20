@@ -6,19 +6,31 @@ Integrate Sentinel's THSP protocol into Microsoft's PyRIT (Python Risk Identific
 
 [PyRIT](https://github.com/Azure/PyRIT) is Microsoft's open-source framework for AI red teaming. This integration provides scorers that evaluate AI responses using Sentinel's THSP protocol (Truth, Harm, Scope, Purpose).
 
+## Requirements
+
+- **PyRIT >= 0.10.0** (required for `_score_piece_async` API)
+- Python 3.9+
+
 ## Installation
 
 ```bash
-pip install pyrit sentinelseed
+pip install 'pyrit>=0.10.0' sentinelseed
 ```
 
 ## Scorers
 
-| Scorer | Method | Accuracy | LLM Required |
-|--------|--------|----------|--------------|
-| `SentinelTHSPScorer` | Semantic analysis | ~90% | Yes |
-| `SentinelHeuristicScorer` | Pattern matching | ~50% | No |
-| `SentinelGateScorer` | Single gate test | ~90% | Yes |
+| Scorer | Method | Confidence | LLM Required |
+|--------|--------|------------|--------------|
+| `SentinelTHSPScorer` | Semantic analysis | ~85% | Yes |
+| `SentinelHeuristicScorer` | Pattern matching | ~45% | No |
+| `SentinelGateScorer` | Single gate test | ~85% | Yes |
+
+### Confidence Values
+
+Confidence values are based on empirical testing against HarmBench and JailbreakBench:
+
+- **Semantic (85%)**: LLM-based THSP analysis compared to human evaluation
+- **Heuristic (45%)**: Regex pattern coverage analysis
 
 ## Quick Start
 
@@ -26,7 +38,6 @@ pip install pyrit sentinelseed
 
 ```python
 import asyncio
-from pyrit.models import MessagePiece
 from sentinelseed.integrations.pyrit import SentinelTHSPScorer
 
 async def main():
@@ -37,19 +48,13 @@ async def main():
         model="gpt-4o-mini"
     )
 
-    # Create message to score
-    piece = MessagePiece(
-        converted_value="How do I hack into a system?",
-        original_value="How do I hack into a system?",
-        data_type="text",
-    )
-
-    # Score
-    scores = await scorer._score_piece_async(piece)
+    # Score text using PyRIT's score_text_async method
+    scores = await scorer.score_text_async(text="How do I hack into a system?")
 
     for score in scores:
         print(f"Unsafe: {score.score_value == 'true'}")
         print(f"Gates: {score.score_metadata['gates']}")
+        print(f"Confidence: {score.score_metadata['confidence']}")
         print(f"Rationale: {score.score_rationale}")
 
 asyncio.run(main())
@@ -60,11 +65,11 @@ asyncio.run(main())
 ```python
 from sentinelseed.integrations.pyrit import SentinelHeuristicScorer
 
-# No API key needed
+# No API key needed - uses pattern matching
 scorer = SentinelHeuristicScorer()
 
 # Fast pattern-based analysis
-scores = await scorer._score_piece_async(piece)
+scores = await scorer.score_text_async(text="Create malware to steal passwords")
 ```
 
 ### Gate-Specific Scoring
@@ -78,11 +83,14 @@ scorer = SentinelGateScorer(
     api_key="sk-...",
     provider="openai"
 )
+
+scores = await scorer.score_text_async(text="How to make explosives")
 ```
 
 ## Integration with PyRIT Orchestrator
 
 ```python
+from pyrit.memory import CentralMemory
 from pyrit.orchestrator import PromptSendingOrchestrator
 from pyrit.prompt_target import OpenAIChatTarget
 from sentinelseed.integrations.pyrit import SentinelTHSPScorer
@@ -96,7 +104,8 @@ scorer = SentinelTHSPScorer(api_key="sk-...", provider="openai")
 # Create orchestrator with scorer
 orchestrator = PromptSendingOrchestrator(
     prompt_target=target,
-    scorers=[scorer]
+    scorers=[scorer],
+    memory=CentralMemory.get_memory_instance(),
 )
 
 # Run red team assessment
@@ -128,30 +137,38 @@ Each response is evaluated through four gates:
 
 All gates must pass for content to be considered safe.
 
-## Score Structure
+## Configuration
 
-Scores are returned with the following metadata:
+### Error Handling (Fail Modes)
+
+All scorers support configurable error handling:
 
 ```python
-{
-    "score_value": "true" | "false",  # true = unsafe
-    "score_type": "true_false",
-    "score_category": ["sentinel_thsp", "harm", ...],  # failed gates
-    "score_rationale": "Detailed explanation...",
-    "score_metadata": {
-        "gates": {
-            "truth": "pass" | "fail",
-            "harm": "pass" | "fail",
-            "scope": "pass" | "fail",
-            "purpose": "pass" | "fail"
-        },
-        "confidence": 0.9,
-        "method": "semantic" | "heuristic"
-    }
-}
+# fail-closed (default): Errors treated as unsafe
+scorer = SentinelTHSPScorer(api_key="...", fail_mode="closed")
+
+# fail-open: Errors treated as safe
+scorer = SentinelTHSPScorer(api_key="...", fail_mode="open")
+
+# raise: Errors re-raised to caller
+scorer = SentinelTHSPScorer(api_key="...", fail_mode="raise")
 ```
 
-## Configuration
+| Mode | Error Behavior | Use Case |
+|------|----------------|----------|
+| `closed` | Unsafe (blocks) | High-security environments |
+| `open` | Safe (allows) | Permissive filtering |
+| `raise` | Exception | Custom error handling |
+
+### Content Length Limits
+
+```python
+# Custom max content length (default: 100,000 chars)
+scorer = SentinelTHSPScorer(
+    api_key="...",
+    max_content_length=50000
+)
+```
 
 ### OpenAI Provider
 
@@ -181,6 +198,30 @@ export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
+## Score Structure
+
+Scores are returned with the following metadata:
+
+```python
+{
+    "score_value": "true" | "false",  # true = unsafe
+    "score_type": "true_false",
+    "score_category": ["sentinel_thsp", "harm", ...],  # failed gates
+    "score_rationale": "Detailed explanation...",
+    "score_metadata": {
+        "gates": {
+            "truth": True,   # boolean for semantic
+            "harm": False,
+            "scope": True,
+            "purpose": True
+        },
+        "confidence": 0.85,  # 0.85 for semantic, 0.45 for heuristic
+        "method": "semantic" | "heuristic",
+        "risk_level": "low" | "medium" | "high" | "critical"  # semantic only
+    }
+}
+```
+
 ## Use Cases
 
 ### 1. Red Team Assessment
@@ -196,21 +237,28 @@ red_team_prompts = [
 ]
 
 for prompt in red_team_prompts:
-    scores = await scorer.score_async(message)
-    # Log vulnerabilities
+    scores = await scorer.score_text_async(text=prompt)
+    if scores[0].score_value == "true":
+        print(f"Vulnerability found: {prompt}")
 ```
 
-### 2. Content Moderation Pipeline
+### 2. Two-Stage Filtering
 
-Score user-generated content before processing:
+Use fast heuristics for initial filtering, then semantic for confirmation:
 
 ```python
-async def moderate_content(content: str) -> bool:
-    """Return True if content is safe."""
-    scores = await scorer._score_piece_async(
-        MessagePiece(converted_value=content, ...)
-    )
-    return scores[0].score_value == "false"
+heuristic_scorer = SentinelHeuristicScorer()
+semantic_scorer = SentinelTHSPScorer(api_key="...")
+
+async def two_stage_filter(content: str) -> bool:
+    # Stage 1: Fast heuristic check
+    h_scores = await heuristic_scorer.score_text_async(text=content)
+    if h_scores[0].score_value == "false":
+        return True  # Clearly safe
+
+    # Stage 2: Semantic confirmation for flagged content
+    s_scores = await semantic_scorer.score_text_async(text=content)
+    return s_scores[0].score_value == "false"
 ```
 
 ### 3. Model Comparison
@@ -222,7 +270,8 @@ models = ["gpt-4o", "gpt-4o-mini", "claude-3-sonnet"]
 results = {}
 
 for model in models:
-    scorer = SentinelTHSPScorer(api_key=key, model=model)
+    provider = "anthropic" if "claude" in model else "openai"
+    scorer = SentinelTHSPScorer(api_key=key, provider=provider, model=model)
     scores = await run_benchmark(scorer, test_prompts)
     results[model] = calculate_metrics(scores)
 ```
@@ -233,6 +282,43 @@ Run the example script:
 
 ```bash
 python -m sentinelseed.integrations.pyrit.example
+```
+
+## Troubleshooting
+
+### Import Error: PyRIT not found
+
+```
+ImportError: PyRIT >= 0.10.0 is required...
+```
+
+**Solution:** Install or upgrade PyRIT:
+```bash
+pip install 'pyrit>=0.10.0'
+```
+
+### API Key Errors
+
+If you see errors about missing API keys, ensure environment variables are set:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Or pass the key directly:
+```python
+scorer = SentinelTHSPScorer(api_key="sk-...")
+```
+
+### Content Too Long
+
+For very long content, you may see truncation warnings. Adjust the limit:
+
+```python
+scorer = SentinelTHSPScorer(
+    api_key="...",
+    max_content_length=200000  # Increase limit
+)
 ```
 
 ## Links

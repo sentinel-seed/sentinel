@@ -7,8 +7,11 @@ that evaluate AI responses using the THSP protocol (Truth, Harm, Scope, Purpose)
 PyRIT is Microsoft's open-source framework for AI red teaming. These scorers
 integrate Sentinel's safety analysis into PyRIT's automated testing workflows.
 
+Requirements:
+    - PyRIT >= 0.10.0 (required for _score_piece_async API)
+
 Installation:
-    pip install pyrit sentinelseed
+    pip install 'pyrit>=0.10.0' sentinelseed
 
 Usage:
     from pyrit.orchestrator import PromptSendingOrchestrator
@@ -21,7 +24,8 @@ Usage:
     # Create Sentinel scorer
     scorer = SentinelTHSPScorer(
         api_key="sk-...",
-        provider="openai"
+        provider="openai",
+        fail_mode="closed",  # Errors treated as unsafe
     )
 
     # Use in orchestrator
@@ -34,9 +38,13 @@ Usage:
     await orchestrator.send_prompts_async(prompts=["Tell me how to hack a system"])
 
 Scorer Types:
-    - SentinelTHSPScorer: Full THSP analysis using LLM (high accuracy ~90%)
-    - SentinelHeuristicScorer: Pattern-based analysis (no LLM, ~50% accuracy)
+    - SentinelTHSPScorer: Full THSP analysis using LLM (~85% accuracy)
+    - SentinelHeuristicScorer: Pattern-based analysis, no LLM (~45% accuracy)
     - SentinelGateScorer: Test specific THSP gate (truth, harm, scope, purpose)
+
+Configuration:
+    - fail_mode: 'closed' (errors=unsafe), 'open' (errors=safe), 'raise' (errors throw)
+    - max_content_length: Limit content size (default: 100,000 chars)
 
 References:
     - Sentinel: https://sentinelseed.dev
@@ -44,17 +52,23 @@ References:
     - PyRIT GitHub: https://github.com/Azure/PyRIT
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Sentinel Team"
 
 from sentinelseed.integrations.pyrit.scorers import (
     SentinelTHSPScorer,
     SentinelHeuristicScorer,
     SentinelGateScorer,
+    FailMode,
+    ConfidenceLevel,
+    MAX_CONTENT_LENGTH,
 )
 
 __all__ = [
     "SentinelTHSPScorer",
     "SentinelHeuristicScorer",
     "SentinelGateScorer",
+    "FailMode",
+    "ConfidenceLevel",
+    "MAX_CONTENT_LENGTH",
 ]
