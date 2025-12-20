@@ -5,8 +5,7 @@ Utilities for adding Sentinel safety to raw HTTP API calls.
 ## Requirements
 
 ```bash
-pip install sentinelseed
-# Optional: pip install requests httpx
+pip install sentinelseed requests
 ```
 
 No framework dependencies. Works with any HTTP client.
@@ -74,6 +73,7 @@ from sentinelseed.integrations.raw_api import validate_response
 result = validate_response(
     response.json(),
     response_format="openai",  # or "anthropic"
+    block_on_unsafe=False,     # Set True to raise ValidationError for unsafe content
 )
 
 if result["valid"]:
@@ -88,13 +88,15 @@ else:
 from sentinelseed.integrations.raw_api import RawAPIClient
 
 client = RawAPIClient(
-    provider="openai",
+    provider="openai",      # "openai" or "anthropic"
     api_key="sk-...",
+    timeout=30,             # Request timeout in seconds
 )
 
 result = client.chat(
     messages=[{"role": "user", "content": "Hello"}],
     model="gpt-4o",
+    block_on_unsafe=True,   # Raise ValidationError for unsafe output
 )
 
 print(result["content"])
@@ -129,7 +131,7 @@ prepare_openai_request(
     model="gpt-4o-mini",
     api_key=None,
     sentinel=None,
-    seed_level="standard",
+    seed_level="standard",       # minimal, standard, full
     inject_seed=True,            # Add seed to system
     validate_input=True,         # Validate user messages
     max_tokens=1024,
@@ -137,6 +139,7 @@ prepare_openai_request(
     **kwargs,                    # Additional API params
 )
 # Returns: (headers, body)
+# Raises: ValueError, ValidationError
 ```
 
 ### prepare_anthropic_request
@@ -147,7 +150,7 @@ prepare_anthropic_request(
     model="claude-sonnet-4-20250514",
     api_key=None,
     sentinel=None,
-    seed_level="standard",
+    seed_level="standard",       # minimal, standard, full
     inject_seed=True,
     validate_input=True,
     max_tokens=1024,
@@ -155,6 +158,7 @@ prepare_anthropic_request(
     **kwargs,
 )
 # Returns: (headers, body)
+# Raises: ValueError, ValidationError
 ```
 
 ### validate_response
@@ -164,8 +168,10 @@ validate_response(
     response,                    # Parsed JSON dict
     sentinel=None,
     response_format="openai",    # openai, anthropic
+    block_on_unsafe=False,       # Raise ValidationError if unsafe
 )
 # Returns: {valid, response, violations, content, sentinel_checked}
+# Raises: ValueError, ValidationError
 ```
 
 ### RawAPIClient
@@ -176,9 +182,51 @@ RawAPIClient(
     api_key=None,
     base_url=None,               # Custom endpoint
     sentinel=None,
-    seed_level="standard",
+    seed_level="standard",       # minimal, standard, full
+    timeout=30,                  # Request timeout in seconds
 )
+# Raises: ValueError for invalid provider/seed_level
+
+client.chat(
+    messages=[...],
+    model=None,                  # Uses provider default
+    max_tokens=1024,
+    timeout=None,                # Override client timeout
+    block_on_unsafe=False,       # Raise ValidationError if unsafe
+    **kwargs,
+)
+# Returns: {valid, response, violations, content, sentinel_checked}
+# Raises: RawAPIError, ValidationError
 ```
+
+## Error Handling
+
+The integration provides custom exceptions for better error handling:
+
+```python
+from sentinelseed.integrations.raw_api import (
+    RawAPIError,
+    ValidationError,
+)
+
+try:
+    result = client.chat(messages=[...], block_on_unsafe=True)
+except ValidationError as e:
+    print(f"Validation failed: {e.message}")
+    print(f"Concerns: {e.concerns}")
+    print(f"Violations: {e.violations}")
+except RawAPIError as e:
+    print(f"API error: {e.message}")
+    print(f"Details: {e.details}")
+```
+
+### Error Types
+
+| Exception | Cause |
+|-----------|-------|
+| `ValueError` | Invalid parameters (messages, seed_level, etc.) |
+| `ValidationError` | Input/output blocked by Sentinel |
+| `RawAPIError` | HTTP errors, timeouts, JSON parsing errors |
 
 ## API Endpoints
 
@@ -208,6 +256,17 @@ RawAPIClient(
 }
 ```
 
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| `OPENAI_API_URL` | `https://api.openai.com/v1/chat/completions` |
+| `ANTHROPIC_API_URL` | `https://api.anthropic.com/v1/messages` |
+| `VALID_SEED_LEVELS` | `("minimal", "standard", "full")` |
+| `VALID_PROVIDERS` | `("openai", "anthropic")` |
+| `VALID_RESPONSE_FORMATS` | `("openai", "anthropic")` |
+| `DEFAULT_TIMEOUT` | `30` |
+
 ## API Reference
 
 ### Functions
@@ -226,14 +285,9 @@ RawAPIClient(
 
 | Class | Description |
 |-------|-------------|
-| `RawAPIClient` | Simple HTTP client |
-
-### Constants
-
-| Constant | Value |
-|----------|-------|
-| `OPENAI_API_URL` | `https://api.openai.com/v1/chat/completions` |
-| `ANTHROPIC_API_URL` | `https://api.anthropic.com/v1/messages` |
+| `RawAPIClient` | Simple HTTP client with Sentinel |
+| `RawAPIError` | Base exception for API errors |
+| `ValidationError` | Exception for validation failures |
 
 ## Links
 

@@ -36,18 +36,113 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
-import json
+from json import JSONDecodeError
 import logging
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validators.semantic import SemanticValidator, THSPResult
 
+__version__ = "1.0.0"
+
+__all__ = [
+    # Functions
+    "prepare_openai_request",
+    "prepare_anthropic_request",
+    "validate_response",
+    "create_openai_request_body",
+    "create_anthropic_request_body",
+    "inject_seed_openai",
+    "inject_seed_anthropic",
+    # Classes
+    "RawAPIClient",
+    # Constants
+    "OPENAI_API_URL",
+    "ANTHROPIC_API_URL",
+    "VALID_SEED_LEVELS",
+    "VALID_PROVIDERS",
+    "VALID_RESPONSE_FORMATS",
+    "DEFAULT_TIMEOUT",
+    # Exceptions
+    "RawAPIError",
+    "ValidationError",
+]
+
 logger = logging.getLogger("sentinelseed.raw_api")
+
+
+# Validation constants
+VALID_SEED_LEVELS = ("minimal", "standard", "full")
+VALID_PROVIDERS = ("openai", "anthropic")
+VALID_RESPONSE_FORMATS = ("openai", "anthropic")
+DEFAULT_TIMEOUT = 30
 
 
 # API endpoints
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+
+
+class RawAPIError(Exception):
+    """Base exception for raw API errors."""
+
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        self.message = message
+        self.details = details or {}
+        super().__init__(message)
+
+
+class ValidationError(RawAPIError):
+    """Raised when input or output validation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        concerns: Optional[List[str]] = None,
+        violations: Optional[List[str]] = None,
+    ):
+        self.concerns = concerns or []
+        self.violations = violations or []
+        super().__init__(message, {"concerns": self.concerns, "violations": self.violations})
+
+
+def _validate_seed_level(seed_level: str) -> None:
+    """Validate seed_level parameter."""
+    if seed_level not in VALID_SEED_LEVELS:
+        raise ValueError(
+            f"Invalid seed_level: '{seed_level}'. Must be one of: {VALID_SEED_LEVELS}"
+        )
+
+
+def _validate_messages(messages: Any) -> None:
+    """Validate messages parameter."""
+    if messages is None:
+        raise ValueError("messages cannot be None")
+    if not isinstance(messages, list):
+        raise ValueError(f"messages must be a list, got {type(messages).__name__}")
+    if len(messages) == 0:
+        raise ValueError("messages cannot be empty")
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            raise ValueError(f"messages[{i}] must be a dict, got {type(msg).__name__}")
+        if "role" not in msg:
+            raise ValueError(f"messages[{i}] missing required 'role' key")
+
+
+def _safe_get_content(msg: Dict[str, Any]) -> str:
+    """Safely extract content from message, handling None and non-string values."""
+    content = msg.get("content")
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    # Handle list content (OpenAI vision format)
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        return " ".join(text_parts)
+    return str(content)
 
 
 def prepare_openai_request(
@@ -72,7 +167,7 @@ def prepare_openai_request(
         model: Model identifier
         api_key: API key for Authorization header
         sentinel: Sentinel instance (creates default if None)
-        seed_level: Seed level to use
+        seed_level: Seed level to use (minimal, standard, full)
         inject_seed: Whether to inject seed into system message
         validate_input: Whether to validate input messages
         max_tokens: Maximum tokens in response
@@ -83,7 +178,8 @@ def prepare_openai_request(
         Tuple of (headers dict, body dict)
 
     Raises:
-        ValueError: If input validation fails
+        ValueError: If parameters are invalid
+        ValidationError: If input validation fails
 
     Example:
         import requests
@@ -101,16 +197,36 @@ def prepare_openai_request(
             json=body
         )
     """
-    sentinel = sentinel or Sentinel(seed_level=seed_level)
+    # Validate parameters
+    _validate_messages(messages)
+    _validate_seed_level(seed_level)
+
+    # Create sentinel instance
+    try:
+        sentinel = sentinel or Sentinel(seed_level=seed_level)
+    except Exception as e:
+        logger.error(f"Failed to create Sentinel instance: {e}")
+        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
 
     # Validate input messages
     if validate_input:
         for msg in messages:
-            content = msg.get("content", "")
-            if isinstance(content, str) and msg.get("role") == "user":
-                result = sentinel.validate_request(content)
-                if not result["should_proceed"]:
-                    raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+            content = _safe_get_content(msg)
+            if content.strip() and msg.get("role") == "user":
+                try:
+                    result = sentinel.validate_request(content)
+                    if not result.get("should_proceed", True):
+                        concerns = result.get("concerns", ["Unknown concern"])
+                        logger.warning(f"Input blocked by Sentinel: {concerns}")
+                        raise ValidationError(
+                            f"Input blocked by Sentinel",
+                            concerns=concerns if isinstance(concerns, list) else [str(concerns)],
+                        )
+                except ValidationError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Validation error: {e}")
+                    raise RawAPIError(f"Input validation failed: {e}")
 
     # Prepare messages with seed injection
     prepared_messages = list(messages)
@@ -122,9 +238,10 @@ def prepare_openai_request(
         has_system = False
         for i, msg in enumerate(prepared_messages):
             if msg.get("role") == "system":
+                existing_content = _safe_get_content(msg)
                 prepared_messages[i] = {
                     "role": "system",
-                    "content": f"{seed}\n\n---\n\n{msg['content']}"
+                    "content": f"{seed}\n\n---\n\n{existing_content}"
                 }
                 has_system = True
                 break
@@ -149,6 +266,7 @@ def prepare_openai_request(
         **kwargs,
     }
 
+    logger.debug(f"Prepared OpenAI request for model {model} with {len(prepared_messages)} messages")
     return headers, body
 
 
@@ -172,7 +290,7 @@ def prepare_anthropic_request(
         model: Model identifier
         api_key: API key for x-api-key header
         sentinel: Sentinel instance (creates default if None)
-        seed_level: Seed level to use
+        seed_level: Seed level to use (minimal, standard, full)
         inject_seed: Whether to inject seed into system prompt
         validate_input: Whether to validate input messages
         max_tokens: Maximum tokens in response
@@ -183,7 +301,8 @@ def prepare_anthropic_request(
         Tuple of (headers dict, body dict)
 
     Raises:
-        ValueError: If input validation fails
+        ValueError: If parameters are invalid
+        ValidationError: If input validation fails
 
     Example:
         import requests
@@ -201,16 +320,36 @@ def prepare_anthropic_request(
             json=body
         )
     """
-    sentinel = sentinel or Sentinel(seed_level=seed_level)
+    # Validate parameters
+    _validate_messages(messages)
+    _validate_seed_level(seed_level)
+
+    # Create sentinel instance
+    try:
+        sentinel = sentinel or Sentinel(seed_level=seed_level)
+    except Exception as e:
+        logger.error(f"Failed to create Sentinel instance: {e}")
+        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
 
     # Validate input messages
     if validate_input:
         for msg in messages:
-            content = msg.get("content", "")
-            if isinstance(content, str) and msg.get("role") == "user":
-                result = sentinel.validate_request(content)
-                if not result["should_proceed"]:
-                    raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+            content = _safe_get_content(msg)
+            if content.strip() and msg.get("role") == "user":
+                try:
+                    result = sentinel.validate_request(content)
+                    if not result.get("should_proceed", True):
+                        concerns = result.get("concerns", ["Unknown concern"])
+                        logger.warning(f"Input blocked by Sentinel: {concerns}")
+                        raise ValidationError(
+                            f"Input blocked by Sentinel",
+                            concerns=concerns if isinstance(concerns, list) else [str(concerns)],
+                        )
+                except ValidationError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Validation error: {e}")
+                    raise RawAPIError(f"Input validation failed: {e}")
 
     # Filter out system messages (Anthropic uses separate system field)
     filtered_messages = [
@@ -221,10 +360,11 @@ def prepare_anthropic_request(
     # Extract system content from messages if present
     for msg in messages:
         if msg.get("role") == "system":
+            msg_content = _safe_get_content(msg)
             if system:
-                system = f"{msg['content']}\n\n{system}"
+                system = f"{msg_content}\n\n{system}"
             else:
-                system = msg["content"]
+                system = msg_content
 
     # Inject seed into system prompt
     if inject_seed:
@@ -256,10 +396,67 @@ def prepare_anthropic_request(
     return headers, body
 
 
+def _extract_openai_content(response: Dict[str, Any]) -> str:
+    """Safely extract content from OpenAI response format."""
+    choices = response.get("choices")
+    if choices is None:
+        return ""
+    if not isinstance(choices, list):
+        logger.warning(f"Expected choices to be list, got {type(choices).__name__}")
+        return ""
+    if len(choices) == 0:
+        return ""
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        logger.warning(f"Expected choice to be dict, got {type(first_choice).__name__}")
+        return ""
+
+    message = first_choice.get("message")
+    if message is None:
+        return ""
+    if not isinstance(message, dict):
+        logger.warning(f"Expected message to be dict, got {type(message).__name__}")
+        return ""
+
+    content = message.get("content")
+    if content is None:
+        return ""
+    if not isinstance(content, str):
+        return str(content)
+
+    return content
+
+
+def _extract_anthropic_content(response: Dict[str, Any]) -> str:
+    """Safely extract content from Anthropic response format."""
+    content_blocks = response.get("content")
+    if content_blocks is None:
+        return ""
+    if not isinstance(content_blocks, list):
+        logger.warning(f"Expected content to be list, got {type(content_blocks).__name__}")
+        return ""
+
+    text_parts = []
+    for i, block in enumerate(content_blocks):
+        if not isinstance(block, dict):
+            logger.warning(f"Expected block[{i}] to be dict, got {type(block).__name__}")
+            continue
+        if block.get("type") == "text":
+            text = block.get("text", "")
+            if isinstance(text, str):
+                text_parts.append(text)
+            else:
+                text_parts.append(str(text))
+
+    return "".join(text_parts)
+
+
 def validate_response(
     response: Dict[str, Any],
     sentinel: Optional[Sentinel] = None,
     response_format: str = "openai",
+    block_on_unsafe: bool = False,
 ) -> Dict[str, Any]:
     """
     Validate an API response through Sentinel THSP gates.
@@ -268,9 +465,14 @@ def validate_response(
         response: Parsed JSON response from API
         sentinel: Sentinel instance (creates default if None)
         response_format: Format of response - 'openai' or 'anthropic'
+        block_on_unsafe: If True, raise ValidationError when content is unsafe
 
     Returns:
-        Dict with 'valid', 'response', 'violations', 'content'
+        Dict with 'valid', 'response', 'violations', 'content', 'sentinel_checked'
+
+    Raises:
+        ValueError: If response_format is invalid
+        ValidationError: If block_on_unsafe=True and content is unsafe
 
     Example:
         response = requests.post(url, headers=headers, json=body).json()
@@ -281,32 +483,51 @@ def validate_response(
         else:
             print(f"Safety concerns: {result['violations']}")
     """
-    sentinel = sentinel or Sentinel()
+    # Validate response_format
+    if response_format not in VALID_RESPONSE_FORMATS:
+        raise ValueError(
+            f"Invalid response_format: '{response_format}'. "
+            f"Must be one of: {VALID_RESPONSE_FORMATS}"
+        )
+
+    # Validate response type
+    if response is None:
+        raise ValueError("response cannot be None")
+    if not isinstance(response, dict):
+        raise ValueError(f"response must be a dict, got {type(response).__name__}")
+
+    # Create sentinel
+    try:
+        sentinel = sentinel or Sentinel()
+    except Exception as e:
+        logger.error(f"Failed to create Sentinel instance: {e}")
+        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
 
     # Extract content based on format
-    content = ""
-
     if response_format == "openai":
-        # OpenAI format: choices[0].message.content
-        choices = response.get("choices", [])
-        if choices:
-            message = choices[0].get("message", {})
-            content = message.get("content", "")
-
-    elif response_format == "anthropic":
-        # Anthropic format: content[0].text
-        content_blocks = response.get("content", [])
-        if content_blocks:
-            for block in content_blocks:
-                if block.get("type") == "text":
-                    content += block.get("text", "")
+        content = _extract_openai_content(response)
+    else:  # anthropic
+        content = _extract_anthropic_content(response)
 
     # Validate content
-    if content:
-        is_safe, violations = sentinel.validate(content)
-    else:
-        is_safe = True
-        violations = []
+    is_safe = True
+    violations = []
+
+    if content.strip():
+        try:
+            is_safe, violations = sentinel.validate(content)
+        except Exception as e:
+            logger.error(f"Output validation error: {e}")
+            is_safe = False
+            violations = [f"Validation error: {e}"]
+
+    # Block unsafe content if requested
+    if block_on_unsafe and not is_safe:
+        logger.warning(f"Output blocked by Sentinel: {violations}")
+        raise ValidationError(
+            "Output blocked by Sentinel",
+            violations=violations if isinstance(violations, list) else [str(violations)],
+        )
 
     return {
         "valid": is_safe,
@@ -421,6 +642,13 @@ class RawAPIClient:
             messages=[{"role": "user", "content": "Hello"}],
             model="gpt-4o"
         )
+
+    Attributes:
+        provider: API provider ('openai' or 'anthropic')
+        api_key: API key for authentication
+        base_url: Base URL for API requests
+        sentinel: Sentinel instance for validation
+        timeout: Request timeout in seconds
     """
 
     def __init__(
@@ -430,6 +658,7 @@ class RawAPIClient:
         base_url: Optional[str] = None,
         sentinel: Optional[Sentinel] = None,
         seed_level: str = "standard",
+        timeout: int = DEFAULT_TIMEOUT,
     ):
         """
         Initialize raw API client.
@@ -439,26 +668,49 @@ class RawAPIClient:
             api_key: API key
             base_url: Custom base URL (for OpenAI-compatible APIs)
             sentinel: Sentinel instance
-            seed_level: Seed level to use
+            seed_level: Seed level to use (minimal, standard, full)
+            timeout: Request timeout in seconds
+
+        Raises:
+            ValueError: If provider or seed_level is invalid
         """
+        # Validate provider
+        if provider not in VALID_PROVIDERS:
+            raise ValueError(
+                f"Invalid provider: '{provider}'. Must be one of: {VALID_PROVIDERS}"
+            )
+
+        # Validate seed_level
+        _validate_seed_level(seed_level)
+
         self.provider = provider
         self.api_key = api_key
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self.timeout = timeout
 
+        # Create sentinel instance
+        try:
+            self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        except Exception as e:
+            logger.error(f"Failed to create Sentinel instance: {e}")
+            raise RawAPIError(f"Failed to initialize Sentinel: {e}")
+
+        # Set base URL
         if base_url:
             self.base_url = base_url.rstrip("/")
         elif provider == "openai":
             self.base_url = "https://api.openai.com/v1"
-        elif provider == "anthropic":
+        else:  # anthropic
             self.base_url = "https://api.anthropic.com/v1"
-        else:
-            self.base_url = "https://api.openai.com/v1"
+
+        logger.debug(f"Initialized RawAPIClient for {provider} at {self.base_url}")
 
     def chat(
         self,
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
         max_tokens: int = 1024,
+        timeout: Optional[int] = None,
+        block_on_unsafe: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -468,19 +720,30 @@ class RawAPIClient:
             messages: Conversation messages
             model: Model to use
             max_tokens: Maximum tokens
+            timeout: Request timeout (overrides client default)
+            block_on_unsafe: If True, raise ValidationError for unsafe output
             **kwargs: Additional parameters
 
         Returns:
             API response dict with validation info
+
+        Raises:
+            ImportError: If requests package is not installed
+            RawAPIError: If HTTP request fails
+            ValidationError: If input validation fails or block_on_unsafe=True and output is unsafe
         """
         try:
             import requests
+            from requests.exceptions import RequestException, Timeout, HTTPError
         except ImportError:
             raise ImportError("requests package required. Install with: pip install requests")
 
         # Set default model
         if model is None:
             model = "gpt-4o-mini" if self.provider == "openai" else "claude-sonnet-4-5-20250929"
+
+        # Use provided timeout or client default
+        request_timeout = timeout if timeout is not None else self.timeout
 
         # Prepare request
         if self.provider == "anthropic":
@@ -506,14 +769,53 @@ class RawAPIClient:
             url = f"{self.base_url}/chat/completions"
             response_format = "openai"
 
-        # Make request
-        response = requests.post(url, headers=headers, json=body)
-        response.raise_for_status()
+        # Make request with error handling
+        try:
+            logger.debug(f"Sending request to {url}")
+            response = requests.post(url, headers=headers, json=body, timeout=request_timeout)
+            response.raise_for_status()
+        except Timeout:
+            logger.error(f"Request timed out after {request_timeout}s")
+            raise RawAPIError(
+                f"Request timed out after {request_timeout} seconds",
+                details={"url": url, "timeout": request_timeout},
+            )
+        except HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            error_body = None
+            if e.response is not None:
+                try:
+                    error_body = e.response.json()
+                except (JSONDecodeError, ValueError):
+                    error_body = e.response.text[:500] if e.response.text else None
+
+            logger.error(f"HTTP error {status_code}: {e}")
+            raise RawAPIError(
+                f"HTTP error {status_code}: {e}",
+                details={"url": url, "status_code": status_code, "error_body": error_body},
+            )
+        except RequestException as e:
+            logger.error(f"Request failed: {e}")
+            raise RawAPIError(
+                f"Request failed: {e}",
+                details={"url": url},
+            )
+
+        # Parse JSON response
+        try:
+            response_data = response.json()
+        except JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            raise RawAPIError(
+                f"Failed to parse JSON response: {e}",
+                details={"response_text": response.text[:500] if response.text else None},
+            )
 
         # Validate response
         return validate_response(
-            response.json(),
+            response_data,
             sentinel=self.sentinel,
+            block_on_unsafe=block_on_unsafe,
             response_format=response_format,
         )
 
@@ -530,27 +832,38 @@ def inject_seed_openai(
 
     Args:
         messages: Original messages
-        seed_level: Seed level to use
+        seed_level: Seed level to use (minimal, standard, full)
 
     Returns:
         Messages with seed injected
+
+    Raises:
+        ValueError: If messages or seed_level is invalid
 
     Example:
         messages = [{"role": "user", "content": "Hello"}]
         safe_messages = inject_seed_openai(messages)
     """
-    sentinel = Sentinel(seed_level=seed_level)
-    seed = sentinel.get_seed()
+    _validate_messages(messages)
+    _validate_seed_level(seed_level)
 
+    try:
+        sentinel = Sentinel(seed_level=seed_level)
+    except Exception as e:
+        logger.error(f"Failed to create Sentinel instance: {e}")
+        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
+
+    seed = sentinel.get_seed()
     result = list(messages)
 
     # Check for existing system message
     has_system = False
     for i, msg in enumerate(result):
         if msg.get("role") == "system":
+            existing_content = _safe_get_content(msg)
             result[i] = {
                 "role": "system",
-                "content": f"{seed}\n\n---\n\n{msg['content']}"
+                "content": f"{seed}\n\n---\n\n{existing_content}"
             }
             has_system = True
             break
@@ -570,15 +883,25 @@ def inject_seed_anthropic(
 
     Args:
         system: Original system prompt
-        seed_level: Seed level to use
+        seed_level: Seed level to use (minimal, standard, full)
 
     Returns:
         System prompt with seed injected
 
+    Raises:
+        ValueError: If seed_level is invalid
+
     Example:
         system = inject_seed_anthropic("You are a helpful assistant")
     """
-    sentinel = Sentinel(seed_level=seed_level)
+    _validate_seed_level(seed_level)
+
+    try:
+        sentinel = Sentinel(seed_level=seed_level)
+    except Exception as e:
+        logger.error(f"Failed to create Sentinel instance: {e}")
+        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
+
     seed = sentinel.get_seed()
 
     if system:
