@@ -32,17 +32,54 @@ Usage patterns:
 
     validator = SentinelValidator()
     # Use in your custom Solana Agent Kit actions
+
+Documentation: https://sentinelseed.dev/docs/solana-agent-kit
 """
 
-from typing import Any, Dict, List, Optional, Callable
+__version__ = "2.0.0"
+__author__ = "Sentinel Team"
+
+from typing import Any, Dict, List, Optional, Callable, Union
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
+import re
+import warnings
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validators.semantic import SemanticValidator, THSPResult
 
 logger = logging.getLogger("sentinelseed.solana_agent_kit")
+
+
+# Solana address validation
+# Solana addresses are base58 encoded, 32-44 characters
+# Valid characters: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
+BASE58_PATTERN = re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
+
+
+def is_valid_solana_address(address: str) -> bool:
+    """
+    Validate Solana address format (base58, 32-44 chars).
+
+    This is a format check only - does not verify the address exists on-chain.
+
+    Args:
+        address: The address string to validate
+
+    Returns:
+        True if address matches Solana base58 format
+    """
+    if not address or not isinstance(address, str):
+        return False
+    return bool(BASE58_PATTERN.match(address))
+
+
+class AddressValidationMode(Enum):
+    """How to handle invalid Solana addresses."""
+    IGNORE = "ignore"      # Don't validate addresses
+    WARN = "warn"          # Log warning but allow
+    STRICT = "strict"      # Reject invalid addresses
 
 
 class TransactionRisk(Enum):
@@ -109,9 +146,9 @@ class SentinelValidator:
             print(f"Blocked: {result.concerns}")
     """
 
-    # Default actions that require explicit purpose (synced with TypeScript version)
+    # Default actions that require explicit purpose
     DEFAULT_REQUIRE_PURPOSE = [
-        "transfer", "swap", "approve", "bridge", "withdraw", "stake",
+        "transfer", "send", "swap", "approve", "bridge", "withdraw", "stake",
     ]
 
     def __init__(
@@ -125,13 +162,14 @@ class SentinelValidator:
         max_history_size: int = 1000,
         memory_integrity_check: bool = False,
         memory_secret_key: Optional[str] = None,
+        address_validation: Union[str, AddressValidationMode] = AddressValidationMode.WARN,
     ):
         """
         Initialize validator.
 
         Args:
             seed_level: Sentinel seed level ("minimal", "standard", "full")
-            max_transfer: Maximum SOL per single transaction
+            max_transfer: Maximum SOL per single transaction (default 100.0 - adjust for your use case)
             confirm_above: Require confirmation for amounts above this
             blocked_addresses: List of blocked wallet addresses
             allowed_programs: Whitelist of allowed program IDs (empty = all allowed)
@@ -139,6 +177,11 @@ class SentinelValidator:
             max_history_size: Maximum validation history entries (prevents memory growth)
             memory_integrity_check: Enable memory integrity verification
             memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
+            address_validation: How to handle invalid addresses ("ignore", "warn", "strict")
+
+        Note:
+            Default max_transfer=100.0 SOL may be too high for some use cases.
+            Always configure appropriate limits for your application.
         """
         self.sentinel = Sentinel(seed_level=seed_level)
         self.max_transfer = max_transfer
@@ -151,6 +194,12 @@ class SentinelValidator:
         self.memory_secret_key = memory_secret_key
         self.history: List[TransactionSafetyResult] = []
 
+        # Parse address validation mode
+        if isinstance(address_validation, str):
+            self.address_validation = AddressValidationMode(address_validation.lower())
+        else:
+            self.address_validation = address_validation
+
         # Initialize memory checker if enabled
         self._memory_checker = None
         if memory_integrity_check:
@@ -160,8 +209,14 @@ class SentinelValidator:
                     secret_key=memory_secret_key,
                     strict_mode=False,
                 )
+                logger.debug("Memory integrity checker initialized")
             except ImportError:
-                pass  # Memory module not available
+                warnings.warn(
+                    "memory_integrity_check=True but sentinelseed.memory module not available. "
+                    "Memory integrity checking will be disabled.",
+                    RuntimeWarning,
+                )
+                logger.warning("Memory integrity module not available")
 
     def check(
         self,
@@ -192,21 +247,39 @@ class SentinelValidator:
         recommendations = []
         risk_level = TransactionRisk.LOW
 
+        logger.debug(f"Checking transaction: action={action}, amount={amount}")
+
+        # Validate address format
+        if recipient:
+            address_valid = is_valid_solana_address(recipient)
+            if not address_valid:
+                if self.address_validation == AddressValidationMode.STRICT:
+                    concerns.append(f"Invalid Solana address format: {recipient[:16]}...")
+                    risk_level = TransactionRisk.CRITICAL
+                    logger.warning(f"Invalid address rejected (strict mode): {recipient[:16]}...")
+                elif self.address_validation == AddressValidationMode.WARN:
+                    logger.warning(f"Address may be invalid (not base58): {recipient[:16]}...")
+                    recommendations.append("Verify recipient address format")
+                # IGNORE mode: no action
+
         # Check blocked addresses
         if recipient and recipient in self.blocked_addresses:
             concerns.append(f"Recipient is blocked: {recipient[:8]}...")
             risk_level = TransactionRisk.CRITICAL
+            logger.info(f"Blocked address detected: {recipient[:8]}...")
 
         # Check program whitelist
         if self.allowed_programs and program_id:
             if program_id not in self.allowed_programs:
                 concerns.append(f"Program not whitelisted: {program_id[:8]}...")
                 risk_level = TransactionRisk.HIGH
+                logger.info(f"Non-whitelisted program: {program_id[:8]}...")
 
         # Check transfer limits
         if amount > self.max_transfer:
             concerns.append(f"Amount {amount} exceeds limit {self.max_transfer}")
             risk_level = TransactionRisk.CRITICAL
+            logger.info(f"Transfer limit exceeded: {amount} > {self.max_transfer}")
 
         # PURPOSE GATE: Check if action requires explicit purpose
         requires_purpose = any(
@@ -221,6 +294,7 @@ class SentinelValidator:
             )
             if risk_level < TransactionRisk.MEDIUM:
                 risk_level = TransactionRisk.MEDIUM
+            logger.debug(f"Missing purpose for action: {action}")
         elif effective_purpose and len(effective_purpose.strip()) < 10:
             concerns.append(
                 "Purpose explanation is too brief - provide meaningful justification"
@@ -238,6 +312,7 @@ class SentinelValidator:
             concerns.extend(sentinel_concerns)
             if risk_level < TransactionRisk.HIGH:
                 risk_level = TransactionRisk.HIGH
+            logger.info(f"Sentinel validation failed: {sentinel_concerns}")
 
         # Check suspicious patterns
         suspicious = self._check_patterns(action, amount, memo)
@@ -271,6 +346,8 @@ class SentinelValidator:
         self.history.append(result)
         if len(self.history) > self.max_history_size:
             self.history.pop(0)
+
+        logger.debug(f"Check result: safe={result.safe}, risk={risk_level.name}")
         return result
 
     def _describe_action(
@@ -468,7 +545,7 @@ def create_sentinel_actions(
 
 def create_langchain_tools(
     validator: Optional[SentinelValidator] = None
-):
+) -> List[Any]:
     """
     Create LangChain tools for Solana transaction validation.
 
@@ -516,12 +593,32 @@ def create_langchain_tools(
           - "swap 10.0"
           - "stake 100.0"
         """
+        if not description or not description.strip():
+            return "ERROR: Empty input. Use format: 'action amount recipient'"
+
         parts = description.strip().split()
         action = parts[0] if parts else "unknown"
-        amount = float(parts[1]) if len(parts) > 1 else 0
+
+        # Parse amount safely
+        amount = 0.0
+        if len(parts) > 1:
+            try:
+                amount = float(parts[1])
+            except ValueError:
+                logger.warning(f"Invalid amount in LangChain tool input: {parts[1]}")
+                return f"ERROR: Invalid amount '{parts[1]}'. Use format: 'action amount recipient'"
+
+        # Validate amount is non-negative
+        if amount < 0:
+            return f"ERROR: Amount cannot be negative: {amount}"
+
         recipient = parts[2] if len(parts) > 2 else ""
 
-        result = validator.check(action, amount=amount, recipient=recipient)
+        try:
+            result = validator.check(action, amount=amount, recipient=recipient)
+        except Exception as e:
+            logger.error(f"Validation error: {e}")
+            return f"ERROR: Validation failed: {str(e)}"
 
         if result.should_proceed:
             msg = f"SAFE: {action} validated"
@@ -588,38 +685,64 @@ class SentinelSafetyMiddleware:
             Wrapped function that validates before executing
         """
         def wrapper(*args, **kwargs):
-            # Extract params for validation
-            amount = kwargs.get("amount", args[0] if args else 0)
+            # Extract and validate amount
+            raw_amount = kwargs.get("amount", args[0] if args else 0)
+            try:
+                amount = float(raw_amount) if raw_amount is not None else 0.0
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid amount type in wrapper: {type(raw_amount)}")
+                amount = 0.0
+
+            # Extract and validate recipient
             recipient = kwargs.get("recipient", kwargs.get("to", ""))
             if not recipient and len(args) > 1:
                 recipient = args[1]
 
+            # Ensure recipient is a string
+            if recipient is not None:
+                recipient = str(recipient)
+            else:
+                recipient = ""
+
+            logger.debug(f"Middleware validating: {action_name}, amount={amount}")
+
             result = self.validator.check(
                 action_name,
-                amount=amount if isinstance(amount, (int, float)) else 0,
-                recipient=str(recipient) if recipient else "",
+                amount=amount,
+                recipient=recipient,
             )
 
             if not result.should_proceed:
-                raise ValueError(
+                logger.info(f"Transaction blocked by middleware: {result.concerns}")
+                raise TransactionBlockedError(
                     f"Transaction blocked: {', '.join(result.concerns)}"
                 )
 
             if result.requires_confirmation:
-                print(f"[SENTINEL] High-value {action_name}: {amount}")
+                logger.info(f"High-value {action_name}: {amount}")
 
             return func(*args, **kwargs)
 
+        # Preserve function metadata
+        wrapper.__name__ = func.__name__
+        wrapper.__doc__ = func.__doc__
         return wrapper
 
 
 __all__ = [
+    # Version
+    "__version__",
+    # Enums
     "TransactionRisk",
+    "AddressValidationMode",
+    # Classes
     "TransactionSafetyResult",
     "SentinelValidator",
+    "SentinelSafetyMiddleware",
+    "TransactionBlockedError",
+    # Functions
     "safe_transaction",
     "create_sentinel_actions",
     "create_langchain_tools",
-    "TransactionBlockedError",
-    "SentinelSafetyMiddleware",
+    "is_valid_solana_address",
 ]

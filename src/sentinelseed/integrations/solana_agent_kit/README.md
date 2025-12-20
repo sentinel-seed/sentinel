@@ -10,6 +10,10 @@ pip install sentinelseed
 
 **Note:** This integration provides validation functions that work **alongside** Solana Agent Kit, not as a plugin. Solana Agent Kit plugins add actions, they don't intercept transactions.
 
+**Dependencies:**
+- `sentinelseed>=2.0.0`
+- `langchain` (optional, for LangChain tools)
+
 **Solana Agent Kit:** [GitHub](https://github.com/sendaifun/solana-agent-kit) | [Docs](https://kit.sendai.fun/)
 
 ## Overview
@@ -21,8 +25,28 @@ pip install sentinelseed
 | `create_sentinel_actions` | Actions for custom workflows |
 | `create_langchain_tools` | LangChain tools for agents |
 | `SentinelSafetyMiddleware` | Function wrapper |
+| `is_valid_solana_address` | Address format validation |
 
-## Usage
+## Quick Start
+
+```python
+from sentinelseed.integrations.solana_agent_kit import safe_transaction
+
+result = safe_transaction(
+    "transfer",
+    amount=5.0,
+    recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    purpose="Payment for services",
+)
+
+if result.should_proceed:
+    # Execute with Solana Agent Kit
+    pass
+else:
+    print(f"Blocked: {result.concerns}")
+```
+
+## Usage Patterns
 
 ### Pattern 1: Explicit Validation
 
@@ -88,7 +112,10 @@ agent = create_react_agent(llm, all_tools)
 ### Pattern 4: Function Wrapper
 
 ```python
-from sentinelseed.integrations.solana_agent_kit import SentinelSafetyMiddleware
+from sentinelseed.integrations.solana_agent_kit import (
+    SentinelSafetyMiddleware,
+    TransactionBlockedError,
+)
 
 middleware = SentinelSafetyMiddleware()
 
@@ -99,8 +126,10 @@ def my_transfer(amount, recipient):
 # Wrap function
 safe_transfer = middleware.wrap(my_transfer, "transfer")
 
-# Now validates before executing
-safe_transfer(5.0, "ABC...")  # Validates then executes
+try:
+    safe_transfer(5.0, "ABC...")  # Validates then executes
+except TransactionBlockedError as e:
+    print(f"Blocked: {e}")
 ```
 
 ## Configuration
@@ -108,18 +137,42 @@ safe_transfer(5.0, "ABC...")  # Validates then executes
 ### SentinelValidator
 
 ```python
+from sentinelseed.integrations.solana_agent_kit import (
+    SentinelValidator,
+    AddressValidationMode,
+)
+
 SentinelValidator(
     seed_level="standard",
-    max_transfer=100.0,          # Max SOL per transaction
+    max_transfer=100.0,          # Max SOL per transaction (see note below)
     confirm_above=10.0,          # Require confirmation above
     blocked_addresses=[],        # Blocked wallet addresses
     allowed_programs=[],         # Whitelist (empty = all)
     require_purpose_for=[        # Actions needing purpose
         "transfer", "send", "approve", "swap", "bridge", "withdraw", "stake"
     ],
+    address_validation=AddressValidationMode.WARN,  # IGNORE, WARN, or STRICT
     memory_integrity_check=False,
     memory_secret_key=None,
 )
+```
+
+> **Important:** Default `max_transfer=100.0` SOL may be too high for many use cases.
+> Always configure appropriate limits for your application.
+
+### Address Validation Modes
+
+| Mode | Behavior |
+|------|----------|
+| `IGNORE` | Don't validate address format |
+| `WARN` | Log warning but allow transaction (default) |
+| `STRICT` | Reject invalid addresses with CRITICAL risk |
+
+```python
+from sentinelseed.integrations.solana_agent_kit import is_valid_solana_address
+
+# Validate address format (base58, 32-44 chars)
+valid = is_valid_solana_address("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU")
 ```
 
 ## Validation Result
@@ -143,16 +196,17 @@ class TransactionSafetyResult:
 | `LOW` | No | Normal transactions |
 | `MEDIUM` | No | Missing purpose, suspicious patterns |
 | `HIGH` | Yes | Non-whitelisted program, Sentinel concerns |
-| `CRITICAL` | Yes | Blocked address, exceeds max |
+| `CRITICAL` | Yes | Blocked address, exceeds max, invalid address (strict) |
 
 ## Checks Performed
 
-1. **Blocked addresses** — Recipient in blocklist
-2. **Program whitelist** — Program ID allowed
-3. **Transfer limits** — Amount within max
-4. **PURPOSE gate** — Sensitive actions need purpose
-5. **Sentinel validation** — THSP protocol check
-6. **Pattern detection** — Drain, sweep, bulk transfers
+1. **Address validation** — Format check (base58, configurable mode)
+2. **Blocked addresses** — Recipient in blocklist
+3. **Program whitelist** — Program ID allowed
+4. **Transfer limits** — Amount within max
+5. **PURPOSE gate** — Sensitive actions need purpose
+6. **Sentinel validation** — THSP protocol check
+7. **Pattern detection** — Drain, sweep, bulk transfers
 
 ## LangChain Tool
 
@@ -166,6 +220,13 @@ Tool(
 )
 ```
 
+Input format: `"action amount recipient"`
+
+Examples:
+- `"transfer 5.0 ABC123..."`
+- `"swap 10.0"`
+- `"stake 100.0"`
+
 Agent usage:
 ```
 Agent: I should check this transfer first.
@@ -173,6 +234,16 @@ Action: sentinel_check_transaction
 Action Input: transfer 5.0 ABC123...
 Observation: SAFE: transfer validated
 Agent: Proceeding with transfer...
+```
+
+## Running Examples
+
+```bash
+# Basic examples
+python -m sentinelseed.integrations.solana_agent_kit.example
+
+# All examples including statistics
+python -m sentinelseed.integrations.solana_agent_kit.example --all
 ```
 
 ## API Reference
@@ -183,9 +254,10 @@ Agent: Proceeding with transfer...
 |-------|-------------|
 | `SentinelValidator` | Core validator |
 | `TransactionSafetyResult` | Validation result |
-| `TransactionRisk` | Risk level enum |
+| `TransactionRisk` | Risk level enum (LOW, MEDIUM, HIGH, CRITICAL) |
+| `AddressValidationMode` | Address validation mode (IGNORE, WARN, STRICT) |
 | `SentinelSafetyMiddleware` | Function wrapper |
-| `TransactionBlockedError` | Exception for blocked |
+| `TransactionBlockedError` | Exception for blocked transactions |
 
 ### Functions
 
@@ -194,14 +266,42 @@ Agent: Proceeding with transfer...
 | `safe_transaction(action, **params)` | Quick validation |
 | `create_sentinel_actions()` | Action functions dict |
 | `create_langchain_tools()` | LangChain Tool list |
+| `is_valid_solana_address(addr)` | Validate address format |
 
 ### Methods (SentinelValidator)
 
 | Method | Returns |
 |--------|---------|
 | `check(action, amount, recipient, ...)` | TransactionSafetyResult |
-| `get_stats()` | Dict with totals |
+| `get_stats()` | Dict with validation statistics |
 | `clear_history()` | None |
+
+## Error Handling
+
+```python
+from sentinelseed.integrations.solana_agent_kit import (
+    SentinelSafetyMiddleware,
+    TransactionBlockedError,
+)
+
+middleware = SentinelSafetyMiddleware()
+safe_fn = middleware.wrap(my_function, "transfer")
+
+try:
+    safe_fn(100.0, "recipient")
+except TransactionBlockedError as e:
+    # Handle blocked transaction
+    print(f"Transaction blocked: {e}")
+```
+
+## Logging
+
+Enable debug logging to see validation details:
+
+```python
+import logging
+logging.getLogger("sentinelseed.solana_agent_kit").setLevel(logging.DEBUG)
+```
 
 ## Links
 
