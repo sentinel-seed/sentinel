@@ -710,5 +710,253 @@ class TestSDKIntegration:
         assert isinstance(AGENTS_SDK_AVAILABLE, bool)
 
 
+class TestExtractTextEdgeCases:
+    """Tests for extract_text_from_input edge cases."""
+
+    def test_none_input(self):
+        """Test extraction from None."""
+        assert extract_text_from_input(None) == ""
+
+    def test_empty_string(self):
+        """Test extraction from empty string."""
+        assert extract_text_from_input("") == ""
+
+    def test_empty_list(self):
+        """Test extraction from empty list."""
+        assert extract_text_from_input([]) == ""
+
+    def test_list_with_none_items(self):
+        """Test extraction from list containing None."""
+        result = extract_text_from_input([None, "hello", None])
+        assert "hello" in result
+
+    def test_object_with_none_content(self):
+        """Test extraction from object with None content."""
+        obj = Mock()
+        obj.content = None
+        assert extract_text_from_input(obj) == ""
+
+    def test_dict_with_none_content(self):
+        """Test extraction from dict with None content."""
+        result = extract_text_from_input({"content": None})
+        # Should handle gracefully
+        assert result == "" or "None" not in result
+
+
+class TestSanitizationEdgeCases:
+    """Tests for sanitization edge cases."""
+
+    def test_none_input(self):
+        """Test sanitization of None input."""
+        sanitized, metadata = sanitize_for_validation(None)
+        assert metadata["is_empty"] is True
+        assert "EMPTY" in sanitized
+
+    def test_empty_string(self):
+        """Test sanitization of empty string."""
+        sanitized, metadata = sanitize_for_validation("")
+        assert metadata["is_empty"] is True
+
+    def test_whitespace_only(self):
+        """Test sanitization of whitespace-only string."""
+        sanitized, metadata = sanitize_for_validation("   \t\n  ")
+        assert metadata["is_empty"] is True
+
+
+class TestReasoningHelpers:
+    """Tests for get_reasoning_safe and truncate_reasoning."""
+
+    def test_get_reasoning_safe_none_validation(self):
+        """Test get_reasoning_safe with None validation."""
+        from sentinelseed.integrations.openai_agents.models import get_reasoning_safe
+        assert get_reasoning_safe(None) == ""
+
+    def test_get_reasoning_safe_none_reasoning(self):
+        """Test get_reasoning_safe with None reasoning attribute."""
+        from sentinelseed.integrations.openai_agents.models import get_reasoning_safe
+        obj = Mock()
+        obj.reasoning = None
+        assert get_reasoning_safe(obj) == ""
+
+    def test_get_reasoning_safe_valid_reasoning(self):
+        """Test get_reasoning_safe with valid reasoning."""
+        from sentinelseed.integrations.openai_agents.models import get_reasoning_safe
+        obj = Mock()
+        obj.reasoning = "This is the reasoning"
+        assert get_reasoning_safe(obj) == "This is the reasoning"
+
+    def test_truncate_reasoning_empty(self):
+        """Test truncate_reasoning with empty string."""
+        from sentinelseed.integrations.openai_agents.models import truncate_reasoning
+        assert truncate_reasoning("") == ""
+
+    def test_truncate_reasoning_none(self):
+        """Test truncate_reasoning with None."""
+        from sentinelseed.integrations.openai_agents.models import truncate_reasoning
+        assert truncate_reasoning(None) == ""
+
+    def test_truncate_reasoning_short(self):
+        """Test truncate_reasoning with short string."""
+        from sentinelseed.integrations.openai_agents.models import truncate_reasoning
+        assert truncate_reasoning("Short", max_length=100) == "Short"
+
+    def test_truncate_reasoning_long(self):
+        """Test truncate_reasoning with long string."""
+        from sentinelseed.integrations.openai_agents.models import truncate_reasoning
+        long_text = "a" * 150
+        result = truncate_reasoning(long_text, max_length=100)
+        assert len(result) == 103  # 100 + "..."
+        assert result.endswith("...")
+
+
+class TestConfigValidation:
+    """Tests for configuration validation."""
+
+    def test_invalid_validation_timeout(self):
+        """Test that invalid timeout raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            SentinelGuardrailConfig(validation_timeout=0)
+        assert "validation_timeout must be positive" in str(exc_info.value)
+
+        with pytest.raises(ValueError):
+            SentinelGuardrailConfig(validation_timeout=-5)
+
+    def test_valid_timeout(self):
+        """Test that valid timeout is accepted."""
+        config = SentinelGuardrailConfig(validation_timeout=15.0)
+        assert config.validation_timeout == 15.0
+
+
+class TestExceptions:
+    """Tests for custom exceptions."""
+
+    def test_validation_timeout_error(self):
+        """Test ValidationTimeoutError attributes."""
+        from sentinelseed.integrations.openai_agents import ValidationTimeoutError
+        error = ValidationTimeoutError(30.0, "input validation")
+        assert error.timeout == 30.0
+        assert error.operation == "input validation"
+        assert "30.0s" in str(error)
+
+    def test_validation_parse_error(self):
+        """Test ValidationParseError attributes."""
+        from sentinelseed.integrations.openai_agents import ValidationParseError
+        error = ValidationParseError("missing required field")
+        assert error.details == "missing required field"
+        assert "missing required field" in str(error)
+
+    def test_pydantic_not_available_error(self):
+        """Test PydanticNotAvailableError message."""
+        from sentinelseed.integrations.openai_agents import PydanticNotAvailableError
+        error = PydanticNotAvailableError()
+        assert "Pydantic" in str(error)
+        assert "pip install" in str(error)
+
+
+class TestThreadSafety:
+    """Tests for thread safety."""
+
+    def test_logger_thread_safety(self):
+        """Test that logger getter is thread-safe."""
+        import threading
+        import sentinelseed.integrations.openai_agents.utils as utils_module
+
+        # Reset logger
+        with utils_module._logger_lock:
+            utils_module._logger = None
+
+        loggers = []
+        errors = []
+
+        def get_logger_thread():
+            try:
+                logger = get_logger()
+                loggers.append(logger)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=get_logger_thread) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        # All threads should get the same logger instance
+        assert len(set(id(l) for l in loggers)) == 1
+
+    def test_violations_log_thread_safety(self):
+        """Test that ViolationsLog is thread-safe."""
+        import threading
+
+        log = ViolationsLog(max_size=100)
+        errors = []
+
+        def add_violations(thread_id):
+            try:
+                for i in range(10):
+                    record = ViolationRecord(
+                        timestamp=datetime.utcnow(),
+                        gate_violated=f"gate_{thread_id}_{i}",
+                        risk_level="low",
+                        reasoning_summary=f"Thread {thread_id} violation {i}",
+                        content_hash=f"hash_{thread_id}_{i}",
+                        was_input=True,
+                        injection_detected=False,
+                    )
+                    log.add(record)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=add_violations, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert log.count() == 50  # 5 threads * 10 violations each
+
+
+class TestValidateResult:
+    """Tests for _validate_result function."""
+
+    def test_validate_result_none(self):
+        """Test _validate_result with None."""
+        from sentinelseed.integrations.openai_agents.guardrails import _validate_result, ValidationParseError
+        with pytest.raises(ValidationParseError) as exc_info:
+            _validate_result(None, Mock)
+        assert "None" in str(exc_info.value)
+
+    def test_validate_result_missing_attributes(self):
+        """Test _validate_result with missing required attributes."""
+        from sentinelseed.integrations.openai_agents.guardrails import _validate_result, ValidationParseError
+
+        # Mock object missing is_safe
+        obj = Mock(spec=["truth_passes", "harm_passes", "scope_passes", "purpose_passes"])
+        obj.truth_passes = True
+        obj.harm_passes = True
+        obj.scope_passes = True
+        obj.purpose_passes = True
+
+        with pytest.raises(ValidationParseError) as exc_info:
+            _validate_result(obj, Mock)
+        assert "is_safe" in str(exc_info.value)
+
+    def test_validate_result_valid(self):
+        """Test _validate_result with valid object."""
+        from sentinelseed.integrations.openai_agents.guardrails import _validate_result
+
+        obj = Mock()
+        obj.is_safe = True
+        obj.truth_passes = True
+        obj.harm_passes = True
+        obj.scope_passes = True
+        obj.purpose_passes = True
+
+        result = _validate_result(obj, Mock)
+        assert result is obj
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

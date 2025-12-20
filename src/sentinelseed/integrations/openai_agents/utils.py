@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol, Union
 
@@ -17,6 +18,9 @@ DEFAULT_MAX_INPUT_SIZE = 32000
 
 # Default max violations to keep in memory
 DEFAULT_MAX_VIOLATIONS_LOG = 1000
+
+# Default validation timeout in seconds
+DEFAULT_VALIDATION_TIMEOUT = 30.0
 
 
 class SentinelLogger(Protocol):
@@ -104,21 +108,29 @@ class DefaultLogger:
         self._logger.debug(self._sanitize(msg), *args, **kwargs)
 
 
-# Module-level logger instance
+# Module-level logger instance with thread-safe access
 _logger: Optional[SentinelLogger] = None
+_logger_lock = threading.Lock()
 
 
 def get_logger() -> SentinelLogger:
-    """Get the current logger instance."""
+    """
+    Get the current logger instance (thread-safe).
+
+    Uses double-checked locking pattern for efficiency.
+    """
     global _logger
     if _logger is None:
-        _logger = DefaultLogger()
+        with _logger_lock:
+            # Double-check after acquiring lock
+            if _logger is None:
+                _logger = DefaultLogger()
     return _logger
 
 
 def set_logger(logger: SentinelLogger) -> None:
     """
-    Set a custom logger implementation.
+    Set a custom logger implementation (thread-safe).
 
     Args:
         logger: Logger implementing the SentinelLogger protocol
@@ -130,7 +142,8 @@ def set_logger(logger: SentinelLogger) -> None:
         set_logger(custom_logger)
     """
     global _logger
-    _logger = logger
+    with _logger_lock:
+        _logger = logger
 
 
 def require_agents_sdk() -> None:
@@ -170,23 +183,36 @@ def extract_text_from_input(input_data: Any) -> str:
     Extract text content from various input formats.
 
     Handles strings, lists of messages, dicts, and objects with content attributes.
+    Returns empty string for None or empty input.
 
     Args:
         input_data: Input in any supported format
 
     Returns:
-        Extracted text as string
+        Extracted text as string (empty string if input is None/empty)
     """
+    # Handle None and empty cases
+    if input_data is None:
+        return ""
+
     if isinstance(input_data, str):
         return input_data
 
     if isinstance(input_data, list):
+        if not input_data:  # Empty list
+            return ""
         text_parts = []
         for item in input_data:
+            if item is None:
+                continue
             if hasattr(item, "content"):
-                text_parts.append(str(item.content))
+                content = item.content
+                if content is not None:
+                    text_parts.append(str(content))
             elif isinstance(item, dict) and "content" in item:
-                text_parts.append(str(item["content"]))
+                content = item["content"]
+                if content is not None:
+                    text_parts.append(str(content))
             elif isinstance(item, str):
                 text_parts.append(item)
             else:
@@ -194,12 +220,19 @@ def extract_text_from_input(input_data: Any) -> str:
         return " ".join(text_parts)
 
     if hasattr(input_data, "content"):
-        return str(input_data.content)
+        content = input_data.content
+        return str(content) if content is not None else ""
 
     if hasattr(input_data, "text"):
-        return str(input_data.text)
+        text = input_data.text
+        return str(text) if text is not None else ""
 
     if isinstance(input_data, dict):
-        return str(input_data.get("content", input_data.get("text", str(input_data))))
+        content = input_data.get("content", input_data.get("text"))
+        if content is not None:
+            return str(content)
+        # If content/text is None or not present, return empty string
+        # rather than stringifying the dict
+        return ""
 
     return str(input_data)

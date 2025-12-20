@@ -6,10 +6,20 @@ Provides semantic LLM-based input and output guardrails using THSP validation.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 from datetime import datetime
 from typing import Any, List, Optional, TYPE_CHECKING, Union
+
+
+class ValidationTimeoutError(Exception):
+    """Raised when validation times out."""
+
+    def __init__(self, timeout: float, operation: str = "validation"):
+        self.timeout = timeout
+        self.operation = operation
+        super().__init__(f"{operation} timed out after {timeout}s")
 
 from .config import SentinelGuardrailConfig, THSP_GUARDRAIL_INSTRUCTIONS
 from .models import (
@@ -17,6 +27,10 @@ from .models import (
     ValidationMetadata,
     ViolationRecord,
     get_violations_log,
+    require_thsp_validation_output,
+    get_reasoning_safe,
+    truncate_reasoning,
+    PydanticNotAvailableError,
 )
 from .sanitization import create_validation_prompt
 from .utils import (
@@ -51,19 +65,60 @@ except ImportError:
     GuardrailFunctionOutput = None
 
 
+class ValidationParseError(Exception):
+    """Raised when validation output cannot be parsed."""
+
+    def __init__(self, details: str = ""):
+        self.details = details
+        super().__init__(f"Failed to parse validation output. {details}")
+
+
+def _validate_result(validation: Any, output_type: type) -> "THSPValidationOutput":
+    """
+    Validate and ensure the result from final_output_as is usable.
+
+    Args:
+        validation: The result from final_output_as
+        output_type: Expected output type class
+
+    Returns:
+        Valid THSPValidationOutput instance
+
+    Raises:
+        ValidationParseError: If validation is None or invalid
+    """
+    if validation is None:
+        raise ValidationParseError("final_output_as returned None")
+
+    # Check for required attributes
+    required_attrs = ["is_safe", "truth_passes", "harm_passes", "scope_passes", "purpose_passes"]
+    missing = [attr for attr in required_attrs if not hasattr(validation, attr)]
+    if missing:
+        raise ValidationParseError(f"Missing required attributes: {missing}")
+
+    return validation
+
+
 def _create_guardrail_agent(config: SentinelGuardrailConfig) -> "Agent":
     """
     Create the internal guardrail agent for THSP validation.
 
     This agent performs semantic analysis of content using an LLM.
+
+    Raises:
+        ImportError: If OpenAI Agents SDK is not installed
+        PydanticNotAvailableError: If Pydantic is not available
     """
     require_agents_sdk()
+
+    # Ensure THSPValidationOutput is available (requires Pydantic)
+    output_type = require_thsp_validation_output()
 
     return Agent(
         name="Sentinel THSP Validator",
         instructions=THSP_GUARDRAIL_INSTRUCTIONS,
         model=config.guardrail_model,
-        output_type=THSPValidationOutput,
+        output_type=output_type,
     )
 
 
@@ -120,11 +175,12 @@ def _log_violation(
 
     # Create sanitized log message
     content_type = "Input" if is_input else "Output"
-    gate = validation.violated_gate or "unknown"
-    risk = validation.risk_level
+    gate = getattr(validation, "violated_gate", None) or "unknown"
+    risk = getattr(validation, "risk_level", "unknown")
 
-    # Truncate reasoning for logs
-    reasoning_summary = validation.reasoning[:100] + "..." if len(validation.reasoning) > 100 else validation.reasoning
+    # Safely extract and truncate reasoning
+    reasoning = get_reasoning_safe(validation)
+    reasoning_summary = truncate_reasoning(reasoning, max_length=100)
 
     logger.warning(
         f"{content_type} blocked - Gate: {gate}, Risk: {risk}, "
@@ -135,8 +191,8 @@ def _log_violation(
     violations_log = get_violations_log(config.max_violations_log)
     record = ViolationRecord(
         timestamp=datetime.utcnow(),
-        gate_violated=validation.violated_gate,
-        risk_level=validation.risk_level,
+        gate_violated=getattr(validation, "violated_gate", None),
+        risk_level=risk,
         reasoning_summary=reasoning_summary,
         content_hash=hashlib.sha256(content.encode()).hexdigest(),
         was_input=is_input,
@@ -184,6 +240,9 @@ def sentinel_input_guardrail(
     guardrail_agent = _create_guardrail_agent(config)
     logger = get_logger()
 
+    # Get the output type for validation
+    output_type = require_thsp_validation_output()
+
     async def guardrail_function(
         ctx: "RunContextWrapper",
         agent: "Agent",
@@ -192,8 +251,25 @@ def sentinel_input_guardrail(
         """Semantic THSP input validation with sanitization."""
         start_time = time.time()
 
-        # Extract text from input
+        # Extract text from input (handles None/empty safely)
         text = extract_text_from_input(input_data)
+
+        # Handle empty input - allow through but flag it
+        if not text or not text.strip():
+            logger.debug("Empty input received, allowing through")
+            return GuardrailFunctionOutput(
+                output_info={
+                    "is_safe": True,
+                    "gates": {"truth": True, "harm": True, "scope": True, "purpose": True},
+                    "violated_gate": None,
+                    "reasoning": "Empty input - no validation needed",
+                    "risk_level": "low",
+                    "injection_detected": False,
+                    "was_truncated": False,
+                    "validation_time_ms": (time.time() - start_time) * 1000,
+                },
+                tripwire_triggered=False,
+            )
 
         # Create sanitized validation prompt
         validation_prompt, metadata = create_validation_prompt(
@@ -203,28 +279,43 @@ def sentinel_input_guardrail(
         )
 
         try:
-            result = await Runner.run(
-                guardrail_agent,
-                validation_prompt,
-                context=ctx.context,
-            )
-            validation = result.final_output_as(THSPValidationOutput)
+            # Run validation with timeout
+            try:
+                result = await asyncio.wait_for(
+                    Runner.run(
+                        guardrail_agent,
+                        validation_prompt,
+                        context=ctx.context,
+                    ),
+                    timeout=config.validation_timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ValidationTimeoutError(
+                    config.validation_timeout,
+                    "input validation"
+                )
+
+            raw_validation = result.final_output_as(output_type)
+
+            # Validate the result is usable
+            validation = _validate_result(raw_validation, output_type)
 
             # If injection was detected, mark scope as failed
             if metadata.get("injection_detected") and validation.is_safe:
                 # Override - injection attempts should fail scope gate
+                original_reasoning = get_reasoning_safe(validation)
                 logger.warning(
                     f"Injection attempt detected but validation passed. "
                     f"Overriding scope gate. Reason: {metadata.get('injection_reason')}"
                 )
-                validation = THSPValidationOutput(
+                validation = output_type(
                     is_safe=False,
                     truth_passes=validation.truth_passes,
                     harm_passes=validation.harm_passes,
                     scope_passes=False,  # Injection = scope violation
                     purpose_passes=validation.purpose_passes,
                     violated_gate="scope",
-                    reasoning=f"Injection attempt detected: {metadata.get('injection_reason')}. {validation.reasoning}",
+                    reasoning=f"Injection attempt detected: {metadata.get('injection_reason')}. {original_reasoning}",
                     risk_level="high",
                     injection_attempt_detected=True,
                 )
@@ -238,6 +329,9 @@ def sentinel_input_guardrail(
 
             validation_time = (time.time() - start_time) * 1000
 
+            # Safely extract reasoning for output
+            reasoning = get_reasoning_safe(validation)
+
             return GuardrailFunctionOutput(
                 output_info={
                     "is_safe": validation.is_safe,
@@ -248,8 +342,8 @@ def sentinel_input_guardrail(
                         "purpose": validation.purpose_passes,
                     },
                     "violated_gate": validation.violated_gate,
-                    "reasoning": validation.reasoning,
-                    "risk_level": validation.risk_level,
+                    "reasoning": reasoning,
+                    "risk_level": getattr(validation, "risk_level", "unknown"),
                     "injection_detected": metadata.get("injection_detected", False),
                     "was_truncated": metadata.get("was_truncated", False),
                     "validation_time_ms": validation_time,
@@ -316,6 +410,9 @@ def sentinel_output_guardrail(
     guardrail_agent = _create_guardrail_agent(config)
     logger = get_logger()
 
+    # Get the output type for validation
+    output_type = require_thsp_validation_output()
+
     async def guardrail_function(
         ctx: "RunContextWrapper",
         agent: "Agent",
@@ -324,8 +421,24 @@ def sentinel_output_guardrail(
         """Semantic THSP output validation."""
         start_time = time.time()
 
-        # Extract text from output
+        # Extract text from output (handles None/empty safely)
         text = extract_text_from_input(output)
+
+        # Handle empty output - allow through but flag it
+        if not text or not text.strip():
+            logger.debug("Empty output received, allowing through")
+            return GuardrailFunctionOutput(
+                output_info={
+                    "is_safe": True,
+                    "gates": {"truth": True, "harm": True, "scope": True, "purpose": True},
+                    "violated_gate": None,
+                    "reasoning": "Empty output - no validation needed",
+                    "risk_level": "low",
+                    "was_truncated": False,
+                    "validation_time_ms": (time.time() - start_time) * 1000,
+                },
+                tripwire_triggered=False,
+            )
 
         # Create sanitized validation prompt
         validation_prompt, metadata = create_validation_prompt(
@@ -335,12 +448,26 @@ def sentinel_output_guardrail(
         )
 
         try:
-            result = await Runner.run(
-                guardrail_agent,
-                validation_prompt,
-                context=ctx.context,
-            )
-            validation = result.final_output_as(THSPValidationOutput)
+            # Run validation with timeout
+            try:
+                result = await asyncio.wait_for(
+                    Runner.run(
+                        guardrail_agent,
+                        validation_prompt,
+                        context=ctx.context,
+                    ),
+                    timeout=config.validation_timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ValidationTimeoutError(
+                    config.validation_timeout,
+                    "output validation"
+                )
+
+            raw_validation = result.final_output_as(output_type)
+
+            # Validate the result is usable
+            validation = _validate_result(raw_validation, output_type)
 
             # Determine tripwire
             tripwire = _determine_tripwire(validation, config)
@@ -350,6 +477,9 @@ def sentinel_output_guardrail(
                 _log_violation(validation, text, is_input=False, config=config, metadata=metadata)
 
             validation_time = (time.time() - start_time) * 1000
+
+            # Safely extract reasoning for output
+            reasoning = get_reasoning_safe(validation)
 
             return GuardrailFunctionOutput(
                 output_info={
@@ -361,8 +491,8 @@ def sentinel_output_guardrail(
                         "purpose": validation.purpose_passes,
                     },
                     "violated_gate": validation.violated_gate,
-                    "reasoning": validation.reasoning,
-                    "risk_level": validation.risk_level,
+                    "reasoning": reasoning,
+                    "risk_level": getattr(validation, "risk_level", "unknown"),
                     "was_truncated": metadata.get("was_truncated", False),
                     "validation_time_ms": validation_time,
                 },

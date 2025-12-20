@@ -53,6 +53,10 @@ from .models import (
     ViolationRecord,
     ViolationsLog,
     get_violations_log,
+    require_thsp_validation_output,
+    get_reasoning_safe,
+    truncate_reasoning,
+    PydanticNotAvailableError,
 )
 
 # Utilities
@@ -66,6 +70,7 @@ from .utils import (
     extract_text_from_input,
     DEFAULT_MAX_INPUT_SIZE,
     DEFAULT_MAX_VIOLATIONS_LOG,
+    DEFAULT_VALIDATION_TIMEOUT,
 )
 
 # Sanitization
@@ -83,6 +88,8 @@ from .guardrails import (
     sentinel_output_guardrail,
     create_sentinel_guardrails,
     AGENTS_SDK_AVAILABLE,
+    ValidationTimeoutError,
+    ValidationParseError,
 )
 
 # Agent creation
@@ -104,6 +111,9 @@ __all__ = [
     "ViolationRecord",
     "ViolationsLog",
     "get_violations_log",
+    "require_thsp_validation_output",
+    "get_reasoning_safe",
+    "truncate_reasoning",
 
     # Utilities
     "SentinelLogger",
@@ -115,6 +125,7 @@ __all__ = [
     "extract_text_from_input",
     "DEFAULT_MAX_INPUT_SIZE",
     "DEFAULT_MAX_VIOLATIONS_LOG",
+    "DEFAULT_VALIDATION_TIMEOUT",
 
     # Sanitization
     "sanitize_for_validation",
@@ -128,6 +139,11 @@ __all__ = [
     "sentinel_output_guardrail",
     "create_sentinel_guardrails",
     "AGENTS_SDK_AVAILABLE",
+
+    # Exceptions
+    "PydanticNotAvailableError",
+    "ValidationTimeoutError",
+    "ValidationParseError",
 
     # Agent creation
     "create_sentinel_agent",

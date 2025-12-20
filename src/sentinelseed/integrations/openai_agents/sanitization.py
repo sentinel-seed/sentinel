@@ -103,13 +103,14 @@ def sanitize_for_validation(text: str, max_length: int = 32000) -> Tuple[str, di
     Sanitize user input for safe inclusion in validation prompt.
 
     This function:
-    1. Truncates excessively long input
-    2. Escapes XML special characters
-    3. Detects injection attempts
-    4. Wraps content in unique boundary tokens
+    1. Handles None/empty input gracefully
+    2. Truncates excessively long input
+    3. Escapes XML special characters
+    4. Detects injection attempts
+    5. Wraps content in unique boundary tokens
 
     Args:
-        text: Raw user input
+        text: Raw user input (can be None or empty)
         max_length: Maximum allowed length
 
     Returns:
@@ -120,14 +121,25 @@ def sanitize_for_validation(text: str, max_length: int = 32000) -> Tuple[str, di
             - injection_detected: Whether injection was detected
             - injection_reason: Reason if injection detected
             - boundary_token: The boundary token used
+            - is_empty: Whether input was empty/None
     """
+    # Handle None or empty input
+    if text is None:
+        text = ""
+
     metadata = {
         "original_length": len(text),
         "was_truncated": False,
         "injection_detected": False,
         "injection_reason": "",
         "boundary_token": "",
+        "is_empty": not text or not text.strip(),
     }
+
+    # Return early for empty input
+    if metadata["is_empty"]:
+        metadata["boundary_token"] = "SENTINEL_BOUNDARY_EMPTY"
+        return "[SENTINEL_BOUNDARY_EMPTY_START]\n\n[SENTINEL_BOUNDARY_EMPTY_END]", metadata
 
     # Truncate if too long
     if len(text) > max_length:

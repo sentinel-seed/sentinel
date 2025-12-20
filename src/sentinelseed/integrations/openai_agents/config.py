@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .utils import DEFAULT_MAX_INPUT_SIZE, DEFAULT_MAX_VIOLATIONS_LOG
+from .utils import DEFAULT_MAX_INPUT_SIZE, DEFAULT_MAX_VIOLATIONS_LOG, DEFAULT_VALIDATION_TIMEOUT
 
 
 # Valid seed levels
@@ -62,6 +62,7 @@ class SentinelGuardrailConfig:
         max_input_size: Maximum input size in characters (default: 32000)
         max_violations_log: Maximum violations to keep in memory (default: 1000)
         fail_open: If True, allow request on validation error (default: False for security)
+        validation_timeout: Timeout in seconds for LLM validation (default: 30.0)
 
     Example:
         config = SentinelGuardrailConfig(
@@ -69,6 +70,7 @@ class SentinelGuardrailConfig:
             seed_level="full",
             block_on_violation=True,
             log_violations=True,
+            validation_timeout=15.0,
         )
     """
 
@@ -80,6 +82,7 @@ class SentinelGuardrailConfig:
     max_input_size: int = DEFAULT_MAX_INPUT_SIZE
     max_violations_log: int = DEFAULT_MAX_VIOLATIONS_LOG
     fail_open: bool = False
+    validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -93,6 +96,9 @@ class SentinelGuardrailConfig:
 
         if self.max_violations_log < 0:
             raise ValueError(f"max_violations_log cannot be negative, got {self.max_violations_log}")
+
+        if self.validation_timeout <= 0:
+            raise ValueError(f"validation_timeout must be positive, got {self.validation_timeout}")
 
         valid_models = (
             "gpt-4o-mini",

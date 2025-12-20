@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+import threading
 
 # Check for Pydantic availability (comes with openai-agents)
 PYDANTIC_AVAILABLE = False
@@ -19,6 +20,22 @@ try:
 except ImportError:
     BaseModel = None
     Field = None
+
+
+class PydanticNotAvailableError(ImportError):
+    """
+    Raised when Pydantic is required but not available.
+
+    This typically means the openai-agents package is not installed correctly,
+    since it requires Pydantic as a dependency.
+    """
+
+    def __init__(self):
+        super().__init__(
+            "Pydantic is required for THSPValidationOutput but is not installed. "
+            "This usually means openai-agents is not installed. "
+            "Install with: pip install openai-agents"
+        )
 
 
 def _create_thsp_validation_output():
@@ -84,6 +101,56 @@ def _create_thsp_validation_output():
 THSPValidationOutput = _create_thsp_validation_output()
 
 
+def require_thsp_validation_output():
+    """
+    Get THSPValidationOutput class, raising if not available.
+
+    Raises:
+        PydanticNotAvailableError: If Pydantic/THSPValidationOutput is not available
+    """
+    if THSPValidationOutput is None:
+        raise PydanticNotAvailableError()
+    return THSPValidationOutput
+
+
+def get_reasoning_safe(validation: Any) -> str:
+    """
+    Safely extract reasoning from a validation result.
+
+    Handles None, empty string, and missing attribute cases.
+
+    Args:
+        validation: Validation result object
+
+    Returns:
+        Reasoning string (empty string if not available)
+    """
+    if validation is None:
+        return ""
+    reasoning = getattr(validation, "reasoning", None)
+    if reasoning is None:
+        return ""
+    return str(reasoning)
+
+
+def truncate_reasoning(reasoning: str, max_length: int = 100) -> str:
+    """
+    Truncate reasoning string safely with ellipsis.
+
+    Args:
+        reasoning: Reasoning string to truncate
+        max_length: Maximum length before truncation
+
+    Returns:
+        Truncated reasoning string
+    """
+    if not reasoning:
+        return ""
+    if len(reasoning) > max_length:
+        return reasoning[:max_length] + "..."
+    return reasoning
+
+
 @dataclass
 class ValidationMetadata:
     """
@@ -123,45 +190,41 @@ class ViolationsLog:
     Thread-safe log of recent violations with automatic size limiting.
 
     Does NOT store full content for privacy. Only stores metadata.
+    Thread-safety is guaranteed by initializing the lock in __init__.
     """
 
     def __init__(self, max_size: int = 1000):
         self._max_size = max_size
         self._violations: List[ViolationRecord] = []
-        self._lock = None  # Lazy import threading
-
-    def _get_lock(self):
-        """Lazily create lock to avoid import overhead."""
-        if self._lock is None:
-            import threading
-            self._lock = threading.Lock()
-        return self._lock
+        # Initialize lock immediately for thread safety
+        # This avoids race conditions that could occur with lazy initialization
+        self._lock = threading.Lock()
 
     def add(self, record: ViolationRecord) -> None:
         """Add a violation record, removing oldest if at capacity."""
-        with self._get_lock():
+        with self._lock:
             self._violations.append(record)
             while len(self._violations) > self._max_size:
                 self._violations.pop(0)
 
     def get_recent(self, count: int = 10) -> List[ViolationRecord]:
         """Get the most recent violations."""
-        with self._get_lock():
+        with self._lock:
             return list(self._violations[-count:])
 
     def clear(self) -> None:
         """Clear all violation records."""
-        with self._get_lock():
+        with self._lock:
             self._violations.clear()
 
     def count(self) -> int:
         """Get total number of recorded violations."""
-        with self._get_lock():
+        with self._lock:
             return len(self._violations)
 
     def count_by_gate(self) -> Dict[str, int]:
         """Get count of violations by gate."""
-        with self._get_lock():
+        with self._lock:
             counts: Dict[str, int] = {}
             for v in self._violations:
                 gate = v.gate_violated or "unknown"
@@ -169,13 +232,21 @@ class ViolationsLog:
             return counts
 
 
-# Module-level violations log
+# Module-level violations log with thread-safe access
 _violations_log: Optional[ViolationsLog] = None
+_violations_log_lock = threading.Lock()
 
 
 def get_violations_log(max_size: int = 1000) -> ViolationsLog:
-    """Get or create the module-level violations log."""
+    """
+    Get or create the module-level violations log (thread-safe).
+
+    Uses double-checked locking pattern for efficiency.
+    """
     global _violations_log
     if _violations_log is None:
-        _violations_log = ViolationsLog(max_size=max_size)
+        with _violations_log_lock:
+            # Double-check after acquiring lock
+            if _violations_log is None:
+                _violations_log = ViolationsLog(max_size=max_size)
     return _violations_log
