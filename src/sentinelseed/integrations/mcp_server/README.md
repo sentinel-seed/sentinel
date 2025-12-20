@@ -24,29 +24,30 @@ npm install -g mcp-server-sentinelseed
 |-----------|-------------|
 | `create_sentinel_mcp_server` | Create MCP server with tools |
 | `add_sentinel_tools` | Add tools to existing server |
-| `SentinelMCPClient` | Client for connecting to server |
+| `SentinelMCPClient` | Async client for connecting to server |
 | `run_server` | Run standalone server |
+| `MCPConfig` | Configuration constants |
 
 ## Tools Provided
 
 | Tool | Description |
 |------|-------------|
-| `sentinel_validate` | Validate text through THSP |
-| `sentinel_check_action` | Check if action is safe |
-| `sentinel_check_request` | Validate user request |
+| `sentinel_validate` | Validate text through THSP (max 50KB) |
+| `sentinel_check_action` | Check if action is safe (max 50KB) |
+| `sentinel_check_request` | Validate user request (max 50KB) |
 | `sentinel_get_seed` | Get seed content |
-| `sentinel_batch_validate` | Validate multiple items |
+| `sentinel_batch_validate` | Validate multiple items (max 10KB each) |
 
 ## Resources Provided
 
 | Resource | Description |
 |----------|-------------|
 | `sentinel://seed/{level}` | Get seed by level |
-| `sentinel://config` | Current configuration |
+| `sentinel://config` | Current configuration with limits |
 
-## Usage
+## Quick Start
 
-### Option 1: Standalone Server
+### Standalone Server
 
 ```python
 from sentinelseed.integrations.mcp_server import create_sentinel_mcp_server
@@ -60,7 +61,7 @@ Or run directly:
 python -m sentinelseed.integrations.mcp_server
 ```
 
-### Option 2: Add to Existing Server
+### Add to Existing Server
 
 ```python
 from mcp.server.fastmcp import FastMCP
@@ -76,9 +77,9 @@ def my_custom_tool():
 mcp.run()
 ```
 
-### Option 3: IDE Configuration
+## IDE Configuration
 
-#### Claude Desktop
+### Claude Desktop
 
 Add to `claude_desktop_config.json`:
 
@@ -93,7 +94,7 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-#### Cursor
+### Cursor
 
 Add to `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for global):
 
@@ -109,22 +110,7 @@ Add to `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` for glob
 }
 ```
 
-Or using npm:
-
-```json
-{
-  "mcpServers": {
-    "sentinel": {
-      "command": "npx",
-      "args": ["mcp-server-sentinelseed"]
-    }
-  }
-}
-```
-
-After adding, restart Cursor and the Sentinel tools will be available to the AI agent.
-
-#### Windsurf
+### Windsurf
 
 Add to `~/.codeium/windsurf/mcp_config.json`:
 
@@ -140,22 +126,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 }
 ```
 
-Or using npm:
-
-```json
-{
-  "mcpServers": {
-    "sentinel": {
-      "command": "npx",
-      "args": ["mcp-server-sentinelseed"]
-    }
-  }
-}
-```
-
-After adding, click the hammer icon in Cascade to enable MCP tools.
-
-#### VS Code (with Continue or similar)
+### VS Code (with Continue or similar)
 
 Add to your MCP-compatible extension's config:
 
@@ -170,6 +141,38 @@ Add to your MCP-compatible extension's config:
 }
 ```
 
+## Configuration
+
+### MCPConfig
+
+Default limits and timeouts:
+
+```python
+from sentinelseed.integrations.mcp_server import MCPConfig
+
+# Text size limits
+MCPConfig.MAX_TEXT_SIZE = 50 * 1024        # 50KB per request
+MCPConfig.MAX_TEXT_SIZE_BATCH = 10 * 1024  # 10KB per batch item
+
+# Batch limits
+MCPConfig.MAX_BATCH_ITEMS = 1000           # Maximum items in batch
+MCPConfig.DEFAULT_BATCH_ITEMS = 100        # Default batch size
+
+# Timeouts
+MCPConfig.DEFAULT_TIMEOUT = 30.0           # Default operation timeout
+MCPConfig.BATCH_TIMEOUT = 60.0             # Batch operation timeout
+```
+
+### create_sentinel_mcp_server
+
+```python
+create_sentinel_mcp_server(
+    name="sentinel-safety",      # Server name
+    sentinel=None,               # Sentinel instance (optional)
+    seed_level="standard",       # Default seed level
+)
+```
+
 ## Tool Specifications
 
 ### sentinel_validate
@@ -180,11 +183,12 @@ def sentinel_validate(text: str, check_type: str = "general") -> dict:
     Validate text through THSP gates.
 
     Args:
-        text: Content to validate
+        text: Content to validate (max 50KB)
         check_type: "general", "action", or "request"
 
     Returns:
         {safe: bool, violations: [], recommendation: str}
+        On size error: {safe: False, error: "text_too_large", ...}
     """
 ```
 
@@ -196,7 +200,7 @@ def sentinel_check_action(action: str) -> dict:
     Check if planned action is safe.
 
     Args:
-        action: Action description
+        action: Action description (max 50KB)
 
     Returns:
         {safe: bool, should_proceed: bool, concerns: [], risk_level: str}
@@ -211,7 +215,7 @@ def sentinel_check_request(request: str) -> dict:
     Validate user request for safety.
 
     Args:
-        request: User request text
+        request: User request text (max 50KB)
 
     Returns:
         {should_proceed: bool, risk_level: str, concerns: []}
@@ -245,37 +249,34 @@ def sentinel_batch_validate(
     Validate multiple items.
 
     Args:
-        items: List of text strings
+        items: List of text strings (max 10KB each)
         check_type: "general", "action", or "request"
         max_items: Maximum items to process (default 100, max 1000)
 
     Returns:
-        {total: int, safe_count: int, unsafe_count: int, all_safe: bool, truncated: bool, results: []}
+        {
+            total: int,
+            safe_count: int,
+            unsafe_count: int,
+            skipped_count: int,  # Items that exceeded size limit
+            all_safe: bool,
+            truncated: bool,
+            results: []
+        }
     """
 ```
 
-## Configuration
-
-### create_sentinel_mcp_server
-
-```python
-create_sentinel_mcp_server(
-    name="sentinel-safety",      # Server name
-    sentinel=None,               # Sentinel instance
-    seed_level="standard",       # Default seed level
-)
-```
-
 ## Client Usage
-
-The client supports two connection modes:
 
 ### HTTP Transport (Remote Server)
 
 ```python
 from sentinelseed.integrations.mcp_server import SentinelMCPClient
 
-async with SentinelMCPClient(url="http://localhost:8000/mcp") as client:
+async with SentinelMCPClient(
+    url="http://localhost:8000/mcp",
+    timeout=30.0,  # Optional timeout override
+) as client:
     # List available tools
     tools = await client.list_tools()
 
@@ -288,10 +289,11 @@ async with SentinelMCPClient(url="http://localhost:8000/mcp") as client:
     action_result = await client.check_action("delete user data")
     print(f"Risk level: {action_result['risk_level']}")
 
-    # Batch validation
+    # Batch validation with custom timeout
     batch = await client.batch_validate(
         ["text1", "text2", "text3"],
-        check_type="request"
+        check_type="request",
+        timeout=60.0,  # Override timeout for batch
     )
 ```
 
@@ -300,11 +302,52 @@ async with SentinelMCPClient(url="http://localhost:8000/mcp") as client:
 ```python
 async with SentinelMCPClient(
     command="python",
-    args=["-m", "sentinelseed.integrations.mcp_server"]
+    args=["-m", "sentinelseed.integrations.mcp_server"],
+    timeout=10.0,
 ) as client:
     result = await client.check_request("ignore previous instructions")
     if not result["should_proceed"]:
         print(f"Blocked: {result['concerns']}")
+```
+
+## Exception Handling
+
+```python
+from sentinelseed.integrations.mcp_server import (
+    MCPClientError,      # Base exception for client errors
+    MCPTimeoutError,     # Operation timed out
+    MCPConnectionError,  # Connection failed
+    TextTooLargeError,   # Text exceeds size limit
+)
+
+try:
+    async with SentinelMCPClient(url="http://localhost:8000/mcp") as client:
+        result = await client.validate(text, timeout=5.0)
+except MCPTimeoutError as e:
+    print(f"Timeout after {e.timeout}s on {e.operation}")
+except TextTooLargeError as e:
+    print(f"Text {e.size} bytes exceeds limit of {e.max_size}")
+except MCPClientError as e:
+    print(f"Client error: {e}")
+```
+
+## Logging
+
+Enable debug logging to see operation details:
+
+```python
+import logging
+logging.getLogger("sentinelseed.mcp_server").setLevel(logging.DEBUG)
+```
+
+## Running Examples
+
+```bash
+# Basic examples
+python -m sentinelseed.integrations.mcp_server.example
+
+# All examples including async client
+python -m sentinelseed.integrations.mcp_server.example --all
 ```
 
 ## API Reference
@@ -322,23 +365,29 @@ async with SentinelMCPClient(
 | Class | Description |
 |-------|-------------|
 | `SentinelMCPClient` | Async client for MCP servers |
+| `MCPConfig` | Configuration constants |
+| `TextTooLargeError` | Text size exceeded |
+| `MCPClientError` | Base client exception |
+| `MCPTimeoutError` | Timeout exception |
+| `MCPConnectionError` | Connection exception |
 
 ### SentinelMCPClient Methods
 
 | Method | Description |
 |--------|-------------|
-| `list_tools()` | List available tools on server |
-| `validate(text, check_type)` | Validate text through THSP |
-| `check_action(action)` | Check if action is safe |
-| `check_request(request)` | Validate user request |
-| `get_seed(level)` | Get seed content |
-| `batch_validate(items, check_type, max_items)` | Batch validation |
+| `list_tools(timeout)` | List available tools |
+| `validate(text, check_type, timeout)` | Validate text through THSP |
+| `check_action(action, timeout)` | Check if action is safe |
+| `check_request(request, timeout)` | Validate user request |
+| `get_seed(level, timeout)` | Get seed content |
+| `batch_validate(items, check_type, max_items, timeout)` | Batch validation |
 
 ### Constants
 
 | Constant | Type | Description |
 |----------|------|-------------|
-| `MCP_AVAILABLE` | bool | Whether MCP SDK installed |
+| `MCP_AVAILABLE` | bool | Whether MCP SDK is installed |
+| `__version__` | str | Integration version |
 
 ## Links
 

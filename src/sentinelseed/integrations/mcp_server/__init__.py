@@ -28,6 +28,7 @@ Tools provided:
     - sentinel_check_action: Check if an action is safe to execute
     - sentinel_check_request: Validate a user request for safety
     - sentinel_get_seed: Get the Sentinel seed for injection
+    - sentinel_batch_validate: Validate multiple items in batch
 
 Resources provided:
     - sentinel://seed/{level}: Get seed content by level
@@ -35,12 +36,74 @@ Resources provided:
 """
 
 from typing import Any, Dict, List, Optional, Union
+import asyncio
 import logging
+
+__version__ = "2.0.0"
+
+
+# Configuration constants
+class MCPConfig:
+    """Configuration constants for MCP Server integration."""
+
+    # Text size limits (in bytes)
+    MAX_TEXT_SIZE = 50 * 1024  # 50KB default
+    MAX_TEXT_SIZE_BATCH = 10 * 1024  # 10KB per item in batch
+
+    # Batch limits
+    MAX_BATCH_ITEMS = 1000
+    DEFAULT_BATCH_ITEMS = 100
+
+    # Timeout settings (in seconds)
+    DEFAULT_TIMEOUT = 30.0
+    BATCH_TIMEOUT = 60.0
+
+    # Item preview length for results
+    ITEM_PREVIEW_LENGTH = 100
+
+
+class TextTooLargeError(Exception):
+    """Raised when text exceeds maximum allowed size."""
+
+    def __init__(self, size: int, max_size: int):
+        self.size = size
+        self.max_size = max_size
+        super().__init__(
+            f"Text size ({size:,} bytes) exceeds maximum allowed ({max_size:,} bytes)"
+        )
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validators.semantic import SemanticValidator, THSPResult
 
 logger = logging.getLogger("sentinelseed.mcp_server")
+
+
+def _validate_text_size(
+    text: str,
+    max_size: int = MCPConfig.MAX_TEXT_SIZE,
+    context: str = "text",
+) -> None:
+    """
+    Validate that text does not exceed maximum size.
+
+    Args:
+        text: Text to validate
+        max_size: Maximum allowed size in bytes
+        context: Description for error messages
+
+    Raises:
+        TextTooLargeError: If text exceeds maximum size
+    """
+    if not isinstance(text, str):
+        return
+
+    size = len(text.encode("utf-8"))
+    if size > max_size:
+        logger.warning(
+            f"Text size validation failed: {context} is {size:,} bytes, "
+            f"max allowed is {max_size:,} bytes"
+        )
+        raise TextTooLargeError(size, max_size)
 
 # Check for MCP SDK availability
 MCP_AVAILABLE = False
@@ -134,16 +197,31 @@ def add_sentinel_tools(
         Returns detailed information about which gates passed or failed.
 
         Args:
-            text: The text content to validate
+            text: The text content to validate (max 50KB)
             check_type: Type of validation - 'general', 'action', or 'request'
 
         Returns:
             Dict with 'safe', 'violations', 'recommendation' fields
         """
+        # Validate text size
+        try:
+            _validate_text_size(text, context="validation text")
+        except TextTooLargeError as e:
+            logger.warning(f"sentinel_validate: {e}")
+            return {
+                "safe": False,
+                "violations": [str(e)],
+                "recommendation": "Text too large. Reduce size and retry.",
+                "error": "text_too_large",
+            }
+
+        logger.debug(f"sentinel_validate called: check_type={check_type}, text_len={len(text)}")
+
         if check_type == "action":
             is_safe, violations = sentinel.validate_action(text)
         elif check_type == "request":
             result = sentinel.validate_request(text)
+            logger.debug(f"sentinel_validate result: safe={result['should_proceed']}, risk={result['risk_level']}")
             return {
                 "safe": result["should_proceed"],
                 "risk_level": result["risk_level"],
@@ -153,6 +231,7 @@ def add_sentinel_tools(
         else:
             is_safe, violations = sentinel.validate(text)
 
+        logger.debug(f"sentinel_validate result: safe={is_safe}, violations={len(violations)}")
         return {
             "safe": is_safe,
             "violations": violations,
@@ -169,11 +248,27 @@ def add_sentinel_tools(
         it passes THSP safety validation.
 
         Args:
-            action: Description of the action to check
+            action: Description of the action to check (max 50KB)
 
         Returns:
             Dict with 'safe', 'should_proceed', 'concerns', 'recommendation'
         """
+        # Validate text size
+        try:
+            _validate_text_size(action, context="action description")
+        except TextTooLargeError as e:
+            logger.warning(f"sentinel_check_action: {e}")
+            return {
+                "safe": False,
+                "should_proceed": False,
+                "concerns": [str(e)],
+                "risk_level": "critical",
+                "recommendation": "Action description too large. Reduce size and retry.",
+                "error": "text_too_large",
+            }
+
+        logger.debug(f"sentinel_check_action called: action_len={len(action)}")
+
         is_safe, concerns = sentinel.validate_action(action)
         request_check = sentinel.validate_request(action)
 
@@ -186,6 +281,7 @@ def add_sentinel_tools(
             # Action failed safety check - escalate risk
             risk_level = "high" if risk_level == "low" else "critical"
 
+        logger.debug(f"sentinel_check_action result: safe={should_proceed}, risk={risk_level}")
         return {
             "safe": should_proceed,
             "should_proceed": should_proceed,
@@ -204,12 +300,29 @@ def add_sentinel_tools(
         harmful requests, or other safety issues.
 
         Args:
-            request: The user's request text
+            request: The user's request text (max 50KB)
 
         Returns:
             Dict with 'should_proceed', 'risk_level', 'concerns'
         """
+        # Validate text size
+        try:
+            _validate_text_size(request, context="user request")
+        except TextTooLargeError as e:
+            logger.warning(f"sentinel_check_request: {e}")
+            return {
+                "should_proceed": False,
+                "risk_level": "critical",
+                "concerns": [str(e)],
+                "safe": False,
+                "error": "text_too_large",
+            }
+
+        logger.debug(f"sentinel_check_request called: request_len={len(request)}")
+
         result = sentinel.validate_request(request)
+
+        logger.debug(f"sentinel_check_request result: proceed={result['should_proceed']}, risk={result['risk_level']}")
         return {
             "should_proceed": result["should_proceed"],
             "risk_level": result["risk_level"],
@@ -232,15 +345,26 @@ def add_sentinel_tools(
         Returns:
             The seed content as a string
         """
+        logger.debug(f"sentinel_get_seed called: level={level}")
+
+        # Validate level
+        valid_levels = ("minimal", "standard", "full")
+        if level not in valid_levels:
+            logger.warning(f"sentinel_get_seed: invalid level '{level}', using 'standard'")
+            level = "standard"
+
         temp_sentinel = Sentinel(seed_level=level)
-        return temp_sentinel.get_seed()
+        seed = temp_sentinel.get_seed()
+
+        logger.debug(f"sentinel_get_seed result: seed_len={len(seed)}")
+        return seed
 
     # Tool: Batch validate multiple items
     @mcp.tool()
     def sentinel_batch_validate(
         items: List[str],
         check_type: str = "general",
-        max_items: int = 100,
+        max_items: int = MCPConfig.DEFAULT_BATCH_ITEMS,
     ) -> Dict[str, Any]:
         """
         Validate multiple text items in batch.
@@ -248,16 +372,19 @@ def add_sentinel_tools(
         Efficiently validate a list of items and get aggregated results.
 
         Args:
-            items: List of text items to validate
+            items: List of text items to validate (max 10KB per item)
             check_type: Type of validation - 'general', 'action', or 'request'
             max_items: Maximum items to process (default 100, max 1000)
 
         Returns:
             Dict with 'total', 'safe_count', 'unsafe_count', 'results'
         """
+        logger.debug(f"sentinel_batch_validate called: items={len(items)}, check_type={check_type}")
+
         # Enforce size limits to prevent memory exhaustion
-        max_items = min(max_items, 1000)
+        max_items = min(max_items, MCPConfig.MAX_BATCH_ITEMS)
         if len(items) > max_items:
+            logger.info(f"sentinel_batch_validate: truncating from {len(items)} to {max_items} items")
             items = items[:max_items]
             truncated = True
         else:
@@ -265,12 +392,30 @@ def add_sentinel_tools(
 
         results = []
         safe_count = 0
+        skipped_count = 0
 
-        for item in items:
+        for idx, item in enumerate(items):
+            # Validate individual item size
+            try:
+                _validate_text_size(
+                    item,
+                    max_size=MCPConfig.MAX_TEXT_SIZE_BATCH,
+                    context=f"batch item {idx}",
+                )
+            except TextTooLargeError as e:
+                results.append({
+                    "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
+                    "safe": False,
+                    "error": "text_too_large",
+                    "violations": [str(e)],
+                })
+                skipped_count += 1
+                continue
+
             if check_type == "action":
                 is_safe, violations = sentinel.validate_action(item)
                 result_entry = {
-                    "item": item[:100],
+                    "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
                     "safe": is_safe,
                     "violations": violations,
                 }
@@ -278,7 +423,7 @@ def add_sentinel_tools(
                 req_result = sentinel.validate_request(item)
                 is_safe = req_result["should_proceed"]
                 result_entry = {
-                    "item": item[:100],
+                    "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
                     "safe": is_safe,
                     "risk_level": req_result["risk_level"],
                     "concerns": req_result["concerns"],
@@ -286,7 +431,7 @@ def add_sentinel_tools(
             else:
                 is_safe, violations = sentinel.validate(item)
                 result_entry = {
-                    "item": item[:100],
+                    "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
                     "safe": is_safe,
                     "violations": violations,
                 }
@@ -296,10 +441,16 @@ def add_sentinel_tools(
             if is_safe:
                 safe_count += 1
 
+        logger.debug(
+            f"sentinel_batch_validate result: total={len(items)}, "
+            f"safe={safe_count}, unsafe={len(items) - safe_count - skipped_count}, "
+            f"skipped={skipped_count}"
+        )
         return {
             "total": len(items),
             "safe_count": safe_count,
-            "unsafe_count": len(items) - safe_count,
+            "unsafe_count": len(items) - safe_count - skipped_count,
+            "skipped_count": skipped_count,
             "all_safe": safe_count == len(items),
             "truncated": truncated,
             "results": results,
@@ -324,11 +475,36 @@ def add_sentinel_tools(
     def get_config_resource() -> Dict[str, Any]:
         """Get current Sentinel configuration."""
         return {
-            "version": "2.0",
+            "version": __version__,
             "default_seed_level": sentinel.seed_level if hasattr(sentinel, 'seed_level') else "standard",
             "protocol": "THSP",
             "gates": ["Truth", "Harm", "Scope", "Purpose"],
+            "limits": {
+                "max_text_size": MCPConfig.MAX_TEXT_SIZE,
+                "max_text_size_batch": MCPConfig.MAX_TEXT_SIZE_BATCH,
+                "max_batch_items": MCPConfig.MAX_BATCH_ITEMS,
+                "default_timeout": MCPConfig.DEFAULT_TIMEOUT,
+            },
         }
+
+
+class MCPClientError(Exception):
+    """Base exception for MCP client errors."""
+    pass
+
+
+class MCPTimeoutError(MCPClientError):
+    """Raised when an MCP operation times out."""
+
+    def __init__(self, operation: str, timeout: float):
+        self.operation = operation
+        self.timeout = timeout
+        super().__init__(f"Operation '{operation}' timed out after {timeout}s")
+
+
+class MCPConnectionError(MCPClientError):
+    """Raised when connection to MCP server fails."""
+    pass
 
 
 class SentinelMCPClient:
@@ -353,6 +529,10 @@ class SentinelMCPClient:
             args=["-m", "sentinelseed.integrations.mcp_server"]
         ) as client:
             result = await client.check_action("delete all files")
+
+    Example (with timeout):
+        async with SentinelMCPClient(url="http://localhost:8000/mcp", timeout=10.0) as client:
+            result = await client.validate("Some text")
     """
 
     def __init__(
@@ -360,6 +540,7 @@ class SentinelMCPClient:
         url: Optional[str] = None,
         command: Optional[str] = None,
         args: Optional[List[str]] = None,
+        timeout: float = MCPConfig.DEFAULT_TIMEOUT,
     ):
         """
         Initialize MCP client.
@@ -368,6 +549,7 @@ class SentinelMCPClient:
             url: URL for HTTP transport (e.g., "http://localhost:8000/mcp")
             command: Command for stdio transport (e.g., "python")
             args: Arguments for stdio command (e.g., ["-m", "sentinelseed.integrations.mcp_server"])
+            timeout: Default timeout for operations in seconds (default: 30.0)
 
         Note: Provide either url OR (command + args), not both.
         """
@@ -379,10 +561,13 @@ class SentinelMCPClient:
         self.url = url
         self.command = command
         self.args = args or []
+        self.timeout = timeout
         self._session = None
         self._read_stream = None
         self._write_stream = None
         self._transport_context = None
+
+        logger.debug(f"SentinelMCPClient initialized: url={url}, command={command}, timeout={timeout}")
 
     async def __aenter__(self):
         """Async context manager entry - establishes connection."""
@@ -430,15 +615,32 @@ class SentinelMCPClient:
         if self._transport_context:
             await self._transport_context.__aexit__(exc_type, exc_val, exc_tb)
 
-    def _parse_tool_result(self, result, default_error: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_tool_result(
+        self,
+        result,
+        default_error: Dict[str, Any],
+        tool_name: str = "unknown",
+    ) -> Dict[str, Any]:
         """
         Parse MCP tool result into a dictionary.
 
         Handles different response formats from MCP servers.
+
+        Args:
+            result: MCP tool result
+            default_error: Default dict to return on parse failure
+            tool_name: Name of tool for logging purposes
+
+        Returns:
+            Parsed result dict or default_error
         """
         import json
 
         if not result.content or len(result.content) == 0:
+            logger.warning(
+                f"_parse_tool_result: empty content for tool '{tool_name}', "
+                f"returning default error"
+            )
             return default_error
 
         content = result.content[0]
@@ -448,40 +650,103 @@ class SentinelMCPClient:
             text = content.text
             # Try to parse as JSON
             try:
-                return json.loads(text)
-            except (json.JSONDecodeError, TypeError):
+                parsed = json.loads(text)
+                logger.debug(f"_parse_tool_result: parsed JSON for '{tool_name}'")
+                return parsed
+            except (json.JSONDecodeError, TypeError) as e:
                 # Not JSON, return as-is in a dict
+                logger.debug(
+                    f"_parse_tool_result: text not JSON for '{tool_name}': {e}, "
+                    f"returning as raw result"
+                )
                 return {"result": text}
 
         # Case 2: Already a dict (some MCP implementations)
         if isinstance(content, dict):
+            logger.debug(f"_parse_tool_result: content is dict for '{tool_name}'")
             return content
 
         # Case 3: Has a 'data' attribute
         if hasattr(content, 'data'):
             if isinstance(content.data, dict):
+                logger.debug(f"_parse_tool_result: content.data is dict for '{tool_name}'")
                 return content.data
             try:
-                return json.loads(content.data)
-            except (json.JSONDecodeError, TypeError):
+                parsed = json.loads(content.data)
+                logger.debug(f"_parse_tool_result: parsed content.data JSON for '{tool_name}'")
+                return parsed
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug(
+                    f"_parse_tool_result: content.data not JSON for '{tool_name}': {e}"
+                )
                 return {"result": content.data}
 
+        # Fallback
+        logger.warning(
+            f"_parse_tool_result: unrecognized content format for '{tool_name}', "
+            f"content type: {type(content).__name__}, returning default error"
+        )
         return default_error
 
-    async def list_tools(self) -> List[str]:
+    async def _call_with_timeout(
+        self,
+        coro,
+        operation: str,
+        timeout: Optional[float] = None,
+    ):
+        """
+        Execute a coroutine with timeout.
+
+        Args:
+            coro: Coroutine to execute
+            operation: Operation name for error messages
+            timeout: Timeout in seconds (uses self.timeout if None)
+
+        Returns:
+            Result of the coroutine
+
+        Raises:
+            MCPTimeoutError: If operation times out
+        """
+        timeout = timeout or self.timeout
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"Operation '{operation}' timed out after {timeout}s")
+            raise MCPTimeoutError(operation, timeout)
+
+    async def list_tools(self, timeout: Optional[float] = None) -> List[str]:
         """
         List available tools on the server.
 
+        Args:
+            timeout: Optional timeout override in seconds
+
         Returns:
             List of tool names
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
-        response = await self._session.list_tools()
-        return [tool.name for tool in response.tools]
+
+        logger.debug("list_tools called")
+        response = await self._call_with_timeout(
+            self._session.list_tools(),
+            "list_tools",
+            timeout,
+        )
+        tools = [tool.name for tool in response.tools]
+        logger.debug(f"list_tools result: {len(tools)} tools")
+        return tools
 
     async def validate(
-        self, text: str, check_type: str = "general"
+        self,
+        text: str,
+        check_type: str = "general",
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Validate text through THSP gates.
@@ -489,86 +754,154 @@ class SentinelMCPClient:
         Args:
             text: Text to validate
             check_type: "general", "action", or "request"
+            timeout: Optional timeout override in seconds
 
         Returns:
             Dict with 'safe', 'violations'/'concerns', 'recommendation'
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
 
-        result = await self._session.call_tool(
-            "sentinel_validate",
-            {"text": text, "check_type": check_type}
+        logger.debug(f"validate called: check_type={check_type}, text_len={len(text)}")
+        result = await self._call_with_timeout(
+            self._session.call_tool(
+                "sentinel_validate",
+                {"text": text, "check_type": check_type}
+            ),
+            "validate",
+            timeout,
         )
-        return self._parse_tool_result(result, {"safe": False, "error": "Invalid response"})
+        return self._parse_tool_result(
+            result,
+            {"safe": False, "error": "Invalid response"},
+            "sentinel_validate",
+        )
 
-    async def check_action(self, action: str) -> Dict[str, Any]:
+    async def check_action(
+        self,
+        action: str,
+        timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """
         Check if an action is safe to execute.
 
         Args:
             action: Description of the action
+            timeout: Optional timeout override in seconds
 
         Returns:
             Dict with 'safe', 'should_proceed', 'concerns', 'risk_level'
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
 
-        result = await self._session.call_tool(
-            "sentinel_check_action",
-            {"action": action}
+        logger.debug(f"check_action called: action_len={len(action)}")
+        result = await self._call_with_timeout(
+            self._session.call_tool(
+                "sentinel_check_action",
+                {"action": action}
+            ),
+            "check_action",
+            timeout,
         )
-        return self._parse_tool_result(result, {"safe": False, "error": "Invalid response"})
+        return self._parse_tool_result(
+            result,
+            {"safe": False, "error": "Invalid response"},
+            "sentinel_check_action",
+        )
 
-    async def check_request(self, request: str) -> Dict[str, Any]:
+    async def check_request(
+        self,
+        request: str,
+        timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """
         Validate a user request for safety.
 
         Args:
             request: User request text
+            timeout: Optional timeout override in seconds
 
         Returns:
             Dict with 'should_proceed', 'risk_level', 'concerns'
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
 
-        result = await self._session.call_tool(
-            "sentinel_check_request",
-            {"request": request}
+        logger.debug(f"check_request called: request_len={len(request)}")
+        result = await self._call_with_timeout(
+            self._session.call_tool(
+                "sentinel_check_request",
+                {"request": request}
+            ),
+            "check_request",
+            timeout,
         )
-        return self._parse_tool_result(result, {"should_proceed": False, "error": "Invalid response"})
+        return self._parse_tool_result(
+            result,
+            {"should_proceed": False, "error": "Invalid response"},
+            "sentinel_check_request",
+        )
 
-    async def get_seed(self, level: str = "standard") -> str:
+    async def get_seed(
+        self,
+        level: str = "standard",
+        timeout: Optional[float] = None,
+    ) -> str:
         """
         Get Sentinel seed content.
 
         Args:
             level: "minimal", "standard", or "full"
+            timeout: Optional timeout override in seconds
 
         Returns:
             Seed content string
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
 
-        result = await self._session.call_tool(
-            "sentinel_get_seed",
-            {"level": level}
+        logger.debug(f"get_seed called: level={level}")
+        result = await self._call_with_timeout(
+            self._session.call_tool(
+                "sentinel_get_seed",
+                {"level": level}
+            ),
+            "get_seed",
+            timeout,
         )
         # get_seed returns a string, not a dict
         if result.content and len(result.content) > 0:
             content = result.content[0]
             if hasattr(content, 'text'):
+                logger.debug(f"get_seed result: seed_len={len(content.text)}")
                 return content.text
+
+        logger.warning("get_seed: empty or invalid response, returning empty string")
         return ""
 
     async def batch_validate(
         self,
         items: List[str],
         check_type: str = "general",
-        max_items: int = 100,
+        max_items: int = MCPConfig.DEFAULT_BATCH_ITEMS,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Validate multiple items in batch.
@@ -576,19 +909,36 @@ class SentinelMCPClient:
         Args:
             items: List of text items
             check_type: "general", "action", or "request"
-            max_items: Maximum items to process
+            max_items: Maximum items to process (default 100, max 1000)
+            timeout: Optional timeout override in seconds (default uses batch timeout)
 
         Returns:
             Dict with 'total', 'safe_count', 'results'
+
+        Raises:
+            RuntimeError: If client not connected
+            MCPTimeoutError: If operation times out
         """
         if not self._session:
             raise RuntimeError("Client not connected. Use 'async with' context.")
 
-        result = await self._session.call_tool(
-            "sentinel_batch_validate",
-            {"items": items, "check_type": check_type, "max_items": max_items}
+        # Use batch timeout by default
+        timeout = timeout or MCPConfig.BATCH_TIMEOUT
+
+        logger.debug(f"batch_validate called: items={len(items)}, check_type={check_type}")
+        result = await self._call_with_timeout(
+            self._session.call_tool(
+                "sentinel_batch_validate",
+                {"items": items, "check_type": check_type, "max_items": max_items}
+            ),
+            "batch_validate",
+            timeout,
         )
-        return self._parse_tool_result(result, {"total": 0, "error": "Invalid response"})
+        return self._parse_tool_result(
+            result,
+            {"total": 0, "error": "Invalid response"},
+            "sentinel_batch_validate",
+        )
 
 
 def run_server():
