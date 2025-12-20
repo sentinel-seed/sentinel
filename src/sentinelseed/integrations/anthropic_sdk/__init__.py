@@ -49,6 +49,51 @@ from sentinelseed.validators.gates import THSPValidator
 # Default validation model - using current Haiku model
 DEFAULT_VALIDATION_MODEL = "claude-3-5-haiku-20241022"
 
+# Default limits
+DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
+DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
+
+
+class TextTooLargeError(Exception):
+    """Raised when input text exceeds maximum allowed size."""
+
+    def __init__(self, size: int, max_size: int):
+        self.size = size
+        self.max_size = max_size
+        super().__init__(
+            f"Text size ({size:,} bytes) exceeds maximum allowed ({max_size:,} bytes)"
+        )
+
+
+class ValidationTimeoutError(Exception):
+    """Raised when validation exceeds timeout."""
+
+    def __init__(self, timeout: float, operation: str = "validation"):
+        self.timeout = timeout
+        self.operation = operation
+        super().__init__(f"{operation} timed out after {timeout}s")
+
+
+def _validate_text_size(
+    text: str, max_size: int = DEFAULT_MAX_TEXT_SIZE, context: str = "text"
+) -> None:
+    """
+    Validate text size against maximum limit.
+
+    Args:
+        text: Text to validate
+        max_size: Maximum allowed size in bytes
+        context: Context for error message
+
+    Raises:
+        TextTooLargeError: If text exceeds maximum size
+    """
+    if not text or not isinstance(text, str):
+        return
+    size = len(text.encode("utf-8"))
+    if size > max_size:
+        raise TextTooLargeError(size, max_size)
+
 
 # Logger interface for custom logging
 class SentinelLogger(Protocol):
@@ -210,6 +255,10 @@ def wrap_anthropic_client(
     validation_model: str = DEFAULT_VALIDATION_MODEL,
     use_heuristic_fallback: bool = True,
     logger: Optional[SentinelLogger] = None,
+    block_unsafe_output: bool = False,
+    fail_closed: bool = False,
+    validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
 ) -> "SentinelAnthropicWrapper":
     """
     Wrap an existing Anthropic client with Sentinel safety.
@@ -224,6 +273,10 @@ def wrap_anthropic_client(
         validation_model: Model to use for semantic validation
         use_heuristic_fallback: Use local heuristic validation as fallback
         logger: Custom logger instance
+        block_unsafe_output: Block response if output validation fails (default: False)
+        fail_closed: Block on validation error instead of fail-open (default: False)
+        validation_timeout: Timeout in seconds for semantic validation (default: 30.0)
+        max_text_size: Maximum text size in bytes (default: 50KB)
 
     Returns:
         Wrapped client with Sentinel protection
@@ -238,6 +291,10 @@ def wrap_anthropic_client(
         validation_model=validation_model,
         use_heuristic_fallback=use_heuristic_fallback,
         logger=logger,
+        block_unsafe_output=block_unsafe_output,
+        fail_closed=fail_closed,
+        validation_timeout=validation_timeout,
+        max_text_size=max_text_size,
     )
 
 
@@ -321,6 +378,10 @@ class _SentinelMessages:
         semantic_validator: Optional[Any],
         heuristic_validator: Optional[THSPValidator],
         logger: SentinelLogger,
+        block_unsafe_output: bool = False,
+        fail_closed: bool = False,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     ):
         self._messages = messages_api
         self._sentinel = sentinel
@@ -331,6 +392,10 @@ class _SentinelMessages:
         self._heuristic_validator = heuristic_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
+        self._block_unsafe_output = block_unsafe_output
+        self._fail_closed = fail_closed
+        self._validation_timeout = validation_timeout
+        self._max_text_size = max_text_size
 
     def _validate_content(self, content: str) -> tuple[bool, Optional[str], Optional[str]]:
         """
@@ -339,7 +404,13 @@ class _SentinelMessages:
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        # First, try heuristic validation (fast, no API call)
+        # First, validate text size
+        try:
+            _validate_text_size(content, self._max_text_size)
+        except TextTooLargeError as e:
+            return False, "scope", f"Text too large: {e}"
+
+        # Then, try heuristic validation (fast, no API call)
         if self._heuristic_validator:
             result = self._heuristic_validator.validate(content)
             if not result["safe"]:
@@ -349,15 +420,30 @@ class _SentinelMessages:
                 reasoning = issues[0] if issues else "Heuristic validation failed"
                 return False, gate, reasoning
 
-        # Then, try semantic validation (slower, uses API)
+        # Then, try semantic validation (slower, uses API) with timeout
         if self._semantic_validator:
+            import concurrent.futures
+
             try:
-                result = self._semantic_validator.validate_request(content)
-                if not result.is_safe:
-                    return False, result.violated_gate, result.reasoning
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        self._semantic_validator.validate_request, content
+                    )
+                    result = future.result(timeout=self._validation_timeout)
+                    if not result.is_safe:
+                        return False, result.violated_gate, result.reasoning
+            except concurrent.futures.TimeoutError:
+                self._logger.error(
+                    f"Semantic validation timed out after {self._validation_timeout}s"
+                )
+                if self._fail_closed:
+                    return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
+                # Fail-open: continue if heuristic passed
             except Exception as e:
                 self._logger.error(f"Semantic validation error: {e}")
-                # On error, fall through (fail-open for semantic, heuristic already passed)
+                if self._fail_closed:
+                    return False, "error", f"Validation error: {e}"
+                # Fail-open: continue if heuristic passed
 
         return True, None, None
 
@@ -422,6 +508,13 @@ class _SentinelMessages:
                         self._logger.warning(
                             f"Output validation concern: {gate} - {reasoning}"
                         )
+                        if self._block_unsafe_output:
+                            return _create_blocked_response(
+                                f"Output blocked by Sentinel THSP validation. "
+                                f"Gate failed: {gate}. "
+                                f"Reason: {reasoning}",
+                                gate=gate,
+                            )
 
         return response
 
@@ -484,6 +577,10 @@ class _SentinelAsyncMessages:
         semantic_validator: Optional[Any],
         heuristic_validator: Optional[THSPValidator],
         logger: SentinelLogger,
+        block_unsafe_output: bool = False,
+        fail_closed: bool = False,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     ):
         self._messages = messages_api
         self._sentinel = sentinel
@@ -494,6 +591,10 @@ class _SentinelAsyncMessages:
         self._heuristic_validator = heuristic_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
+        self._block_unsafe_output = block_unsafe_output
+        self._fail_closed = fail_closed
+        self._validation_timeout = validation_timeout
+        self._max_text_size = max_text_size
 
     async def _validate_content(self, content: str) -> tuple[bool, Optional[str], Optional[str]]:
         """
@@ -502,7 +603,15 @@ class _SentinelAsyncMessages:
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        # First, try heuristic validation (fast, no API call)
+        import asyncio
+
+        # First, validate text size
+        try:
+            _validate_text_size(content, self._max_text_size)
+        except TextTooLargeError as e:
+            return False, "scope", f"Text too large: {e}"
+
+        # Then, try heuristic validation (fast, no API call)
         if self._heuristic_validator:
             result = self._heuristic_validator.validate(content)
             if not result["safe"]:
@@ -512,15 +621,27 @@ class _SentinelAsyncMessages:
                 reasoning = issues[0] if issues else "Heuristic validation failed"
                 return False, gate, reasoning
 
-        # Then, try semantic validation (slower, uses API)
+        # Then, try semantic validation (slower, uses API) with timeout
         if self._semantic_validator:
             try:
-                result = await self._semantic_validator.validate_request(content)
+                result = await asyncio.wait_for(
+                    self._semantic_validator.validate_request(content),
+                    timeout=self._validation_timeout,
+                )
                 if not result.is_safe:
                     return False, result.violated_gate, result.reasoning
+            except asyncio.TimeoutError:
+                self._logger.error(
+                    f"Async semantic validation timed out after {self._validation_timeout}s"
+                )
+                if self._fail_closed:
+                    return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
+                # Fail-open: continue if heuristic passed
             except Exception as e:
                 self._logger.error(f"Async semantic validation error: {e}")
-                # On error, fall through
+                if self._fail_closed:
+                    return False, "error", f"Validation error: {e}"
+                # Fail-open: continue if heuristic passed
 
         return True, None, None
 
@@ -573,6 +694,13 @@ class _SentinelAsyncMessages:
                         self._logger.warning(
                             f"Output validation concern: {gate} - {reasoning}"
                         )
+                        if self._block_unsafe_output:
+                            return _create_blocked_response(
+                                f"Output blocked by Sentinel THSP validation. "
+                                f"Gate failed: {gate}. "
+                                f"Reason: {reasoning}",
+                                gate=gate,
+                            )
 
         return response
 
@@ -651,6 +779,10 @@ class SentinelAnthropic:
         validation_model: str = DEFAULT_VALIDATION_MODEL,
         use_heuristic_fallback: bool = True,
         logger: Optional[SentinelLogger] = None,
+        block_unsafe_output: bool = False,
+        fail_closed: bool = False,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         **kwargs,
     ):
         """
@@ -666,6 +798,10 @@ class SentinelAnthropic:
             validation_model: Model to use for semantic validation
             use_heuristic_fallback: Use local heuristic validation as fallback/complement
             logger: Custom logger instance
+            block_unsafe_output: Block response if output validation fails (default: False)
+            fail_closed: Block on validation error instead of fail-open (default: False)
+            validation_timeout: Timeout in seconds for semantic validation (default: 30.0)
+            max_text_size: Maximum text size in bytes (default: 50KB)
             **kwargs: Additional arguments for Anthropic client
         """
         if not ANTHROPIC_AVAILABLE:
@@ -682,6 +818,10 @@ class SentinelAnthropic:
         self._validate_output = validate_output
         self._validation_model = validation_model
         self._logger = logger or _logger
+        self._block_unsafe_output = block_unsafe_output
+        self._fail_closed = fail_closed
+        self._validation_timeout = validation_timeout
+        self._max_text_size = max_text_size
 
         # Heuristic validator (always available, no API calls)
         self._heuristic_validator = THSPValidator() if use_heuristic_fallback else None
@@ -708,6 +848,10 @@ class SentinelAnthropic:
             self._semantic_validator,
             self._heuristic_validator,
             self._logger,
+            block_unsafe_output=block_unsafe_output,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -744,9 +888,31 @@ class SentinelAsyncAnthropic:
         validation_model: str = DEFAULT_VALIDATION_MODEL,
         use_heuristic_fallback: bool = True,
         logger: Optional[SentinelLogger] = None,
+        block_unsafe_output: bool = False,
+        fail_closed: bool = False,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         **kwargs,
     ):
-        """Initialize async Sentinel Anthropic client."""
+        """
+        Initialize async Sentinel Anthropic client.
+
+        Args:
+            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            sentinel: Sentinel instance (creates default if None)
+            seed_level: Seed level to use ("minimal", "standard", "full")
+            enable_seed_injection: Whether to inject seed into system prompts
+            validate_input: Whether to validate input messages (semantic LLM)
+            validate_output: Whether to validate output messages (semantic LLM)
+            validation_model: Model to use for semantic validation
+            use_heuristic_fallback: Use local heuristic validation as fallback/complement
+            logger: Custom logger instance
+            block_unsafe_output: Block response if output validation fails (default: False)
+            fail_closed: Block on validation error instead of fail-open (default: False)
+            validation_timeout: Timeout in seconds for semantic validation (default: 30.0)
+            max_text_size: Maximum text size in bytes (default: 50KB)
+            **kwargs: Additional arguments for Anthropic client
+        """
         if not ANTHROPIC_AVAILABLE:
             raise ImportError(
                 "anthropic package not installed. "
@@ -761,6 +927,10 @@ class SentinelAsyncAnthropic:
         self._validate_output = validate_output
         self._validation_model = validation_model
         self._logger = logger or _logger
+        self._block_unsafe_output = block_unsafe_output
+        self._fail_closed = fail_closed
+        self._validation_timeout = validation_timeout
+        self._max_text_size = max_text_size
 
         # Heuristic validator
         self._heuristic_validator = THSPValidator() if use_heuristic_fallback else None
@@ -787,6 +957,10 @@ class SentinelAsyncAnthropic:
             self._semantic_validator,
             self._heuristic_validator,
             self._logger,
+            block_unsafe_output=block_unsafe_output,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -825,6 +999,10 @@ class SentinelAnthropicWrapper:
         validation_model: str = DEFAULT_VALIDATION_MODEL,
         use_heuristic_fallback: bool = True,
         logger: Optional[SentinelLogger] = None,
+        block_unsafe_output: bool = False,
+        fail_closed: bool = False,
+        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     ):
         self._client = client
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
@@ -832,6 +1010,10 @@ class SentinelAnthropicWrapper:
         self._validate_input = validate_input
         self._validate_output = validate_output
         self._logger = logger or _logger
+        self._block_unsafe_output = block_unsafe_output
+        self._fail_closed = fail_closed
+        self._validation_timeout = validation_timeout
+        self._max_text_size = max_text_size
 
         # Get API key from client or environment
         api_key = getattr(client, '_api_key', None) or os.environ.get("ANTHROPIC_API_KEY")
@@ -864,6 +1046,10 @@ class SentinelAnthropicWrapper:
                 semantic_validator,
                 heuristic_validator,
                 self._logger,
+                block_unsafe_output=block_unsafe_output,
+                fail_closed=fail_closed,
+                validation_timeout=validation_timeout,
+                max_text_size=max_text_size,
             )
         else:
             semantic_validator = None
@@ -886,6 +1072,10 @@ class SentinelAnthropicWrapper:
                 semantic_validator,
                 heuristic_validator,
                 self._logger,
+                block_unsafe_output=block_unsafe_output,
+                fail_closed=fail_closed,
+                validation_timeout=validation_timeout,
+                max_text_size=max_text_size,
             )
 
     def __getattr__(self, name: str) -> Any:
@@ -900,6 +1090,10 @@ def create_safe_client(
     validation_model: str = DEFAULT_VALIDATION_MODEL,
     use_heuristic_fallback: bool = True,
     logger: Optional[SentinelLogger] = None,
+    block_unsafe_output: bool = False,
+    fail_closed: bool = False,
+    validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
 ) -> Union[SentinelAnthropic, SentinelAsyncAnthropic]:
     """
     Create a Sentinel-protected Anthropic client.
@@ -913,6 +1107,10 @@ def create_safe_client(
         validation_model: Model to use for semantic validation
         use_heuristic_fallback: Use local heuristic validation
         logger: Custom logger instance
+        block_unsafe_output: Block response if output validation fails (default: False)
+        fail_closed: Block on validation error instead of fail-open (default: False)
+        validation_timeout: Timeout in seconds for semantic validation (default: 30.0)
+        max_text_size: Maximum text size in bytes (default: 50KB)
 
     Returns:
         SentinelAnthropic or SentinelAsyncAnthropic instance
@@ -934,6 +1132,10 @@ def create_safe_client(
             validation_model=validation_model,
             use_heuristic_fallback=use_heuristic_fallback,
             logger=logger,
+            block_unsafe_output=block_unsafe_output,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
         )
     return SentinelAnthropic(
         api_key=api_key,
@@ -941,6 +1143,10 @@ def create_safe_client(
         validation_model=validation_model,
         use_heuristic_fallback=use_heuristic_fallback,
         logger=logger,
+        block_unsafe_output=block_unsafe_output,
+        fail_closed=fail_closed,
+        validation_timeout=validation_timeout,
+        max_text_size=max_text_size,
     )
 
 
@@ -957,8 +1163,13 @@ __all__ = [
     "SentinelLogger",
     "set_logger",
     "get_logger",
+    # Exceptions
+    "TextTooLargeError",
+    "ValidationTimeoutError",
     # Constants
     "ANTHROPIC_AVAILABLE",
     "SEMANTIC_VALIDATOR_AVAILABLE",
     "DEFAULT_VALIDATION_MODEL",
+    "DEFAULT_MAX_TEXT_SIZE",
+    "DEFAULT_VALIDATION_TIMEOUT",
 ]

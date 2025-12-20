@@ -121,6 +121,10 @@ SentinelAnthropic(
     validation_model="claude-3-5-haiku-20241022",  # Model for semantic validation
     use_heuristic_fallback=True,            # Use fast local validation
     logger=None,                            # Custom logger instance
+    block_unsafe_output=False,              # Block response if output validation fails
+    fail_closed=False,                      # Block on validation error (vs fail-open)
+    validation_timeout=30.0,                # Timeout for semantic validation (seconds)
+    max_text_size=50*1024,                  # Maximum text size in bytes (50KB default)
     **kwargs,                               # Passed to Anthropic client
 )
 ```
@@ -138,6 +142,10 @@ wrap_anthropic_client(
     validation_model="claude-3-5-haiku-20241022",
     use_heuristic_fallback=True,
     logger=None,
+    block_unsafe_output=False,
+    fail_closed=False,
+    validation_timeout=30.0,
+    max_text_size=50*1024,
 )
 ```
 
@@ -151,6 +159,10 @@ create_safe_client(
     validation_model="claude-3-5-haiku-20241022",
     use_heuristic_fallback=True,
     logger=None,
+    block_unsafe_output=False,
+    fail_closed=False,
+    validation_timeout=30.0,
+    max_text_size=50*1024,
 )
 ```
 
@@ -291,6 +303,84 @@ The logger receives messages about:
 | `ANTHROPIC_AVAILABLE` | bool | Whether anthropic SDK is installed |
 | `SEMANTIC_VALIDATOR_AVAILABLE` | bool | Whether semantic validator is available |
 | `DEFAULT_VALIDATION_MODEL` | str | Default model for semantic validation |
+| `DEFAULT_MAX_TEXT_SIZE` | int | Default max text size (50KB) |
+| `DEFAULT_VALIDATION_TIMEOUT` | float | Default validation timeout (30s) |
+
+### Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `TextTooLargeError` | Raised when input text exceeds `max_text_size` |
+| `ValidationTimeoutError` | Raised when semantic validation exceeds timeout |
+
+## Safety Options
+
+### Block Unsafe Output
+
+By default, output validation only logs concerns. Enable `block_unsafe_output=True` to block unsafe responses:
+
+```python
+client = SentinelAnthropic(
+    block_unsafe_output=True,  # Block response if output fails validation
+    validate_output=True,
+)
+```
+
+### Fail-Closed Mode
+
+By default, semantic validation errors (timeouts, API errors) allow content through if heuristic passed (fail-open). Enable `fail_closed=True` for stricter behavior:
+
+```python
+client = SentinelAnthropic(
+    fail_closed=True,  # Block on any validation error
+)
+```
+
+### Timeout Configuration
+
+Configure semantic validation timeout to prevent hangs:
+
+```python
+client = SentinelAnthropic(
+    validation_timeout=10.0,  # 10 second timeout
+)
+```
+
+### Text Size Limits
+
+Prevent DoS attacks by limiting input text size:
+
+```python
+client = SentinelAnthropic(
+    max_text_size=10 * 1024,  # 10KB limit
+)
+```
+
+## Error Handling
+
+```python
+from sentinelseed.integrations.anthropic_sdk import (
+    SentinelAnthropic,
+    TextTooLargeError,
+    ValidationTimeoutError,
+)
+
+# TextTooLargeError includes size details
+try:
+    # ... validation
+except TextTooLargeError as e:
+    print(f"Size: {e.size}, Max: {e.max_size}")
+
+# ValidationTimeoutError includes timeout info
+except ValidationTimeoutError as e:
+    print(f"Timeout after {e.timeout}s on {e.operation}")
+
+# Blocked responses have consistent format
+response = client.messages.create(...)
+if response.get("sentinel_blocked"):
+    print(f"Blocked: {response['sentinel_gate']}")
+    print(f"Reason: {response['content'][0]['text']}")
+```
 
 ## Important Notes
 
@@ -298,7 +388,8 @@ The logger receives messages about:
 
 - **Heuristic validation** is synchronous and runs locally (no API calls)
 - **Semantic validation** calls the Anthropic API (adds latency and cost)
-- When semantic validation fails, the error is logged but content proceeds if heuristic passed
+- **Default behavior** (fail-open): semantic errors log but allow content if heuristic passed
+- **Strict behavior** (`fail_closed=True`): any validation error blocks content
 - Set `use_heuristic_fallback=False` to rely only on semantic validation
 
 ### Stream Blocking
@@ -308,6 +399,12 @@ Unlike previous versions that raised `ValueError` on blocked stream input, the c
 ### inject_seed Independence
 
 The `inject_seed()` function does not require the Anthropic SDK to be installed. It only needs the base `sentinelseed` package, making it useful for other integrations or custom implementations.
+
+### Limitations
+
+- **Text size limit**: Default 50KB per request. Configure with `max_text_size`.
+- **Timeout**: Default 30s for semantic validation. Configure with `validation_timeout`.
+- **Output blocking**: Requires `block_unsafe_output=True` (off by default for compatibility).
 
 ## Links
 
