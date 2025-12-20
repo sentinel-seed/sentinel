@@ -31,14 +31,152 @@ Usage:
     response = client.run_conversation(assistant.id, thread.id, "Hello!")
 """
 
-from typing import Any, Dict, List, Optional, Union, Iterator
+from typing import Any, Dict, List, Optional, Union, Iterator, Tuple
 import os
 import logging
+import time
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
 
 logger = logging.getLogger("sentinelseed.openai_assistant")
+
+# Valid seed levels
+VALID_SEED_LEVELS = ("minimal", "standard", "full")
+
+# Default configuration values
+DEFAULT_POLL_INTERVAL = 1.0
+DEFAULT_TIMEOUT = 300.0
+DEFAULT_VALIDATION_TIMEOUT = 30.0
+
+
+class AssistantRunError(Exception):
+    """Raised when an assistant run fails or is cancelled."""
+
+    def __init__(self, run_id: str, status: str, message: str = ""):
+        self.run_id = run_id
+        self.status = status
+        super().__init__(f"Run {run_id} {status}: {message}" if message else f"Run {run_id} {status}")
+
+
+class AssistantRequiresActionError(Exception):
+    """Raised when a run requires action (function calling) but no handler is provided."""
+
+    def __init__(self, run_id: str, required_action: Any = None):
+        self.run_id = run_id
+        self.required_action = required_action
+        super().__init__(
+            f"Run {run_id} requires action. Use a function calling handler or "
+            "pass handle_requires_action=True to wait for manual resolution."
+        )
+
+
+class ValidationError(Exception):
+    """Raised when validation fails."""
+
+    def __init__(self, message: str, concerns: Optional[List[str]] = None):
+        self.concerns = concerns or []
+        super().__init__(message)
+
+
+class OutputBlockedError(Exception):
+    """Raised when output validation fails and blocking is enabled."""
+
+    def __init__(self, violations: List[str]):
+        self.violations = violations
+        super().__init__(f"Output blocked due to safety violations: {violations}")
+
+
+def _validate_seed_level(seed_level: str) -> str:
+    """Validate and normalize seed level."""
+    normalized = seed_level.lower()
+    if normalized not in VALID_SEED_LEVELS:
+        raise ValueError(
+            f"Invalid seed_level '{seed_level}'. "
+            f"Must be one of: {', '.join(VALID_SEED_LEVELS)}"
+        )
+    return normalized
+
+
+def _safe_validate_request(
+    sentinel: Sentinel,
+    content: str,
+    logger_instance: logging.Logger,
+) -> Dict[str, Any]:
+    """
+    Safely validate a request with error handling.
+
+    Returns:
+        Dict with 'should_proceed', 'concerns', 'risk_level'
+    """
+    # Skip empty/None content
+    if not content or not content.strip():
+        return {"should_proceed": True, "concerns": [], "risk_level": "low"}
+
+    try:
+        result = sentinel.validate_request(content)
+        return result
+    except Exception as e:
+        logger_instance.error(f"Validation error: {type(e).__name__}: {str(e)[:100]}")
+        # Fail-safe: block on validation error
+        return {
+            "should_proceed": False,
+            "concerns": [f"Validation error: {type(e).__name__}"],
+            "risk_level": "high",
+        }
+
+
+def _safe_validate_output(
+    sentinel: Sentinel,
+    content: str,
+    logger_instance: logging.Logger,
+) -> Tuple[bool, List[str]]:
+    """
+    Safely validate output with error handling.
+
+    Returns:
+        Tuple of (is_safe, violations)
+    """
+    # Skip empty/None content
+    if not content or not content.strip():
+        return True, []
+
+    try:
+        is_safe, violations = sentinel.validate(content)
+        return is_safe, violations
+    except Exception as e:
+        logger_instance.error(f"Output validation error: {type(e).__name__}: {str(e)[:100]}")
+        # Fail-safe: treat as unsafe on validation error
+        return False, [f"Validation error: {type(e).__name__}"]
+
+
+def _extract_response_text(messages: List[Any], logger_instance: logging.Logger) -> str:
+    """
+    Safely extract response text from assistant messages.
+
+    Args:
+        messages: List of message objects
+        logger_instance: Logger for error reporting
+
+    Returns:
+        Extracted text or empty string
+    """
+    try:
+        for msg in messages:
+            if not hasattr(msg, "role") or msg.role != "assistant":
+                continue
+
+            if not hasattr(msg, "content"):
+                continue
+
+            for block in msg.content:
+                if hasattr(block, "text") and hasattr(block.text, "value"):
+                    return block.text.value
+
+        return ""
+    except Exception as e:
+        logger_instance.warning(f"Error extracting response: {type(e).__name__}: {str(e)[:50]}")
+        return ""
 
 # Check for OpenAI SDK availability
 OPENAI_AVAILABLE = False
@@ -89,11 +227,16 @@ class SentinelAssistant:
         Args:
             assistant: OpenAI Assistant object
             sentinel: Sentinel instance
-            seed_level: Seed level used
+            seed_level: Seed level used ("minimal", "standard", "full")
+
+        Raises:
+            ValueError: If seed_level is invalid
         """
+        # Validate seed_level
+        self._seed_level = _validate_seed_level(seed_level)
+
         self._assistant = assistant
-        self._sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self._seed_level = seed_level
+        self._sentinel = sentinel or Sentinel(seed_level=self._seed_level)
 
         # Copy key attributes
         self.id = assistant.id
@@ -122,12 +265,16 @@ class SentinelAssistant:
             model: Model to use
             tools: List of tools (code_interpreter, file_search, function)
             sentinel: Sentinel instance
-            seed_level: Seed level to use
+            seed_level: Seed level to use ("minimal", "standard", "full")
             api_key: OpenAI API key
             **kwargs: Additional assistant parameters
 
         Returns:
             SentinelAssistant instance
+
+        Raises:
+            ImportError: If openai package is not installed
+            ValueError: If seed_level is invalid
 
         Example:
             assistant = SentinelAssistant.create(
@@ -143,7 +290,9 @@ class SentinelAssistant:
                 "Install with: pip install openai"
             )
 
-        sentinel = sentinel or Sentinel(seed_level=seed_level)
+        # Validate seed_level
+        validated_level = _validate_seed_level(seed_level)
+        sentinel = sentinel or Sentinel(seed_level=validated_level)
         seed = sentinel.get_seed()
 
         # Prepend seed to instructions
@@ -164,7 +313,7 @@ class SentinelAssistant:
             **kwargs,
         )
 
-        return cls(assistant, sentinel, seed_level)
+        return cls(assistant, sentinel, validated_level)
 
     def update(
         self,
@@ -265,6 +414,7 @@ class SentinelAssistantClient:
         seed_level: str = "standard",
         validate_input: bool = True,
         validate_output: bool = True,
+        block_unsafe_output: bool = False,
     ):
         """
         Initialize Sentinel Assistant client.
@@ -272,9 +422,14 @@ class SentinelAssistantClient:
         Args:
             api_key: OpenAI API key
             sentinel: Sentinel instance
-            seed_level: Seed level to use
+            seed_level: Seed level to use ("minimal", "standard", "full")
             validate_input: Whether to validate user messages
             validate_output: Whether to validate assistant responses
+            block_unsafe_output: If True, raise OutputBlockedError for unsafe responses
+
+        Raises:
+            ImportError: If openai package is not installed
+            ValueError: If seed_level is invalid
         """
         if not OPENAI_AVAILABLE:
             raise ImportError(
@@ -282,10 +437,14 @@ class SentinelAssistantClient:
                 "Install with: pip install openai"
             )
 
+        # Validate seed_level
+        validated_level = _validate_seed_level(seed_level)
+
         self._client = OpenAI(api_key=api_key)
-        self._sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self._sentinel = sentinel or Sentinel(seed_level=validated_level)
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._block_unsafe_output = block_unsafe_output
         self._seed = self._sentinel.get_seed()
 
     def create_assistant(
@@ -339,16 +498,28 @@ class SentinelAssistantClient:
 
         Returns:
             OpenAI Thread object
+
+        Raises:
+            ValidationError: If a message fails input validation
         """
         if messages:
             # Validate initial messages
             if self._validate_input:
                 for msg in messages:
+                    if not isinstance(msg, dict):
+                        continue
+
                     content = msg.get("content", "")
-                    if isinstance(content, str):
-                        result = self._sentinel.validate_request(content)
-                        if not result["should_proceed"]:
-                            raise ValueError(f"Message blocked: {result['concerns']}")
+                    if not isinstance(content, str) or not content.strip():
+                        continue
+
+                    result = _safe_validate_request(self._sentinel, content, logger)
+                    if not result["should_proceed"]:
+                        concerns = result.get("concerns", [])
+                        raise ValidationError(
+                            f"Message blocked by Sentinel",
+                            concerns=concerns
+                        )
 
             return self._client.beta.threads.create(messages=messages)
 
@@ -370,12 +541,21 @@ class SentinelAssistantClient:
 
         Returns:
             OpenAI Message object
+
+        Raises:
+            ValidationError: If message fails input validation
         """
         # Validate user messages
         if self._validate_input and role == "user":
-            result = self._sentinel.validate_request(content)
-            if not result["should_proceed"]:
-                raise ValueError(f"Message blocked by Sentinel: {result['concerns']}")
+            # Skip empty content
+            if content and content.strip():
+                result = _safe_validate_request(self._sentinel, content, logger)
+                if not result["should_proceed"]:
+                    concerns = result.get("concerns", [])
+                    raise ValidationError(
+                        "Message blocked by Sentinel",
+                        concerns=concerns
+                    )
 
         return self._client.beta.threads.messages.create(
             thread_id=thread_id,
@@ -418,8 +598,9 @@ class SentinelAssistantClient:
         self,
         thread_id: str,
         run_id: str,
-        poll_interval: float = 1.0,
-        timeout: float = 300.0,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: float = DEFAULT_TIMEOUT,
+        handle_requires_action: bool = False,
     ) -> Any:
         """
         Wait for a run to complete.
@@ -429,12 +610,16 @@ class SentinelAssistantClient:
             run_id: Run ID
             poll_interval: Seconds between status checks
             timeout: Maximum wait time
+            handle_requires_action: If True, wait for manual action resolution.
+                                   If False, raise AssistantRequiresActionError.
 
         Returns:
             Completed Run object
-        """
-        import time
 
+        Raises:
+            TimeoutError: If run does not complete within timeout
+            AssistantRequiresActionError: If run requires action and handle_requires_action is False
+        """
         start_time = time.time()
 
         while True:
@@ -443,8 +628,18 @@ class SentinelAssistantClient:
                 run_id=run_id,
             )
 
+            # Terminal states
             if run.status in ("completed", "failed", "cancelled", "expired"):
                 return run
+
+            # Requires action (function calling)
+            if run.status == "requires_action":
+                if not handle_requires_action:
+                    raise AssistantRequiresActionError(
+                        run_id=run_id,
+                        required_action=getattr(run, "required_action", None)
+                    )
+                # If handle_requires_action is True, continue waiting for manual resolution
 
             if time.time() - start_time > timeout:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
@@ -480,8 +675,8 @@ class SentinelAssistantClient:
         assistant_id: str,
         thread_id: str,
         message: str,
-        poll_interval: float = 1.0,
-        timeout: float = 300.0,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> Dict[str, Any]:
         """
         Run a complete conversation turn.
@@ -497,7 +692,12 @@ class SentinelAssistantClient:
             timeout: Maximum wait time
 
         Returns:
-            Dict with 'response', 'messages', 'run', 'validated'
+            Dict with 'response', 'messages', 'run', 'validated', 'validation'
+
+        Raises:
+            ValidationError: If user message fails input validation
+            AssistantRunError: If the run fails, is cancelled, or expires
+            OutputBlockedError: If output is unsafe and block_unsafe_output is True
 
         Example:
             result = client.run_conversation(
@@ -507,7 +707,7 @@ class SentinelAssistantClient:
             )
             print(result["response"])
         """
-        # Add user message
+        # Add user message (may raise ValidationError)
         self.add_message(thread_id, message, role="user")
 
         # Create and wait for run
@@ -519,29 +719,39 @@ class SentinelAssistantClient:
             timeout=timeout,
         )
 
+        # Check if run failed
+        if completed_run.status == "failed":
+            error_message = ""
+            if hasattr(completed_run, "last_error") and completed_run.last_error:
+                error_message = getattr(completed_run.last_error, "message", str(completed_run.last_error))
+            raise AssistantRunError(run.id, "failed", error_message)
+
+        if completed_run.status == "cancelled":
+            raise AssistantRunError(run.id, "cancelled", "Run was cancelled")
+
+        if completed_run.status == "expired":
+            raise AssistantRunError(run.id, "expired", "Run expired")
+
         # Get response messages
         messages = self.get_messages(thread_id, limit=5)
 
-        # Extract assistant response
-        response_text = ""
-        for msg in messages:
-            if msg.role == "assistant":
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        response_text = block.text.value
-                        break
-                break
+        # Extract assistant response safely
+        response_text = _extract_response_text(messages, logger)
 
         # Validate output
         validation_result = {"valid": True, "violations": []}
         if self._validate_output and response_text:
-            is_safe, violations = self._sentinel.validate(response_text)
+            is_safe, violations = _safe_validate_output(self._sentinel, response_text, logger)
             validation_result = {
                 "valid": is_safe,
                 "violations": violations,
             }
             if not is_safe:
-                print(f"[SENTINEL] Output validation concerns: {violations}")
+                logger.warning(f"Output validation concerns: {violations}")
+
+                # Block if configured
+                if self._block_unsafe_output:
+                    raise OutputBlockedError(violations)
 
         return {
             "response": response_text,
@@ -585,15 +795,34 @@ class SentinelAsyncAssistantClient:
         seed_level: str = "standard",
         validate_input: bool = True,
         validate_output: bool = True,
+        block_unsafe_output: bool = False,
     ):
-        """Initialize async client."""
+        """
+        Initialize async client.
+
+        Args:
+            api_key: OpenAI API key
+            sentinel: Sentinel instance
+            seed_level: Seed level to use ("minimal", "standard", "full")
+            validate_input: Whether to validate user messages
+            validate_output: Whether to validate assistant responses
+            block_unsafe_output: If True, raise OutputBlockedError for unsafe responses
+
+        Raises:
+            ImportError: If openai package is not installed
+            ValueError: If seed_level is invalid
+        """
         if not OPENAI_AVAILABLE:
             raise ImportError("openai package not installed")
 
+        # Validate seed_level
+        validated_level = _validate_seed_level(seed_level)
+
         self._client = AsyncOpenAI(api_key=api_key)
-        self._sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self._sentinel = sentinel or Sentinel(seed_level=validated_level)
         self._validate_input = validate_input
         self._validate_output = validate_output
+        self._block_unsafe_output = block_unsafe_output
         self._seed = self._sentinel.get_seed()
 
     async def create_assistant(
@@ -626,15 +855,35 @@ class SentinelAsyncAssistantClient:
         self,
         messages: Optional[List[Dict[str, str]]] = None,
     ) -> Any:
-        """Async create thread."""
+        """
+        Async create thread.
+
+        Args:
+            messages: Optional initial messages
+
+        Returns:
+            OpenAI Thread object
+
+        Raises:
+            ValidationError: If a message fails input validation
+        """
         if messages:
             if self._validate_input:
                 for msg in messages:
+                    if not isinstance(msg, dict):
+                        continue
+
                     content = msg.get("content", "")
-                    if isinstance(content, str):
-                        result = self._sentinel.validate_request(content)
-                        if not result["should_proceed"]:
-                            raise ValueError(f"Message blocked: {result['concerns']}")
+                    if not isinstance(content, str) or not content.strip():
+                        continue
+
+                    result = _safe_validate_request(self._sentinel, content, logger)
+                    if not result["should_proceed"]:
+                        concerns = result.get("concerns", [])
+                        raise ValidationError(
+                            "Message blocked by Sentinel",
+                            concerns=concerns
+                        )
 
             return await self._client.beta.threads.create(messages=messages)
 
@@ -646,11 +895,30 @@ class SentinelAsyncAssistantClient:
         content: str,
         role: str = "user",
     ) -> Any:
-        """Async add message."""
+        """
+        Async add message.
+
+        Args:
+            thread_id: Thread ID
+            content: Message content
+            role: Message role (user or assistant)
+
+        Returns:
+            OpenAI Message object
+
+        Raises:
+            ValidationError: If message fails input validation
+        """
         if self._validate_input and role == "user":
-            result = self._sentinel.validate_request(content)
-            if not result["should_proceed"]:
-                raise ValueError(f"Message blocked: {result['concerns']}")
+            # Skip empty content
+            if content and content.strip():
+                result = _safe_validate_request(self._sentinel, content, logger)
+                if not result["should_proceed"]:
+                    concerns = result.get("concerns", [])
+                    raise ValidationError(
+                        "Message blocked by Sentinel",
+                        concerns=concerns
+                    )
 
         return await self._client.beta.threads.messages.create(
             thread_id=thread_id,
@@ -681,12 +949,29 @@ class SentinelAsyncAssistantClient:
         self,
         thread_id: str,
         run_id: str,
-        poll_interval: float = 1.0,
-        timeout: float = 300.0,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: float = DEFAULT_TIMEOUT,
+        handle_requires_action: bool = False,
     ) -> Any:
-        """Async wait for run completion."""
+        """
+        Async wait for run completion.
+
+        Args:
+            thread_id: Thread ID
+            run_id: Run ID
+            poll_interval: Seconds between status checks
+            timeout: Maximum wait time
+            handle_requires_action: If True, wait for manual action resolution.
+                                   If False, raise AssistantRequiresActionError.
+
+        Returns:
+            Completed Run object
+
+        Raises:
+            TimeoutError: If run does not complete within timeout
+            AssistantRequiresActionError: If run requires action and handle_requires_action is False
+        """
         import asyncio
-        import time
 
         start_time = time.time()
 
@@ -696,11 +981,21 @@ class SentinelAsyncAssistantClient:
                 run_id=run_id,
             )
 
+            # Terminal states
             if run.status in ("completed", "failed", "cancelled", "expired"):
                 return run
 
+            # Requires action (function calling)
+            if run.status == "requires_action":
+                if not handle_requires_action:
+                    raise AssistantRequiresActionError(
+                        run_id=run_id,
+                        required_action=getattr(run, "required_action", None)
+                    )
+                # If handle_requires_action is True, continue waiting for manual resolution
+
             if time.time() - start_time > timeout:
-                raise TimeoutError(f"Run {run_id} did not complete")
+                raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
 
             await asyncio.sleep(poll_interval)
 
@@ -709,10 +1004,28 @@ class SentinelAsyncAssistantClient:
         assistant_id: str,
         thread_id: str,
         message: str,
-        poll_interval: float = 1.0,
-        timeout: float = 300.0,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> Dict[str, Any]:
-        """Async run complete conversation turn."""
+        """
+        Async run complete conversation turn.
+
+        Args:
+            assistant_id: Assistant ID
+            thread_id: Thread ID
+            message: User message
+            poll_interval: Seconds between status checks
+            timeout: Maximum wait time
+
+        Returns:
+            Dict with 'response', 'messages', 'run', 'validated', 'validation'
+
+        Raises:
+            ValidationError: If user message fails input validation
+            AssistantRunError: If the run fails, is cancelled, or expires
+            OutputBlockedError: If output is unsafe and block_unsafe_output is True
+        """
+        # Add user message (may raise ValidationError)
         await self.add_message(thread_id, message, role="user")
 
         run = await self.create_run(thread_id, assistant_id)
@@ -723,25 +1036,39 @@ class SentinelAsyncAssistantClient:
             timeout=timeout,
         )
 
+        # Check if run failed
+        if completed_run.status == "failed":
+            error_message = ""
+            if hasattr(completed_run, "last_error") and completed_run.last_error:
+                error_message = getattr(completed_run.last_error, "message", str(completed_run.last_error))
+            raise AssistantRunError(run.id, "failed", error_message)
+
+        if completed_run.status == "cancelled":
+            raise AssistantRunError(run.id, "cancelled", "Run was cancelled")
+
+        if completed_run.status == "expired":
+            raise AssistantRunError(run.id, "expired", "Run expired")
+
         messages = await self._client.beta.threads.messages.list(
             thread_id=thread_id,
             limit=5,
             order="desc",
         )
 
-        response_text = ""
-        for msg in messages.data:
-            if msg.role == "assistant":
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        response_text = block.text.value
-                        break
-                break
+        # Extract assistant response safely
+        response_text = _extract_response_text(list(messages.data), logger)
 
         validation_result = {"valid": True, "violations": []}
         if self._validate_output and response_text:
-            is_safe, violations = self._sentinel.validate(response_text)
+            is_safe, violations = _safe_validate_output(self._sentinel, response_text, logger)
             validation_result = {"valid": is_safe, "violations": violations}
+
+            if not is_safe:
+                logger.warning(f"Output validation concerns: {violations}")
+
+                # Block if configured
+                if self._block_unsafe_output:
+                    raise OutputBlockedError(violations)
 
         return {
             "response": response_text,
@@ -767,10 +1094,13 @@ def wrap_assistant(
     Args:
         assistant: OpenAI Assistant object
         sentinel: Sentinel instance
-        seed_level: Seed level
+        seed_level: Seed level ("minimal", "standard", "full")
 
     Returns:
         SentinelAssistant wrapper
+
+    Raises:
+        ValueError: If seed_level is invalid
 
     Example:
         from openai import OpenAI
@@ -780,7 +1110,9 @@ def wrap_assistant(
         assistant = client.beta.assistants.retrieve("asst_...")
         safe_assistant = wrap_assistant(assistant)
     """
-    return SentinelAssistant(assistant, sentinel, seed_level)
+    # Validate seed_level (SentinelAssistant.__init__ also validates, but fail early)
+    validated_level = _validate_seed_level(seed_level)
+    return SentinelAssistant(assistant, sentinel, validated_level)
 
 
 def inject_seed_instructions(
@@ -794,10 +1126,13 @@ def inject_seed_instructions(
 
     Args:
         instructions: Base instructions
-        seed_level: Seed level to use
+        seed_level: Seed level to use ("minimal", "standard", "full")
 
     Returns:
         Instructions with Sentinel seed prepended
+
+    Raises:
+        ValueError: If seed_level is invalid
 
     Example:
         from openai import OpenAI
@@ -810,7 +1145,10 @@ def inject_seed_instructions(
             model="gpt-4o"
         )
     """
-    sentinel = Sentinel(seed_level=seed_level)
+    # Validate seed_level
+    validated_level = _validate_seed_level(seed_level)
+
+    sentinel = Sentinel(seed_level=validated_level)
     seed = sentinel.get_seed()
 
     if instructions:
