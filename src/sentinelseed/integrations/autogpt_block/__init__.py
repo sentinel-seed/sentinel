@@ -47,7 +47,7 @@ import json
 import concurrent.futures
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import logging
 
 from sentinelseed import Sentinel, SeedLevel
@@ -934,10 +934,15 @@ __all__ = [
     "ValidationResult",
     "ActionCheckResult",
     "ValidationLevel",
-    # AutoGPT blocks (only when SDK available)
-    "SentinelValidationBlock",
-    "SentinelActionCheckBlock",
-    "SentinelSeedBlock",
+    # SDK info
     "BLOCKS",
     "AUTOGPT_SDK_AVAILABLE",
 ]
+
+# Add block classes to __all__ only when SDK is available
+if AUTOGPT_SDK_AVAILABLE:
+    __all__.extend([
+        "SentinelValidationBlock",
+        "SentinelActionCheckBlock",
+        "SentinelSeedBlock",
+    ])
