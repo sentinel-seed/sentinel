@@ -433,8 +433,8 @@ class SentinelChainOfThought(Module):
     """
     DSPy ChainOfThought module with built-in THSP safety validation.
 
-    Adds step-by-step reasoning before output, then validates
-    the final answer through THSP gates.
+    Validates BOTH the reasoning process AND the final output, ensuring
+    that harmful content cannot hide in either component.
 
     Args:
         signature: DSPy signature (string or Signature class)
@@ -442,6 +442,9 @@ class SentinelChainOfThought(Module):
         provider: LLM provider ("openai" or "anthropic")
         model: Model for validation
         mode: Validation mode ("block", "flag", or "heuristic")
+        validate_reasoning: Whether to validate reasoning (default: True)
+        validate_output: Whether to validate output (default: True)
+        reasoning_field: Name of reasoning field (default: "reasoning")
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on validation errors (default: False)
@@ -451,9 +454,14 @@ class SentinelChainOfThought(Module):
         cot = SentinelChainOfThought(
             "question -> answer",
             api_key="sk-...",
-            mode="block"
+            mode="block",
+            validate_reasoning=True,  # Validate reasoning too
         )
         result = cot(question="Explain quantum computing")
+
+        # Check which fields were validated
+        print(result.safety_fields_validated)  # ["reasoning", "answer"]
+        print(result.safety_field_results)     # {"reasoning": True, "answer": True}
     """
 
     def __init__(
@@ -463,28 +471,408 @@ class SentinelChainOfThought(Module):
         provider: str = "openai",
         model: Optional[str] = None,
         mode: Literal["block", "flag", "heuristic"] = "block",
+        validate_reasoning: bool = True,
+        validate_output: bool = True,
+        reasoning_field: str = "reasoning",
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
         **config,
     ):
         super().__init__()
-        self._cot = dspy.ChainOfThought(signature, **config)
-        self._guard = SentinelGuard(
-            self._cot,
-            api_key=api_key,
-            provider=provider,
-            model=model,
-            mode=mode,
+
+        # Validate configuration types
+        validate_config_types(
             max_text_size=max_text_size,
             timeout=timeout,
             fail_closed=fail_closed,
         )
 
+        # Validate mode parameter
+        validate_mode(mode)
+
+        # Validate provider if using semantic validation
+        if provider and mode != "heuristic":
+            validate_provider(provider)
+
+        self._cot = dspy.ChainOfThought(signature, **config)
+        self.validate_reasoning = validate_reasoning
+        self.validate_output = validate_output
+        self.reasoning_field = reasoning_field
+        self.max_text_size = max_text_size
+        self.timeout = timeout
+        self.fail_closed = fail_closed
+        self.mode = mode
+        self._logger = logger
+
+        # Log warning about fail-open default
+        if not fail_closed:
+            warn_fail_open_default(self._logger, "SentinelChainOfThought")
+
+        # Initialize validator based on mode
+        if mode == "heuristic":
+            self._validator = THSPValidator()
+        else:
+            if not api_key:
+                self._logger.warning(
+                    "No API key provided for SentinelChainOfThought. "
+                    "Falling back to heuristic validation."
+                )
+                self._validator = THSPValidator()
+                self.mode = "heuristic"
+            else:
+                self._validator = SemanticValidator(
+                    provider=provider,
+                    model=model,
+                    api_key=api_key,
+                )
+
+    def _extract_fields(self, result: Prediction) -> Dict[str, str]:
+        """
+        Extract reasoning and output fields from prediction.
+
+        Returns:
+            Dict mapping field names to their content
+        """
+        fields = {}
+
+        # Extract reasoning field
+        if self.validate_reasoning:
+            reasoning = getattr(result, self.reasoning_field, None)
+            if reasoning and isinstance(reasoning, str):
+                fields[self.reasoning_field] = reasoning
+
+        # Extract output fields (all string fields except reasoning)
+        if self.validate_output:
+            try:
+                for key in result.keys():
+                    if key == self.reasoning_field:
+                        continue
+                    value = getattr(result, key, None)
+                    if value and isinstance(value, str):
+                        fields[key] = value
+            except (AttributeError, TypeError):
+                pass
+
+        return fields
+
+    def _validate_content(self, content: str) -> Dict[str, Any]:
+        """Validate a single piece of content."""
+        try:
+            if self.mode == "heuristic":
+                result = self._validator.validate(content)
+                return {
+                    "is_safe": result.get("safe", True),
+                    "gates": result.get("gates", {}),
+                    "issues": result.get("issues", []),
+                    "reasoning": "Heuristic pattern-based validation",
+                    "method": "heuristic",
+                }
+            else:
+                result: THSPResult = self._validator.validate(content)
+                return {
+                    "is_safe": result.is_safe,
+                    "gates": result.gate_results,
+                    "issues": result.failed_gates,
+                    "reasoning": result.reasoning,
+                    "method": "semantic",
+                }
+        except Exception as e:
+            self._logger.error(f"Validation error: {e}")
+            if self.fail_closed:
+                return {
+                    "is_safe": False,
+                    "gates": {},
+                    "issues": [f"Validation error: {e}"],
+                    "reasoning": f"Validation failed with error: {e}",
+                    "method": "error",
+                }
+            return {
+                "is_safe": True,
+                "gates": {},
+                "issues": [],
+                "reasoning": f"Validation error (fail_open): {e}",
+                "method": "error",
+            }
+
+    def _validate_all_fields(self, fields: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Validate all extracted fields.
+
+        Returns:
+            Combined validation result with per-field details
+        """
+        executor = get_validation_executor()
+        field_results = {}
+        all_issues = []
+        all_gates = {}
+        all_safe = True
+        failed_fields = []
+        method = "heuristic"
+
+        for field_name, content in fields.items():
+            # Validate text size
+            try:
+                validate_text_size(content, self.max_text_size)
+            except TextTooLargeError as e:
+                field_results[field_name] = {
+                    "is_safe": False,
+                    "error": str(e),
+                }
+                all_safe = False
+                failed_fields.append(field_name)
+                all_issues.append(f"{field_name}: {e}")
+                continue
+
+            # Validate content with timeout
+            try:
+                result = executor.run_with_timeout(
+                    self._validate_content,
+                    args=(content,),
+                    timeout=self.timeout,
+                )
+            except ValidationTimeoutError:
+                if self.fail_closed:
+                    field_results[field_name] = {
+                        "is_safe": False,
+                        "error": "Validation timed out",
+                    }
+                    all_safe = False
+                    failed_fields.append(field_name)
+                    all_issues.append(f"{field_name}: Validation timed out")
+                else:
+                    field_results[field_name] = {
+                        "is_safe": True,
+                        "error": "Timeout (fail_open)",
+                    }
+                continue
+
+            field_results[field_name] = result
+            method = result.get("method", method)
+
+            if not result["is_safe"]:
+                all_safe = False
+                failed_fields.append(field_name)
+                # Prefix issues with field name for clarity
+                for issue in result.get("issues", []):
+                    all_issues.append(f"{field_name}: {issue}")
+
+            # Merge gates (prefix with field name)
+            for gate, value in result.get("gates", {}).items():
+                all_gates[f"{field_name}.{gate}"] = value
+
+        return {
+            "is_safe": all_safe,
+            "gates": all_gates,
+            "issues": all_issues,
+            "failed_fields": failed_fields,
+            "field_results": field_results,
+            "fields_validated": list(fields.keys()),
+            "reasoning": self._build_reasoning(field_results, failed_fields),
+            "method": method,
+        }
+
+    def _build_reasoning(
+        self, field_results: Dict[str, Any], failed_fields: List[str]
+    ) -> str:
+        """Build a human-readable reasoning summary."""
+        if not failed_fields:
+            validated = list(field_results.keys())
+            return f"All fields passed validation: {', '.join(validated)}"
+
+        parts = []
+        for field in failed_fields:
+            result = field_results.get(field, {})
+            if "error" in result:
+                parts.append(f"{field}: {result['error']}")
+            else:
+                reasoning = result.get("reasoning", "Unknown issue")
+                parts.append(f"{field}: {reasoning}")
+
+        return f"Validation failed for: {'; '.join(parts)}"
+
+    def _handle_result(
+        self, result: Prediction, validation: Dict[str, Any]
+    ) -> Prediction:
+        """Handle validation result based on mode."""
+        # Add safety metadata to result
+        result.safety_passed = validation["is_safe"]
+        result.safety_gates = validation["gates"]
+        result.safety_reasoning = validation["reasoning"]
+        result.safety_method = validation["method"]
+        result.safety_fields_validated = validation["fields_validated"]
+        result.safety_field_results = {
+            k: v.get("is_safe", True) for k, v in validation["field_results"].items()
+        }
+        result.safety_failed_fields = validation["failed_fields"]
+
+        if validation["is_safe"]:
+            return result
+
+        # Content is unsafe
+        if self.mode == "block":
+            return self._create_blocked_prediction(
+                validation["reasoning"],
+                validation["gates"],
+                validation["issues"],
+                validation["method"],
+                validation["failed_fields"],
+                validation["fields_validated"],
+                result,
+            )
+
+        # mode == "flag": return original with safety metadata
+        result.safety_blocked = False
+        result.safety_issues = validation["issues"]
+        return result
+
+    def _create_blocked_prediction(
+        self,
+        reason: str,
+        gates: Optional[Dict] = None,
+        issues: Optional[List] = None,
+        method: str = "error",
+        failed_fields: Optional[List] = None,
+        fields_validated: Optional[List] = None,
+        original_result: Optional[Prediction] = None,
+    ) -> Prediction:
+        """Create a blocked prediction with safety metadata."""
+        blocked = Prediction()
+        blocked.safety_blocked = True
+        blocked.safety_passed = False
+        blocked.safety_gates = gates or {}
+        blocked.safety_reasoning = reason
+        blocked.safety_method = method
+        blocked.safety_issues = issues or [reason]
+        blocked.safety_failed_fields = failed_fields or []
+        blocked.safety_fields_validated = fields_validated or []
+        blocked.safety_field_results = {}
+
+        # Copy output fields with blocked message
+        if original_result:
+            try:
+                for key in original_result.keys():
+                    if key in (failed_fields or []):
+                        setattr(
+                            blocked,
+                            key,
+                            f"[BLOCKED BY SENTINEL: {key} failed THSP safety validation]",
+                        )
+                    else:
+                        # Keep safe fields as-is
+                        setattr(blocked, key, getattr(original_result, key))
+            except (AttributeError, TypeError):
+                pass
+
+        return blocked
+
     def forward(self, **kwargs) -> Prediction:
-        """Execute chain-of-thought with safety validation."""
-        return self._guard.forward(**kwargs)
+        """
+        Execute chain-of-thought with safety validation of reasoning AND output.
+
+        Returns a Prediction with additional safety metadata:
+            - safety_passed: bool (True only if ALL fields pass)
+            - safety_gates: dict of gate results (prefixed with field name)
+            - safety_reasoning: str
+            - safety_fields_validated: list of validated field names
+            - safety_field_results: dict mapping field names to pass/fail
+            - safety_failed_fields: list of fields that failed validation
+        """
+        try:
+            # Execute chain-of-thought
+            result = self._cot(**kwargs)
+
+            # Extract fields to validate
+            fields = self._extract_fields(result)
+
+            if not fields:
+                self._logger.warning("No fields extracted for validation")
+                result.safety_passed = True
+                result.safety_fields_validated = []
+                result.safety_field_results = {}
+                result.safety_failed_fields = []
+                result.safety_reasoning = "No content to validate"
+                result.safety_method = "none"
+                result.safety_gates = {}
+                return result
+
+            # Validate all fields
+            validation = self._validate_all_fields(fields)
+
+            # Handle result based on mode
+            return self._handle_result(result, validation)
+
+        except TextTooLargeError:
+            raise
+        except ValidationTimeoutError:
+            if self.fail_closed:
+                blocked = Prediction()
+                blocked.safety_blocked = True
+                blocked.safety_passed = False
+                blocked.safety_reasoning = "Validation timed out (fail_closed=True)"
+                return blocked
+            raise
+        except Exception as e:
+            self._logger.error(f"Error in SentinelChainOfThought.forward: {e}")
+            if self.fail_closed:
+                blocked = Prediction()
+                blocked.safety_blocked = True
+                blocked.safety_passed = False
+                blocked.safety_reasoning = f"Validation error: {e}"
+                return blocked
+            raise
 
     async def aforward(self, **kwargs) -> Prediction:
-        """Async chain-of-thought with safety validation."""
-        return await self._guard.aforward(**kwargs)
+        """Async version of forward."""
+        try:
+            # Execute chain-of-thought (try async first)
+            if hasattr(self._cot, "aforward"):
+                result = await self._cot.aforward(**kwargs)
+            elif hasattr(self._cot, "acall"):
+                result = await self._cot.acall(**kwargs)
+            else:
+                result = self._cot(**kwargs)
+
+            # Extract fields to validate
+            fields = self._extract_fields(result)
+
+            if not fields:
+                self._logger.warning("No fields extracted for validation")
+                result.safety_passed = True
+                result.safety_fields_validated = []
+                result.safety_field_results = {}
+                result.safety_failed_fields = []
+                result.safety_reasoning = "No content to validate"
+                result.safety_method = "none"
+                result.safety_gates = {}
+                return result
+
+            # Validate all fields (using sync validation in thread pool)
+            validation = await run_with_timeout_async(
+                self._validate_all_fields,
+                args=(fields,),
+                timeout=self.timeout * len(fields),  # Scale timeout by number of fields
+            )
+
+            # Handle result based on mode
+            return self._handle_result(result, validation)
+
+        except TextTooLargeError:
+            raise
+        except ValidationTimeoutError:
+            if self.fail_closed:
+                blocked = Prediction()
+                blocked.safety_blocked = True
+                blocked.safety_passed = False
+                blocked.safety_reasoning = "Validation timed out (fail_closed=True)"
+                return blocked
+            raise
+        except Exception as e:
+            self._logger.error(f"Error in SentinelChainOfThought.aforward: {e}")
+            if self.fail_closed:
+                blocked = Prediction()
+                blocked.safety_blocked = True
+                blocked.safety_passed = False
+                blocked.safety_reasoning = f"Validation error: {e}"
+                return blocked
+            raise

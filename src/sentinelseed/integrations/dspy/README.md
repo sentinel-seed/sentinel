@@ -82,7 +82,11 @@ result = predictor(question="...")
 
 #### SentinelChainOfThought
 
-ChainOfThought with validation.
+ChainOfThought with validation of **both reasoning AND output**.
+
+Unlike `SentinelGuard` which validates only the output, `SentinelChainOfThought`
+validates both the reasoning process and the final answer, ensuring harmful
+content cannot hide in either component.
 
 ```python
 from sentinelseed.integrations.dspy import SentinelChainOfThought
@@ -91,11 +95,24 @@ cot = SentinelChainOfThought(
     "problem -> solution",
     api_key="...",
     mode="block",
+    validate_reasoning=True,   # Validate reasoning (default: True)
+    validate_output=True,      # Validate output (default: True)
+    reasoning_field="reasoning",  # Custom reasoning field name
     timeout=30.0,
     fail_closed=False,
 )
 result = cot(problem="...")
+
+# Check which fields were validated
+print(result.safety_fields_validated)  # ["reasoning", "solution"]
+print(result.safety_field_results)     # {"reasoning": True, "solution": True}
+print(result.safety_failed_fields)     # [] if all passed
 ```
+
+**Why validate reasoning?**
+- Reasoning can contain harmful content even if output is clean
+- Reasoning may reveal malicious intent hidden in final answer
+- Provides complete audit trail for safety decisions
 
 ### Signatures
 
@@ -150,13 +167,18 @@ All Sentinel modules add safety metadata to predictions:
 ```python
 result = safe_module(question="...")
 
-# Safety metadata
+# Common safety metadata (all modules)
 result.safety_passed    # bool: Did content pass all gates?
 result.safety_gates     # dict: Individual gate results
 result.safety_reasoning # str: Explanation
 result.safety_method    # str: "semantic" or "heuristic"
 result.safety_blocked   # bool: Was content blocked? (block mode)
 result.safety_issues    # list: Issues found
+
+# Additional metadata for SentinelChainOfThought
+result.safety_fields_validated  # list: Fields that were validated ["reasoning", "answer"]
+result.safety_field_results     # dict: Per-field results {"reasoning": True, "answer": False}
+result.safety_failed_fields     # list: Fields that failed validation ["answer"]
 ```
 
 ## Validation Modes

@@ -258,8 +258,125 @@ class TestSentinelChainOfThought:
             fail_closed=True,
         )
 
-        assert cot._guard.mode == "heuristic"
-        assert cot._guard.fail_closed is True
+        assert cot.mode == "heuristic"
+        assert cot.fail_closed is True
+
+    def test_cot_validate_reasoning_default(self):
+        """SentinelChainOfThought should validate reasoning by default."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+        )
+
+        assert cot.validate_reasoning is True
+        assert cot.validate_output is True
+        assert cot.reasoning_field == "reasoning"
+
+    def test_cot_disable_reasoning_validation(self):
+        """SentinelChainOfThought should allow disabling reasoning validation."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+            validate_reasoning=False,
+        )
+
+        assert cot.validate_reasoning is False
+        assert cot.validate_output is True
+
+    def test_cot_custom_reasoning_field(self):
+        """SentinelChainOfThought should allow custom reasoning field name."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+            reasoning_field="thought_process",
+        )
+
+        assert cot.reasoning_field == "thought_process"
+
+    def test_cot_extract_fields(self):
+        """SentinelChainOfThought should extract reasoning and output fields."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+        )
+
+        # Create mock prediction with reasoning and answer
+        result = dspy.Prediction()
+        result.reasoning = "This is my reasoning process"
+        result.answer = "This is my answer"
+
+        fields = cot._extract_fields(result)
+
+        assert "reasoning" in fields
+        assert "answer" in fields
+        assert fields["reasoning"] == "This is my reasoning process"
+        assert fields["answer"] == "This is my answer"
+
+    def test_cot_extract_fields_without_reasoning(self):
+        """SentinelChainOfThought should skip reasoning when disabled."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+            validate_reasoning=False,
+        )
+
+        result = dspy.Prediction()
+        result.reasoning = "This is my reasoning"
+        result.answer = "This is my answer"
+
+        fields = cot._extract_fields(result)
+
+        assert "reasoning" not in fields
+        assert "answer" in fields
+
+    def test_cot_validate_content(self):
+        """SentinelChainOfThought._validate_content should work."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+        )
+
+        # Safe content
+        result = cot._validate_content("This is safe content")
+        assert result["is_safe"] is True
+        assert result["method"] == "heuristic"
+
+    def test_cot_validate_all_fields(self):
+        """SentinelChainOfThought._validate_all_fields should validate multiple fields."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought
+
+        cot = SentinelChainOfThought(
+            "question -> answer",
+            mode="heuristic",
+        )
+
+        fields = {
+            "reasoning": "This is my safe reasoning",
+            "answer": "This is my safe answer",
+        }
+
+        result = cot._validate_all_fields(fields)
+
+        assert result["is_safe"] is True
+        assert "reasoning" in result["fields_validated"]
+        assert "answer" in result["fields_validated"]
+        assert result["failed_fields"] == []
+        assert result["field_results"]["reasoning"]["is_safe"] is True
+        assert result["field_results"]["answer"]["is_safe"] is True
 
 
 # Tool tests (require DSPy)
