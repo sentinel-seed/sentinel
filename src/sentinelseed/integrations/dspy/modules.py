@@ -26,12 +26,10 @@ Usage:
 """
 
 from typing import Any, Dict, List, Literal, Optional, Union
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-import logging
 
 try:
     import dspy
-    from dspy import Module, Prediction, Signature
+    from dspy import Module, Prediction
 except ImportError:
     raise ImportError(
         "dspy is required for this integration. "
@@ -45,39 +43,23 @@ from sentinelseed.validators.semantic import (
 )
 from sentinelseed.validators.gates import THSPValidator
 
-# Import constants and exceptions from package
-from sentinelseed.integrations.dspy import (
+# Import from centralized utils
+from sentinelseed.integrations.dspy.utils import (
     DEFAULT_MAX_TEXT_SIZE,
     DEFAULT_VALIDATION_TIMEOUT,
-    VALID_MODES,
-    VALID_PROVIDERS,
     TextTooLargeError,
     ValidationTimeoutError,
-    InvalidParameterError,
+    get_logger,
+    get_validation_executor,
+    run_with_timeout_async,
+    validate_mode,
+    validate_provider,
+    validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
 )
 
-logger = logging.getLogger("sentinelseed.integrations.dspy")
-
-
-def _validate_mode(mode: str) -> str:
-    """Validate mode parameter."""
-    if mode not in VALID_MODES:
-        raise InvalidParameterError("mode", mode, VALID_MODES)
-    return mode
-
-
-def _validate_provider(provider: str) -> str:
-    """Validate provider parameter."""
-    if provider not in VALID_PROVIDERS:
-        raise InvalidParameterError("provider", provider, VALID_PROVIDERS)
-    return provider
-
-
-def _validate_text_size(content: str, max_size: int) -> None:
-    """Validate text size is within limits."""
-    size = len(content.encode("utf-8"))
-    if size > max_size:
-        raise TextTooLargeError(size, max_size)
+logger = get_logger()
 
 
 class SentinelGuard(Module):
@@ -122,18 +104,32 @@ class SentinelGuard(Module):
         fail_closed: bool = False,
     ):
         super().__init__()
+
+        # Validate configuration types
+        validate_config_types(
+            max_text_size=max_text_size,
+            timeout=timeout,
+            fail_closed=fail_closed,
+        )
+
+        # Validate mode parameter
+        validate_mode(mode)
+
+        # Validate provider if using semantic validation
+        if provider and mode != "heuristic":
+            validate_provider(provider)
+
         self.module = module
         self.output_field = output_field
         self.max_text_size = max_text_size
         self.timeout = timeout
         self.fail_closed = fail_closed
-
-        # Validate parameters
-        _validate_mode(mode)
-        if provider and mode != "heuristic":
-            _validate_provider(provider)
-
         self.mode = mode
+        self._logger = logger
+
+        # Log warning about fail-open default
+        if not fail_closed:
+            warn_fail_open_default(self._logger, "SentinelGuard")
 
         # Initialize validator based on mode
         if mode == "heuristic":
@@ -141,7 +137,7 @@ class SentinelGuard(Module):
             self._async_validator = None
         else:
             if not api_key:
-                logger.warning(
+                self._logger.warning(
                     "No API key provided for SentinelGuard. "
                     "Falling back to heuristic validation."
                 )
@@ -177,9 +173,9 @@ class SentinelGuard(Module):
             content = self._extract_content(result)
 
             # Validate text size
-            _validate_text_size(content, self.max_text_size)
+            validate_text_size(content, self.max_text_size)
 
-            # Validate content with timeout
+            # Validate content with timeout using shared executor
             validation = self._validate_with_timeout(content)
 
             # Handle result based on mode
@@ -194,7 +190,7 @@ class SentinelGuard(Module):
                 )
             raise
         except Exception as e:
-            logger.error(f"Error in SentinelGuard.forward: {e}")
+            self._logger.error(f"Error in SentinelGuard.forward: {e}")
             if self.fail_closed:
                 return self._create_blocked_prediction(f"Validation error: {e}")
             raise
@@ -214,10 +210,10 @@ class SentinelGuard(Module):
             content = self._extract_content(result)
 
             # Validate text size
-            _validate_text_size(content, self.max_text_size)
+            validate_text_size(content, self.max_text_size)
 
-            # Validate content
-            validation = await self._validate_async(content)
+            # Validate content with timeout using shared executor
+            validation = await self._validate_async_with_timeout(content)
 
             # Handle result based on mode
             return self._handle_result(result, validation)
@@ -231,7 +227,7 @@ class SentinelGuard(Module):
                 )
             raise
         except Exception as e:
-            logger.error(f"Error in SentinelGuard.aforward: {e}")
+            self._logger.error(f"Error in SentinelGuard.aforward: {e}")
             if self.fail_closed:
                 return self._create_blocked_prediction(f"Validation error: {e}")
             raise
@@ -255,13 +251,22 @@ class SentinelGuard(Module):
         return str(result)
 
     def _validate_with_timeout(self, content: str) -> Dict[str, Any]:
-        """Run synchronous validation with timeout."""
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._validate_sync, content)
-            try:
-                return future.result(timeout=self.timeout)
-            except FuturesTimeoutError:
-                raise ValidationTimeoutError(self.timeout, "sync validation")
+        """Run synchronous validation with timeout using shared executor."""
+        executor = get_validation_executor()
+        return executor.run_with_timeout(
+            self._validate_sync,
+            args=(content,),
+            timeout=self.timeout,
+        )
+
+    async def _validate_async_with_timeout(self, content: str) -> Dict[str, Any]:
+        """Run async validation with timeout using shared executor."""
+        # Use run_with_timeout_async for async validation with proper timeout
+        return await run_with_timeout_async(
+            self._validate_sync,
+            args=(content,),
+            timeout=self.timeout,
+        )
 
     def _validate_sync(self, content: str) -> Dict[str, Any]:
         """Run synchronous validation."""
@@ -285,7 +290,7 @@ class SentinelGuard(Module):
                     "method": "semantic",
                 }
         except Exception as e:
-            logger.error(f"Validation error: {e}")
+            self._logger.error(f"Validation error: {e}")
             if self.fail_closed:
                 return {
                     "is_safe": False,
@@ -295,38 +300,6 @@ class SentinelGuard(Module):
                     "method": "error",
                 }
             # Fail open - assume safe if heuristic passed or error occurred
-            return {
-                "is_safe": True,
-                "gates": {},
-                "issues": [],
-                "reasoning": f"Validation error (fail_open): {e}",
-                "method": "error",
-            }
-
-    async def _validate_async(self, content: str) -> Dict[str, Any]:
-        """Run asynchronous validation."""
-        try:
-            if self.mode == "heuristic" or self._async_validator is None:
-                return self._validate_sync(content)
-
-            result: THSPResult = await self._async_validator.validate(content)
-            return {
-                "is_safe": result.is_safe,
-                "gates": result.gate_results,
-                "issues": result.failed_gates,
-                "reasoning": result.reasoning,
-                "method": "semantic",
-            }
-        except Exception as e:
-            logger.error(f"Async validation error: {e}")
-            if self.fail_closed:
-                return {
-                    "is_safe": False,
-                    "gates": {},
-                    "issues": [f"Validation error: {e}"],
-                    "reasoning": f"Validation failed with error: {e}",
-                    "method": "error",
-                }
             return {
                 "is_safe": True,
                 "gates": {},

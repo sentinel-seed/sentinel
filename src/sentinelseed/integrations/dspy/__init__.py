@@ -67,68 +67,45 @@ References:
 
 # Check if DSPy is available
 try:
-    import dspy
+    import dspy  # noqa: F401
     DSPY_AVAILABLE = True
 except ImportError:
     DSPY_AVAILABLE = False
 
-# Constants (always available)
-DEFAULT_SEED_LEVEL = "standard"
-DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
-DEFAULT_VALIDATION_TIMEOUT = 30.0  # seconds
-VALID_SEED_LEVELS = ("minimal", "standard", "full")
-VALID_MODES = ("block", "flag", "heuristic")
-VALID_PROVIDERS = ("openai", "anthropic")
-VALID_GATES = ("truth", "harm", "scope", "purpose")
-
-
-# Custom exceptions (always available)
-class DSPyNotAvailableError(ImportError):
-    """Raised when DSPy is not installed but required."""
-
-    def __init__(self):
-        super().__init__(
-            "dspy is required for this integration. "
-            "Install with: pip install dspy"
-        )
-
-
-class TextTooLargeError(Exception):
-    """Raised when input text exceeds maximum allowed size."""
-
-    def __init__(self, size: int, max_size: int):
-        self.size = size
-        self.max_size = max_size
-        super().__init__(
-            f"Text size ({size:,} bytes) exceeds maximum allowed ({max_size:,} bytes)"
-        )
-
-
-class ValidationTimeoutError(Exception):
-    """Raised when validation times out."""
-
-    def __init__(self, timeout: float, operation: str = "validation"):
-        self.timeout = timeout
-        self.operation = operation
-        super().__init__(f"{operation} timed out after {timeout}s")
-
-
-class InvalidParameterError(Exception):
-    """Raised when an invalid parameter value is provided."""
-
-    def __init__(self, param: str, value, valid_values: tuple):
-        self.param = param
-        self.value = value
-        self.valid_values = valid_values
-        super().__init__(
-            f"Invalid {param}: '{value}'. Valid values: {valid_values}"
-        )
-
-
-def require_dspy(func_name: str = "this function") -> None:
-    """Raise DSPyNotAvailableError if DSPy is not installed."""
-    if not DSPY_AVAILABLE:
-        raise DSPyNotAvailableError()
+# Import from utils (always available, even without DSPy)
+from sentinelseed.integrations.dspy.utils import (
+    # Constants
+    DEFAULT_SEED_LEVEL,
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
+    DEFAULT_EXECUTOR_MAX_WORKERS,
+    VALID_SEED_LEVELS,
+    VALID_MODES,
+    VALID_PROVIDERS,
+    VALID_GATES,
+    # Exceptions
+    DSPyNotAvailableError,
+    TextTooLargeError,
+    ValidationTimeoutError,
+    InvalidParameterError,
+    ConfigurationError,
+    # Logger
+    SentinelLogger,
+    get_logger,
+    set_logger,
+    # Executor
+    ValidationExecutor,
+    get_validation_executor,
+    run_with_timeout_async,
+    # Validation helpers
+    validate_mode,
+    validate_provider,
+    validate_gate,
+    validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
+    require_dspy,
+)
 
 
 # Conditional imports - only if DSPy is available
@@ -158,11 +135,13 @@ if DSPY_AVAILABLE:
 
 # Dynamic __all__ based on DSPy availability
 __all__ = [
-    # Constants
+    # Availability flag
     "DSPY_AVAILABLE",
+    # Constants
     "DEFAULT_SEED_LEVEL",
     "DEFAULT_MAX_TEXT_SIZE",
     "DEFAULT_VALIDATION_TIMEOUT",
+    "DEFAULT_EXECUTOR_MAX_WORKERS",
     "VALID_SEED_LEVELS",
     "VALID_MODES",
     "VALID_PROVIDERS",
@@ -172,7 +151,22 @@ __all__ = [
     "TextTooLargeError",
     "ValidationTimeoutError",
     "InvalidParameterError",
-    # Functions
+    "ConfigurationError",
+    # Logger
+    "SentinelLogger",
+    "get_logger",
+    "set_logger",
+    # Executor
+    "ValidationExecutor",
+    "get_validation_executor",
+    "run_with_timeout_async",
+    # Validation helpers
+    "validate_mode",
+    "validate_provider",
+    "validate_gate",
+    "validate_text_size",
+    "validate_config_types",
+    "warn_fail_open_default",
     "require_dspy",
 ]
 

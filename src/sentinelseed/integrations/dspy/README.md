@@ -314,12 +314,77 @@ Content must pass all four gates:
 | **Scope** | Is this within boundaries? |
 | **Purpose** | Does this serve legitimate benefit? |
 
+## Security Considerations
+
+### Fail-Open vs Fail-Closed
+
+> **IMPORTANT SECURITY DECISION**
+
+By default, all components operate in **fail-open** mode (`fail_closed=False`). This means:
+
+- If validation times out → content is **allowed through**
+- If validation throws an exception → content is **allowed through**
+- If the executor is unavailable → content is **allowed through**
+
+This is a deliberate trade-off prioritizing **availability over security**.
+
+For security-critical applications, enable `fail_closed=True`:
+
+```python
+# Fail-closed: block on any validation error
+guard = SentinelGuard(module, fail_closed=True)
+tool = create_sentinel_tool(fail_closed=True)
+```
+
+### Shared Executor
+
+All validation operations use a shared `ValidationExecutor` singleton instead of creating new thread pools per call:
+
+- Reduces thread creation overhead
+- Limits maximum concurrent validation threads (default: 4)
+- Automatically cleaned up on process exit
+
+### Async Timeout Handling
+
+Async methods (`aforward`) use `asyncio.wait_for()` with the same controlled thread pool as sync operations:
+
+- Does not block the event loop
+- Proper timeout handling
+- Thread pool size is bounded
+
+### Text Size Limits
+
+Prevent DoS attacks by limiting input text size (default: 50KB):
+
+```python
+guard = SentinelGuard(module, max_text_size=10 * 1024)  # 10KB
+```
+
+## Performance Notes
+
+### Shared ValidationExecutor
+
+The integration uses a shared `ValidationExecutor` singleton:
+
+- Lazy initialization (executor created on first use)
+- Thread pool reused across all validation calls
+- Automatic cleanup via `atexit` registration
+
+### Async Operations
+
+Async methods use the shared thread pool via `asyncio.wrap_future()`:
+
+- No additional threads created for async calls
+- Proper cancellation support on timeout
+- Same timeout behavior as sync operations
+
 ## Limitations
 
 - **Text size limit**: Default 50KB per request. Configure with `max_text_size`.
 - **Timeout**: Default 30s for validation. Configure with `timeout`.
 - **Heuristic mode**: Less accurate (~50%) compared to semantic mode (~90%).
 - **Semantic mode**: Requires API key and incurs API costs.
+- **Fail-open default**: Validation errors allow content through by default. Use `fail_closed=True` for stricter security.
 
 ## References
 

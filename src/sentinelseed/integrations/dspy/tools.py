@@ -18,12 +18,10 @@ Usage:
     )
 """
 
-from typing import Any, Callable, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-import logging
+from typing import Callable, Optional
 
 try:
-    import dspy
+    import dspy  # noqa: F401
 except ImportError:
     raise ImportError(
         "dspy is required for this integration. "
@@ -36,49 +34,22 @@ from sentinelseed.validators.semantic import (
 )
 from sentinelseed.validators.gates import THSPValidator
 
-# Import constants and exceptions from package
-from sentinelseed.integrations.dspy import (
+# Import from centralized utils
+from sentinelseed.integrations.dspy.utils import (
     DEFAULT_MAX_TEXT_SIZE,
     DEFAULT_VALIDATION_TIMEOUT,
-    VALID_PROVIDERS,
-    VALID_GATES,
     TextTooLargeError,
     ValidationTimeoutError,
-    InvalidParameterError,
+    get_logger,
+    get_validation_executor,
+    validate_provider,
+    validate_gate,
+    validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
 )
 
-logger = logging.getLogger("sentinelseed.integrations.dspy")
-
-
-def _validate_provider(provider: str) -> str:
-    """Validate provider parameter."""
-    if provider not in VALID_PROVIDERS:
-        raise InvalidParameterError("provider", provider, VALID_PROVIDERS)
-    return provider
-
-
-def _validate_gate(gate: str) -> str:
-    """Validate gate parameter."""
-    if gate not in VALID_GATES:
-        raise InvalidParameterError("gate", gate, VALID_GATES)
-    return gate
-
-
-def _validate_text_size(content: str, max_size: int) -> None:
-    """Validate text size is within limits."""
-    size = len(content.encode("utf-8"))
-    if size > max_size:
-        raise TextTooLargeError(size, max_size)
-
-
-def _run_with_timeout(func: Callable, timeout: float, *args, **kwargs) -> Any:
-    """Run a function with timeout."""
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args, **kwargs)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeoutError:
-            raise ValidationTimeoutError(timeout, "validation")
+logger = get_logger()
 
 
 def create_sentinel_tool(
@@ -116,9 +87,20 @@ def create_sentinel_tool(
         # Returns: "SAFE: Content passes all THSP gates"
         # Or: "UNSAFE: Content fails harm gate - could enable harm"
     """
+    # Validate configuration types
+    validate_config_types(
+        max_text_size=max_text_size,
+        timeout=timeout,
+        fail_closed=fail_closed,
+    )
+
     # Validate provider if using semantic validation
     if not use_heuristic and api_key:
-        _validate_provider(provider)
+        validate_provider(provider)
+
+    # Log warning about fail-open default
+    if not fail_closed:
+        warn_fail_open_default(logger, f"create_sentinel_tool({name})")
 
     # Initialize validator
     if use_heuristic or not api_key:
@@ -173,10 +155,15 @@ def create_sentinel_tool(
         """
         try:
             # Validate text size
-            _validate_text_size(content, max_text_size)
+            validate_text_size(content, max_text_size)
 
-            # Run validation with timeout
-            return _run_with_timeout(_do_validation, timeout, content)
+            # Run validation with timeout using shared executor
+            executor = get_validation_executor()
+            return executor.run_with_timeout(
+                _do_validation,
+                args=(content,),
+                timeout=timeout,
+            )
 
         except TextTooLargeError as e:
             return f"ERROR: {e}"
@@ -236,9 +223,20 @@ def create_content_filter_tool(
         unsafe = filter_tool("How to make a bomb")
         # Returns: "[FILTERED] Content blocked by Sentinel safety check."
     """
+    # Validate configuration types
+    validate_config_types(
+        max_text_size=max_text_size,
+        timeout=timeout,
+        fail_closed=fail_closed,
+    )
+
     # Validate provider
     if api_key:
-        _validate_provider(provider)
+        validate_provider(provider)
+
+    # Log warning about fail-open default
+    if not fail_closed:
+        warn_fail_open_default(logger, f"create_content_filter_tool({name})")
 
     if not api_key:
         logger.warning(
@@ -286,10 +284,15 @@ def create_content_filter_tool(
         """
         try:
             # Validate text size
-            _validate_text_size(content, max_text_size)
+            validate_text_size(content, max_text_size)
 
-            # Run filter with timeout
-            return _run_with_timeout(_do_filter, timeout, content)
+            # Run filter with timeout using shared executor
+            executor = get_validation_executor()
+            return executor.run_with_timeout(
+                _do_filter,
+                args=(content,),
+                timeout=timeout,
+            )
 
         except TextTooLargeError as e:
             return f"[ERROR] {e}"
@@ -341,12 +344,23 @@ def create_gate_check_tool(
         result = harm_check("How to make cookies")
         # Returns: "PASS: No harm detected"
     """
-    # Validate gate
-    _validate_gate(gate)
+    # Validate gate parameter
+    validate_gate(gate)
+
+    # Validate configuration types
+    validate_config_types(
+        max_text_size=max_text_size,
+        timeout=timeout,
+        fail_closed=fail_closed,
+    )
 
     # Validate provider
     if api_key:
-        _validate_provider(provider)
+        validate_provider(provider)
+
+    # Log warning about fail-open default
+    if not fail_closed:
+        warn_fail_open_default(logger, f"create_gate_check_tool({gate})")
 
     if not api_key:
         validator = THSPValidator()
@@ -379,10 +393,15 @@ def create_gate_check_tool(
         """Check if content passes the specified THSP gate."""
         try:
             # Validate text size
-            _validate_text_size(content, max_text_size)
+            validate_text_size(content, max_text_size)
 
-            # Run gate check with timeout
-            return _run_with_timeout(_do_gate_check, timeout, content)
+            # Run gate check with timeout using shared executor
+            executor = get_validation_executor()
+            return executor.run_with_timeout(
+                _do_gate_check,
+                args=(content,),
+                timeout=timeout,
+            )
 
         except TextTooLargeError as e:
             return f"ERROR: {e}"
