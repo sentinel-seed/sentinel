@@ -1023,7 +1023,7 @@ Sentinel builds on research from:
 - [HarmBench](https://arxiv.org/abs/2402.04249) — Harmful behavior evaluation
 - [Self-Reminder](https://www.nature.com/articles/s42256-024-00922-3) — Nature Machine Intelligence
 - [Agentic Misalignment](https://www.anthropic.com/research/agentic-misalignment) — Anthropic
-- [SEED 4.1](https://github.com/foundation-alignment-research) — Foundation Alignment Research (pioneer of alignment seeds)
+- [SEED 4.1](https://github.com/davfd) — Foundation Labs (pioneer of alignment seeds)
 
 ---
 
