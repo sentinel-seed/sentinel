@@ -81,6 +81,13 @@ interface SentinelPluginConfig {
   // Actions to skip validation
   skipActions?: string[];
 
+  // Maximum text size in bytes. Default: 50KB (51200 bytes)
+  // Texts exceeding this limit are rejected to prevent DoS
+  maxTextSize?: number;
+
+  // Instance name for multi-plugin scenarios. Default: auto-generated
+  instanceName?: string;
+
   // Memory integrity settings (v1.1.0+)
   memoryIntegrity?: {
     enabled: boolean;           // Enable memory signing/verification
@@ -95,8 +102,10 @@ interface SentinelPluginConfig {
 ### Important Notes
 
 - **History limit**: Validation and memory verification histories are limited to **1000 entries** each to prevent memory leaks. Older entries are automatically removed.
+- **Text size limit**: Maximum text size is **50KB** by default. Configure with `maxTextSize` option. Texts exceeding this limit return an error to prevent DoS attacks.
 - **blockUnsafe behavior**: When `blockUnsafe: false`, unsafe content still triggers validation and logging, but the action proceeds (`shouldProceed: true`). This is useful for monitoring without blocking.
-- **Multi-instance**: Each `sentinelPlugin()` call creates an isolated instance. The exported utility functions (`getValidationHistory`, etc.) operate on the most recently created instance.
+- **Multi-instance support**: Each `sentinelPlugin()` call creates an isolated instance registered in a global registry. Use `instanceName` config option for named access.
+- **Error handling**: All handlers use try/catch with structured error responses. Evaluators use fail-open behavior (allow on error) while actions return error details.
 
 ## THSP Protocol
 
@@ -275,6 +284,74 @@ clearValidationHistory();
 3. **Provider**: The `sentinelSafety` provider adds THSP context to agent state
 4. **Action**: Users can explicitly request safety checks via `SENTINEL_SAFETY_CHECK`
 5. **Post-action**: Before responses are sent, `sentinelPostAction` validates outputs
+
+## Multi-Instance Support
+
+When running multiple agents with different configurations:
+
+```typescript
+import {
+  sentinelPlugin,
+  getPluginInstance,
+  getPluginInstanceNames,
+  getActivePluginInstance,
+  removePluginInstance,
+  clearPluginRegistry,
+} from '@sentinelseed/elizaos-plugin';
+
+// Create named instances
+const strictPlugin = sentinelPlugin({
+  instanceName: 'strict-agent',
+  blockUnsafe: true,
+  maxTextSize: 10 * 1024, // 10KB
+});
+
+const monitorPlugin = sentinelPlugin({
+  instanceName: 'monitor-agent',
+  blockUnsafe: false,
+  logChecks: true,
+});
+
+// Access specific instance
+const strictState = getPluginInstance('strict-agent');
+const history = strictState?.validationHistory || [];
+
+// List all instances
+console.log(getPluginInstanceNames()); // ['strict-agent', 'monitor-agent']
+
+// Get most recently created
+const active = getActivePluginInstance();
+
+// Cleanup
+removePluginInstance('monitor-agent');
+clearPluginRegistry(); // Remove all
+```
+
+**Note**: Exported utility functions like `getValidationHistory()` operate on the most recently created instance. For multi-instance scenarios, use `getPluginInstance(name)` to access specific instances.
+
+## Error Handling
+
+Handlers include comprehensive error handling:
+
+```typescript
+import { TextTooLargeError } from '@sentinelseed/elizaos-plugin';
+
+// Text size errors include details
+try {
+  // ... validation
+} catch (err) {
+  if (err instanceof TextTooLargeError) {
+    console.log(`Size: ${err.size}, Max: ${err.maxSize}`);
+  }
+}
+
+// Action results include error data
+const result = await action.handler(runtime, message);
+if (!result.success) {
+  console.log(result.error); // Error message
+  console.log(result.data);  // { error: 'text_too_large', size, maxSize }
+}
+```
 
 ## TypeScript Types
 

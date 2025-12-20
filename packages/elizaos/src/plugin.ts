@@ -156,6 +156,32 @@ function getSeed(version: string = 'v2', variant: string = 'standard'): string {
 
 // Constants
 const MAX_HISTORY = 1000;
+const DEFAULT_MAX_TEXT_SIZE = 50 * 1024; // 50KB default max text size
+
+/**
+ * Error thrown when text exceeds the maximum allowed size
+ */
+export class TextTooLargeError extends Error {
+  constructor(
+    public readonly size: number,
+    public readonly maxSize: number
+  ) {
+    super(`Text size (${size.toLocaleString()} bytes) exceeds maximum allowed (${maxSize.toLocaleString()} bytes)`);
+    this.name = 'TextTooLargeError';
+  }
+}
+
+/**
+ * Validate text size against configured maximum
+ * @throws TextTooLargeError if text exceeds maxSize
+ */
+function validateTextSize(text: string, maxSize: number = DEFAULT_MAX_TEXT_SIZE, context: string = 'text'): void {
+  if (!text || typeof text !== 'string') return;
+  const size = new TextEncoder().encode(text).length;
+  if (size > maxSize) {
+    throw new TextTooLargeError(size, maxSize);
+  }
+}
 
 /**
  * Plugin state container - isolated per plugin instance
@@ -166,18 +192,20 @@ class PluginState {
   memoryVerificationHistory: MemoryVerificationResult[] = [];
   memoryChecker: MemoryIntegrityChecker | null = null;
   logger: SentinelLogger;
-  config: SentinelPluginConfig & { logger?: SentinelLogger } = {
+  maxTextSize: number;
+  config: SentinelPluginConfig & { logger?: SentinelLogger; maxTextSize?: number } = {
     seedVersion: 'v2',
     seedVariant: 'standard',
     blockUnsafe: true,
     logChecks: false,
   };
 
-  constructor(config?: SentinelPluginConfig & { logger?: SentinelLogger }) {
+  constructor(config?: SentinelPluginConfig & { logger?: SentinelLogger; maxTextSize?: number }) {
     if (config) {
       this.config = { ...this.config, ...config };
     }
     this.logger = config?.logger || defaultLogger;
+    this.maxTextSize = config?.maxTextSize ?? DEFAULT_MAX_TEXT_SIZE;
   }
 
   addValidation(result: SafetyCheckResult): void {
@@ -206,11 +234,77 @@ class PluginState {
 }
 
 /**
+ * Registry of all plugin instances by name
+ * Enables access to specific plugin instances in multi-plugin scenarios
+ */
+const pluginRegistry = new Map<string, PluginState>();
+
+/**
+ * Counter for generating unique plugin IDs
+ */
+let pluginCounter = 0;
+
+/**
  * Reference to the most recently created plugin state
  * Used by exported functions for backwards compatibility
- * WARNING: If multiple plugins exist, this references only the last one
+ *
+ * @warning In multi-instance scenarios, this references only the last created plugin.
+ * Use getPluginInstance(name) to access specific instances.
  */
 let activeState: PluginState | null = null;
+
+/**
+ * Get a specific plugin instance by name
+ * @param name - Plugin instance name (from config.instanceName or auto-generated)
+ * @returns PluginState or null if not found
+ */
+export function getPluginInstance(name: string): PluginState | null {
+  return pluginRegistry.get(name) || null;
+}
+
+/**
+ * Get all registered plugin instance names
+ * @returns Array of plugin instance names
+ */
+export function getPluginInstanceNames(): string[] {
+  return Array.from(pluginRegistry.keys());
+}
+
+/**
+ * Get the active (most recently created) plugin instance
+ * @returns PluginState or null if no plugins created
+ */
+export function getActivePluginInstance(): PluginState | null {
+  return activeState;
+}
+
+/**
+ * Remove a plugin instance from the registry
+ * @param name - Plugin instance name to remove
+ * @returns true if removed, false if not found
+ */
+export function removePluginInstance(name: string): boolean {
+  const removed = pluginRegistry.delete(name);
+  // If we removed the active instance, set active to another or null
+  if (removed && activeState && pluginRegistry.size > 0) {
+    const lastKey = Array.from(pluginRegistry.keys()).pop();
+    if (lastKey) {
+      activeState = pluginRegistry.get(lastKey) || null;
+    }
+  } else if (pluginRegistry.size === 0) {
+    activeState = null;
+  }
+  return removed;
+}
+
+/**
+ * Clear all plugin instances from the registry
+ */
+export function clearPluginRegistry(): void {
+  pluginRegistry.clear();
+  activeState = null;
+  pluginCounter = 0;
+}
 
 /**
  * Create safety check action bound to a specific state instance
@@ -256,34 +350,82 @@ function createSafetyCheckAction(state: PluginState): Action {
       _options?: HandlerOptions,
       callback?: HandlerCallback
     ): Promise<ActionResult> => {
-      const text = message.content?.text || '';
+      try {
+        // Validate message structure
+        if (!message?.content) {
+          state.logger.warn('[SENTINEL] SAFETY_CHECK: Invalid message structure - missing content');
+          return {
+            success: false,
+            error: 'Invalid message structure',
+            data: null,
+          };
+        }
 
-      // Extract content to check (after "check if this is safe:" or similar)
-      const match = text.match(/(?:check|validate|verify).*?[:]\s*(.+)/i);
-      const contentToCheck = match ? match[1] : text;
+        const text = message.content.text || '';
 
-      const result = validateContent(contentToCheck, undefined, state.config);
-      state.addValidation(result);
+        // Validate text size
+        try {
+          validateTextSize(text, state.maxTextSize, 'safety check input');
+        } catch (err) {
+          if (err instanceof TextTooLargeError) {
+            state.logger.warn(`[SENTINEL] SAFETY_CHECK: Text too large (${err.size} bytes)`);
+            return {
+              success: false,
+              error: err.message,
+              data: { error: 'text_too_large', size: err.size, maxSize: err.maxSize },
+            };
+          }
+          throw err;
+        }
 
-      const responseContent: Content = {
-        text: result.recommendation,
-        actions: ['SENTINEL_SAFETY_CHECK'],
-      };
+        // Extract content to check using improved regex patterns
+        // Supports: "check: X", "validate: X", "verify: X", "check if X is safe", etc.
+        const patterns = [
+          /(?:check|validate|verify)\s*(?:if\s+)?(?:this\s+is\s+safe\s*)?[:]\s*(.+)/i,
+          /(?:check|validate|verify)\s+(?:the\s+)?(?:safety\s+of\s+)?[:]\s*(.+)/i,
+          /is\s+(?:this\s+)?safe\s*[:]\s*(.+)/i,
+        ];
 
-      if (callback) {
-        await callback(responseContent);
+        let contentToCheck = text;
+        for (const pattern of patterns) {
+          const match = text.match(pattern);
+          if (match) {
+            contentToCheck = match[1].trim();
+            break;
+          }
+        }
+
+        const result = validateContent(contentToCheck, undefined, state.config);
+        state.addValidation(result);
+
+        const responseContent: Content = {
+          text: result.recommendation,
+          actions: ['SENTINEL_SAFETY_CHECK'],
+        };
+
+        if (callback) {
+          await callback(responseContent);
+        }
+
+        return {
+          success: true,
+          response: result.recommendation,
+          data: {
+            safe: result.safe,
+            gates: result.gates,
+            riskLevel: result.riskLevel,
+            concerns: result.concerns,
+          },
+        };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        state.logger.error(`[SENTINEL] SAFETY_CHECK handler error: ${errorMessage}`);
+        return {
+          success: false,
+          error: `Safety check failed: ${errorMessage}`,
+          data: null,
+        };
       }
-
-      return {
-        success: true,
-        response: result.recommendation,
-        data: {
-          safe: result.safe,
-          gates: result.gates,
-          riskLevel: result.riskLevel,
-          concerns: result.concerns,
-        },
-      };
     },
   };
 }
@@ -366,51 +508,82 @@ function createPreActionEvaluator(state: PluginState): Evaluator {
       _options?: HandlerOptions,
       _callback?: HandlerCallback
     ): Promise<ActionResult | void> => {
-      const text = message.content?.text || '';
+      try {
+        // Validate message structure
+        if (!message?.content) {
+          state.logger.warn('[SENTINEL] PreAction: Invalid message structure - missing content');
+          return { success: true, data: { skipped: true, reason: 'no_content' } };
+        }
 
-      // Quick check first for performance
-      const isQuickSafe = quickCheck(text);
+        const text = message.content.text || '';
 
-      if (isQuickSafe) {
+        // Validate text size
+        try {
+          validateTextSize(text, state.maxTextSize, 'pre-action input');
+        } catch (err) {
+          if (err instanceof TextTooLargeError) {
+            state.logger.warn(`[SENTINEL] PreAction: Text too large (${err.size} bytes)`);
+            if (state.config.blockUnsafe) {
+              return {
+                success: false,
+                error: err.message,
+                data: { error: 'text_too_large', size: err.size, maxSize: err.maxSize },
+              };
+            }
+            return { success: true, data: { skipped: true, reason: 'text_too_large' } };
+          }
+          throw err;
+        }
+
+        // Quick check first for performance
+        const isQuickSafe = quickCheck(text);
+
+        if (isQuickSafe) {
+          const result = validateContent(text, undefined, state.config);
+          state.addValidation(result);
+
+          state.log(`[SENTINEL] Pre-check passed: ${result.recommendation}`);
+
+          return {
+            success: result.safe || !state.config.blockUnsafe,
+            response: result.recommendation,
+            data: result,
+          };
+        }
+
+        // Full validation for flagged content
         const result = validateContent(text, undefined, state.config);
         state.addValidation(result);
 
-        state.log(`[SENTINEL] Pre-check passed: ${result.recommendation}`);
+        if (state.config.logChecks || !result.safe) {
+          state.logger.log(
+            `[SENTINEL] ${result.safe ? 'PASS' : 'FAIL'} Pre-check: ${result.recommendation}`
+          );
+          if (result.concerns.length > 0) {
+            state.logger.log(`[SENTINEL] Concerns: ${result.concerns.join(', ')}`);
+          }
+        }
+
+        // If unsafe and blocking enabled, return failure
+        if (!result.safe && state.config.blockUnsafe) {
+          return {
+            success: false,
+            error: result.recommendation,
+            data: result,
+          };
+        }
 
         return {
-          success: result.safe || !state.config.blockUnsafe,
+          success: true,
           response: result.recommendation,
           data: result,
         };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        state.logger.error(`[SENTINEL] PreAction handler error: ${errorMessage}`);
+        // On error, allow through but log (fail-open for evaluators)
+        return { success: true, data: { error: errorMessage } };
       }
-
-      // Full validation for flagged content
-      const result = validateContent(text, undefined, state.config);
-      state.addValidation(result);
-
-      if (state.config.logChecks || !result.safe) {
-        state.logger.log(
-          `[SENTINEL] ${result.safe ? 'PASS' : 'FAIL'} Pre-check: ${result.recommendation}`
-        );
-        if (result.concerns.length > 0) {
-          state.logger.log(`[SENTINEL] Concerns: ${result.concerns.join(', ')}`);
-        }
-      }
-
-      // If unsafe and blocking enabled, return failure
-      if (!result.safe && state.config.blockUnsafe) {
-        return {
-          success: false,
-          error: result.recommendation,
-          data: result,
-        };
-      }
-
-      return {
-        success: true,
-        response: result.recommendation,
-        data: result,
-      };
     },
   };
 }
@@ -447,25 +620,57 @@ function createPostActionEvaluator(state: PluginState): Evaluator {
       _options?: HandlerOptions,
       _callback?: HandlerCallback
     ): Promise<ActionResult | void> => {
-      const text = message.content?.text || '';
-      const result = validateContent(text, undefined, state.config);
+      try {
+        // Validate message structure
+        if (!message?.content) {
+          state.logger.warn('[SENTINEL] PostAction: Invalid message structure - missing content');
+          return { success: true, data: { skipped: true, reason: 'no_content' } };
+        }
 
-      if (!result.safe && state.config.logChecks) {
-        state.logger.log(`[SENTINEL] Output flagged: ${result.concerns.join(', ')}`);
-      }
+        const text = message.content.text || '';
 
-      if (!result.safe && state.config.blockUnsafe) {
+        // Validate text size
+        try {
+          validateTextSize(text, state.maxTextSize, 'post-action output');
+        } catch (err) {
+          if (err instanceof TextTooLargeError) {
+            state.logger.warn(`[SENTINEL] PostAction: Text too large (${err.size} bytes)`);
+            if (state.config.blockUnsafe) {
+              return {
+                success: false,
+                error: err.message,
+                data: { error: 'text_too_large', size: err.size, maxSize: err.maxSize },
+              };
+            }
+            return { success: true, data: { skipped: true, reason: 'text_too_large' } };
+          }
+          throw err;
+        }
+
+        const result = validateContent(text, undefined, state.config);
+
+        if (!result.safe && state.config.logChecks) {
+          state.logger.log(`[SENTINEL] Output flagged: ${result.concerns.join(', ')}`);
+        }
+
+        if (!result.safe && state.config.blockUnsafe) {
+          return {
+            success: false,
+            error: `Output blocked: ${result.recommendation}`,
+            data: result,
+          };
+        }
+
         return {
-          success: false,
-          error: `Output blocked: ${result.recommendation}`,
+          success: true,
           data: result,
         };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        state.logger.error(`[SENTINEL] PostAction handler error: ${errorMessage}`);
+        // On error, allow through but log (fail-open for evaluators)
+        return { success: true, data: { error: errorMessage } };
       }
-
-      return {
-        success: true,
-        data: result,
-      };
     },
   };
 }
@@ -518,33 +723,53 @@ function createMemoryIntegrityAction(state: PluginState): Action {
       _options?: HandlerOptions,
       callback?: HandlerCallback
     ): Promise<ActionResult> => {
-      if (!state.memoryChecker) {
+      try {
+        if (!state.memoryChecker) {
+          return {
+            success: false,
+            error: 'Memory integrity checking is not enabled',
+            data: null,
+          };
+        }
+
+        // Validate message structure
+        if (!message) {
+          state.logger.warn('[SENTINEL] MEMORY_CHECK: Invalid message - null or undefined');
+          return {
+            success: false,
+            error: 'Invalid message structure',
+            data: null,
+          };
+        }
+
+        const result = state.memoryChecker.verifyMemory(message);
+        state.addMemoryVerification(result);
+
+        const responseContent: Content = {
+          text: result.valid
+            ? `Memory integrity verified. Trust score: ${result.trustScore.toFixed(2)} (source: ${result.source})`
+            : `Memory integrity check FAILED: ${result.reason}`,
+          actions: ['SENTINEL_MEMORY_CHECK'],
+        };
+
+        if (callback) {
+          await callback(responseContent);
+        }
+
+        return {
+          success: true,
+          response: responseContent.text,
+          data: result,
+        };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        state.logger.error(`[SENTINEL] MEMORY_CHECK handler error: ${errorMessage}`);
         return {
           success: false,
-          error: 'Memory integrity checking is not enabled',
+          error: `Memory check failed: ${errorMessage}`,
           data: null,
         };
       }
-
-      const result = state.memoryChecker.verifyMemory(message);
-      state.addMemoryVerification(result);
-
-      const responseContent: Content = {
-        text: result.valid
-          ? `Memory integrity verified. Trust score: ${result.trustScore.toFixed(2)} (source: ${result.source})`
-          : `Memory integrity check FAILED: ${result.reason}`,
-        actions: ['SENTINEL_MEMORY_CHECK'],
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        success: true,
-        response: responseContent.text,
-        data: result,
-      };
     },
   };
 }
@@ -590,49 +815,62 @@ function createMemoryIntegrityEvaluator(state: PluginState): Evaluator {
       _options?: HandlerOptions,
       _callback?: HandlerCallback
     ): Promise<ActionResult | void> => {
-      if (!state.memoryChecker) {
-        return { success: true, data: { skipped: true } };
-      }
-
-      if (!hasIntegrityMetadata(message)) {
-        state.log(`[SENTINEL] Memory ${message.id} has no integrity metadata`);
-        return { success: true, data: { unsigned: true } };
-      }
-
-      const result = state.memoryChecker.verifyMemory(message);
-      state.addMemoryVerification(result);
-
-      if (!result.valid) {
-        state.logger.log(`[SENTINEL] Memory tampering detected: ${result.reason}`);
-
-        if (state.config.blockUnsafe) {
-          return {
-            success: false,
-            error: `Memory integrity check failed: ${result.reason}`,
-            data: result,
-          };
+      try {
+        if (!state.memoryChecker) {
+          return { success: true, data: { skipped: true, reason: 'no_checker' } };
         }
-      }
 
-      const minTrust = state.config.memoryIntegrity?.minTrustScore ?? 0.5;
-      if (result.trustScore < minTrust) {
-        state.log(
-          `[SENTINEL] Memory trust score ${result.trustScore} below threshold ${minTrust}`
-        );
-
-        if (state.config.blockUnsafe) {
-          return {
-            success: false,
-            error: `Memory trust score ${result.trustScore} below threshold ${minTrust}`,
-            data: result,
-          };
+        // Validate message structure
+        if (!message) {
+          state.logger.warn('[SENTINEL] MemoryIntegrity: Invalid message - null or undefined');
+          return { success: true, data: { skipped: true, reason: 'no_message' } };
         }
-      }
 
-      return {
-        success: true,
-        data: result,
-      };
+        if (!hasIntegrityMetadata(message)) {
+          state.log(`[SENTINEL] Memory ${message.id || 'unknown'} has no integrity metadata`);
+          return { success: true, data: { unsigned: true } };
+        }
+
+        const result = state.memoryChecker.verifyMemory(message);
+        state.addMemoryVerification(result);
+
+        if (!result.valid) {
+          state.logger.log(`[SENTINEL] Memory tampering detected: ${result.reason}`);
+
+          if (state.config.blockUnsafe) {
+            return {
+              success: false,
+              error: `Memory integrity check failed: ${result.reason}`,
+              data: result,
+            };
+          }
+        }
+
+        const minTrust = state.config.memoryIntegrity?.minTrustScore ?? 0.5;
+        if (result.trustScore < minTrust) {
+          state.log(
+            `[SENTINEL] Memory trust score ${result.trustScore} below threshold ${minTrust}`
+          );
+
+          if (state.config.blockUnsafe) {
+            return {
+              success: false,
+              error: `Memory trust score ${result.trustScore} below threshold ${minTrust}`,
+              data: result,
+            };
+          }
+        }
+
+        return {
+          success: true,
+          data: result,
+        };
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        state.logger.error(`[SENTINEL] MemoryIntegrity handler error: ${errorMessage}`);
+        // On error, allow through but log (fail-open for evaluators)
+        return { success: true, data: { error: errorMessage } };
+      }
     },
   };
 }
@@ -723,10 +961,16 @@ function createMemorySigningProvider(state: PluginState): Provider {
  * ```
  */
 export function sentinelPlugin(
-  config: SentinelPluginConfig & { logger?: SentinelLogger } = {}
+  config: SentinelPluginConfig & { logger?: SentinelLogger; maxTextSize?: number; instanceName?: string } = {}
 ): Plugin {
   // Create isolated state for this plugin instance
   const state = new PluginState(config);
+
+  // Generate or use provided instance name
+  const instanceName = config.instanceName || `sentinel-${++pluginCounter}`;
+
+  // Register in plugin registry for multi-instance access
+  pluginRegistry.set(instanceName, state);
 
   // Update active state reference for exported utility functions
   activeState = state;

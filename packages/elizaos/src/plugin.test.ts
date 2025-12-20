@@ -9,6 +9,12 @@ import {
   getValidationStats,
   clearValidationHistory,
   validateContent,
+  getPluginInstance,
+  getPluginInstanceNames,
+  getActivePluginInstance,
+  removePluginInstance,
+  clearPluginRegistry,
+  TextTooLargeError,
 } from './plugin';
 
 describe('sentinelPlugin', () => {
@@ -201,5 +207,197 @@ describe('Validation history', () => {
     const history = getValidationHistory();
     expect(Array.isArray(history)).toBe(true);
     expect(history.length).toBe(0);
+  });
+});
+
+describe('Multi-instance support', () => {
+  beforeEach(() => {
+    clearPluginRegistry();
+  });
+
+  it('should register plugin with auto-generated name', () => {
+    sentinelPlugin();
+    const names = getPluginInstanceNames();
+    expect(names.length).toBe(1);
+    expect(names[0]).toMatch(/^sentinel-\d+$/);
+  });
+
+  it('should register plugin with custom name', () => {
+    sentinelPlugin({ instanceName: 'my-plugin' });
+    const names = getPluginInstanceNames();
+    expect(names).toContain('my-plugin');
+  });
+
+  it('should get specific plugin instance', () => {
+    sentinelPlugin({ instanceName: 'instance-a', blockUnsafe: true });
+    sentinelPlugin({ instanceName: 'instance-b', blockUnsafe: false });
+
+    const instanceA = getPluginInstance('instance-a');
+    const instanceB = getPluginInstance('instance-b');
+
+    expect(instanceA).not.toBeNull();
+    expect(instanceB).not.toBeNull();
+    expect(instanceA?.config.blockUnsafe).toBe(true);
+    expect(instanceB?.config.blockUnsafe).toBe(false);
+  });
+
+  it('should return null for non-existent instance', () => {
+    const instance = getPluginInstance('non-existent');
+    expect(instance).toBeNull();
+  });
+
+  it('should get active (most recent) plugin instance', () => {
+    sentinelPlugin({ instanceName: 'first' });
+    sentinelPlugin({ instanceName: 'second' });
+
+    const active = getActivePluginInstance();
+    expect(active).not.toBeNull();
+    // Active should be the last created
+    expect(getPluginInstanceNames().pop()).toBe('second');
+  });
+
+  it('should remove plugin instance', () => {
+    sentinelPlugin({ instanceName: 'to-remove' });
+    sentinelPlugin({ instanceName: 'to-keep' });
+
+    expect(getPluginInstanceNames()).toContain('to-remove');
+    const removed = removePluginInstance('to-remove');
+    expect(removed).toBe(true);
+    expect(getPluginInstanceNames()).not.toContain('to-remove');
+    expect(getPluginInstanceNames()).toContain('to-keep');
+  });
+
+  it('should return false when removing non-existent instance', () => {
+    const removed = removePluginInstance('non-existent');
+    expect(removed).toBe(false);
+  });
+
+  it('should clear plugin registry', () => {
+    sentinelPlugin({ instanceName: 'p1' });
+    sentinelPlugin({ instanceName: 'p2' });
+    sentinelPlugin({ instanceName: 'p3' });
+
+    clearPluginRegistry();
+
+    expect(getPluginInstanceNames().length).toBe(0);
+    expect(getActivePluginInstance()).toBeNull();
+  });
+});
+
+describe('TextTooLargeError', () => {
+  it('should create error with correct properties', () => {
+    const error = new TextTooLargeError(100000, 50000);
+    expect(error.size).toBe(100000);
+    expect(error.maxSize).toBe(50000);
+    expect(error.name).toBe('TextTooLargeError');
+    // Check message contains the numbers (locale-agnostic)
+    expect(error.message).toContain('100');
+    expect(error.message).toContain('50');
+    expect(error.message).toContain('bytes');
+    expect(error.message).toContain('exceeds');
+  });
+
+  it('should be instanceof Error', () => {
+    const error = new TextTooLargeError(100, 50);
+    expect(error instanceof Error).toBe(true);
+    expect(error instanceof TextTooLargeError).toBe(true);
+  });
+});
+
+describe('Text size validation', () => {
+  beforeEach(() => {
+    clearPluginRegistry();
+  });
+
+  it('should accept text within size limit', async () => {
+    const plugin = sentinelPlugin({ maxTextSize: 1000 });
+    const preEval = plugin.evaluators?.find(e => e.name === 'sentinelPreAction');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    const result = await preEval!.handler(
+      mockRuntime,
+      { content: { text: 'Hello world' }, entityId: 'e1', roomId: 'r1' } as any
+    );
+
+    expect(result?.success).toBe(true);
+  });
+
+  it('should reject text exceeding size limit when blockUnsafe', async () => {
+    const plugin = sentinelPlugin({ maxTextSize: 10, blockUnsafe: true });
+    const preEval = plugin.evaluators?.find(e => e.name === 'sentinelPreAction');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    const result = await preEval!.handler(
+      mockRuntime,
+      { content: { text: 'This text is definitely longer than 10 bytes' }, entityId: 'e1', roomId: 'r1' } as any
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe('text_too_large');
+  });
+
+  it('should skip validation for oversized text when not blocking', async () => {
+    const plugin = sentinelPlugin({ maxTextSize: 10, blockUnsafe: false });
+    const preEval = plugin.evaluators?.find(e => e.name === 'sentinelPreAction');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    const result = await preEval!.handler(
+      mockRuntime,
+      { content: { text: 'This text is definitely longer than 10 bytes' }, entityId: 'e1', roomId: 'r1' } as any
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.skipped).toBe(true);
+    expect(result?.data?.reason).toBe('text_too_large');
+  });
+});
+
+describe('Error handling in handlers', () => {
+  beforeEach(() => {
+    clearPluginRegistry();
+  });
+
+  it('should handle missing content gracefully in preAction', async () => {
+    const plugin = sentinelPlugin();
+    const preEval = plugin.evaluators?.find(e => e.name === 'sentinelPreAction');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    // Message without content
+    const result = await preEval!.handler(
+      mockRuntime,
+      { entityId: 'e1', roomId: 'r1' } as any
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.skipped).toBe(true);
+    expect(result?.data?.reason).toBe('no_content');
+  });
+
+  it('should handle missing content gracefully in postAction', async () => {
+    const plugin = sentinelPlugin();
+    const postEval = plugin.evaluators?.find(e => e.name === 'sentinelPostAction');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    const result = await postEval!.handler(
+      mockRuntime,
+      { entityId: 'e1', roomId: 'r1' } as any
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.skipped).toBe(true);
+  });
+
+  it('should handle null message in safetyCheck action', async () => {
+    const plugin = sentinelPlugin();
+    const action = plugin.actions?.find(a => a.name === 'SENTINEL_SAFETY_CHECK');
+    const mockRuntime = { agentId: 'test', getSetting: () => undefined, getService: () => undefined } as any;
+
+    const result = await action!.handler(
+      mockRuntime,
+      { entityId: 'e1', roomId: 'r1' } as any // No content
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toContain('Invalid message structure');
   });
 });
