@@ -490,13 +490,37 @@ class TestAsyncClientStructure:
             "add_message",
             "create_run",
             "wait_for_run",
+            "get_messages",
             "run_conversation",
+            "delete_assistant",
+            "delete_thread",
         }
 
         # Check that both classes have these methods
         for method in sync_methods:
-            assert hasattr(SentinelAssistantClient, method)
-            assert hasattr(SentinelAsyncAssistantClient, method)
+            assert hasattr(SentinelAssistantClient, method), f"SentinelAssistantClient missing {method}"
+            assert hasattr(SentinelAsyncAssistantClient, method), f"SentinelAsyncAssistantClient missing {method}"
+
+    def test_async_methods_are_coroutines(self):
+        """Verify async client methods are actual coroutines."""
+        from sentinelseed.integrations.openai_assistant import SentinelAsyncAssistantClient
+        import inspect
+
+        async_methods = [
+            "create_assistant",
+            "create_thread",
+            "add_message",
+            "create_run",
+            "wait_for_run",
+            "get_messages",
+            "run_conversation",
+            "delete_assistant",
+            "delete_thread",
+        ]
+
+        for method_name in async_methods:
+            method = getattr(SentinelAsyncAssistantClient, method_name)
+            assert inspect.iscoroutinefunction(method), f"{method_name} should be async"
 
 
 class TestConfigDefaults:
@@ -626,6 +650,131 @@ class TestThreadSafety:
 
         assert hasattr(openai_assistant, "logger")
         assert openai_assistant.logger is not None
+
+
+class TestAsyncioImport:
+    """Test asyncio import is at module level."""
+
+    def test_asyncio_imported_at_module_level(self):
+        """Verify asyncio is imported at module level, not inside methods."""
+        from sentinelseed.integrations import openai_assistant
+        import asyncio
+
+        # asyncio should be available at module level
+        assert hasattr(openai_assistant, "asyncio") or "asyncio" in dir(openai_assistant)
+
+    def test_async_sleep_uses_module_asyncio(self):
+        """Verify async methods use module-level asyncio."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAsyncAssistantClient
+
+        # Get the source of wait_for_run
+        source = inspect.getsource(SentinelAsyncAssistantClient.wait_for_run)
+
+        # Should NOT have 'import asyncio' inside the method
+        lines = source.split('\n')
+        for line in lines:
+            if line.strip().startswith('import asyncio'):
+                pytest.fail("Found 'import asyncio' inside wait_for_run method")
+
+
+class TestGetMessagesMethod:
+    """Test get_messages method exists and has correct signature."""
+
+    def test_sync_get_messages_signature(self):
+        """Test sync get_messages has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAssistantClient
+
+        sig = inspect.signature(SentinelAssistantClient.get_messages)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "thread_id" in params
+        assert "limit" in params
+        assert "order" in params
+
+    def test_async_get_messages_signature(self):
+        """Test async get_messages has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAsyncAssistantClient
+
+        sig = inspect.signature(SentinelAsyncAssistantClient.get_messages)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "thread_id" in params
+        assert "limit" in params
+        assert "order" in params
+
+
+class TestDeleteMethods:
+    """Test delete methods exist and have correct signatures."""
+
+    def test_sync_delete_assistant_signature(self):
+        """Test sync delete_assistant has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAssistantClient
+
+        sig = inspect.signature(SentinelAssistantClient.delete_assistant)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "assistant_id" in params
+
+    def test_sync_delete_thread_signature(self):
+        """Test sync delete_thread has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAssistantClient
+
+        sig = inspect.signature(SentinelAssistantClient.delete_thread)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "thread_id" in params
+
+    def test_async_delete_assistant_signature(self):
+        """Test async delete_assistant has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAsyncAssistantClient
+
+        sig = inspect.signature(SentinelAsyncAssistantClient.delete_assistant)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "assistant_id" in params
+
+    def test_async_delete_thread_signature(self):
+        """Test async delete_thread has correct parameters."""
+        import inspect
+        from sentinelseed.integrations.openai_assistant import SentinelAsyncAssistantClient
+
+        sig = inspect.signature(SentinelAsyncAssistantClient.delete_thread)
+        params = list(sig.parameters.keys())
+
+        assert "self" in params
+        assert "thread_id" in params
+
+
+class TestDefaultTimeoutComment:
+    """Test that DEFAULT_VALIDATION_TIMEOUT has proper documentation."""
+
+    def test_validation_timeout_constant_exists(self):
+        """Test DEFAULT_VALIDATION_TIMEOUT exists."""
+        from sentinelseed.integrations.openai_assistant import DEFAULT_VALIDATION_TIMEOUT
+
+        assert DEFAULT_VALIDATION_TIMEOUT == 30.0
+
+    def test_source_has_timeout_comment(self):
+        """Test that the source code has a comment explaining the timeout."""
+        import inspect
+        from sentinelseed.integrations import openai_assistant
+
+        source = inspect.getsource(openai_assistant)
+
+        # Should have a comment explaining the timeout is for future use
+        assert "future" in source.lower() or "reserved" in source.lower()
+        assert "DEFAULT_VALIDATION_TIMEOUT" in source
 
 
 if __name__ == "__main__":

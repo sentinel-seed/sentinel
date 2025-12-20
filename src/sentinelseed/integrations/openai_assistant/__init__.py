@@ -32,6 +32,7 @@ Usage:
 """
 
 from typing import Any, Dict, List, Optional, Union, Iterator, Tuple
+import asyncio
 import os
 import logging
 import time
@@ -47,6 +48,8 @@ VALID_SEED_LEVELS = ("minimal", "standard", "full")
 # Default configuration values
 DEFAULT_POLL_INTERVAL = 1.0
 DEFAULT_TIMEOUT = 300.0
+# Note: Validation timeout is reserved for future use with semantic validation.
+# Current THS validation is pattern-based (local, fast) and doesn't need timeout.
 DEFAULT_VALIDATION_TIMEOUT = 30.0
 
 
@@ -971,8 +974,6 @@ class SentinelAsyncAssistantClient:
             TimeoutError: If run does not complete within timeout
             AssistantRequiresActionError: If run requires action and handle_requires_action is False
         """
-        import asyncio
-
         start_time = time.time()
 
         while True:
@@ -998,6 +999,30 @@ class SentinelAsyncAssistantClient:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
 
             await asyncio.sleep(poll_interval)
+
+    async def get_messages(
+        self,
+        thread_id: str,
+        limit: int = 20,
+        order: str = "desc",
+    ) -> List[Any]:
+        """
+        Get messages from a thread.
+
+        Args:
+            thread_id: Thread ID
+            limit: Maximum messages to retrieve
+            order: Sort order (asc or desc)
+
+        Returns:
+            List of Message objects
+        """
+        messages = await self._client.beta.threads.messages.list(
+            thread_id=thread_id,
+            limit=limit,
+            order=order,
+        )
+        return list(messages.data)
 
     async def run_conversation(
         self,
@@ -1049,14 +1074,11 @@ class SentinelAsyncAssistantClient:
         if completed_run.status == "expired":
             raise AssistantRunError(run.id, "expired", "Run expired")
 
-        messages = await self._client.beta.threads.messages.list(
-            thread_id=thread_id,
-            limit=5,
-            order="desc",
-        )
+        # Get response messages
+        messages = await self.get_messages(thread_id, limit=5)
 
         # Extract assistant response safely
-        response_text = _extract_response_text(list(messages.data), logger)
+        response_text = _extract_response_text(messages, logger)
 
         validation_result = {"valid": True, "violations": []}
         if self._validate_output and response_text:
@@ -1072,11 +1094,21 @@ class SentinelAsyncAssistantClient:
 
         return {
             "response": response_text,
-            "messages": list(messages.data),
+            "messages": messages,
             "run": completed_run,
             "validated": validation_result["valid"],
             "validation": validation_result,
         }
+
+    async def delete_assistant(self, assistant_id: str) -> bool:
+        """Delete an assistant."""
+        result = await self._client.beta.assistants.delete(assistant_id)
+        return result.deleted
+
+    async def delete_thread(self, thread_id: str) -> bool:
+        """Delete a thread."""
+        result = await self._client.beta.threads.delete(thread_id)
+        return result.deleted
 
 
 def wrap_assistant(
