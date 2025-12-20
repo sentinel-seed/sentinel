@@ -209,15 +209,38 @@ class TestSentinelGuard:
 
         assert exc_info.value.param == "provider"
 
-    def test_guard_fallback_to_heuristic(self):
-        """SentinelGuard should fallback to heuristic without API key."""
+    def test_guard_requires_api_key_or_fallback(self):
+        """SentinelGuard should raise HeuristicFallbackError without API key."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelGuard, HeuristicFallbackError
+
+        base = Mock(spec=dspy.Module)
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            SentinelGuard(base, mode="block")  # No API key, no fallback
+
+        assert "SentinelGuard" in str(exc_info.value)
+
+    def test_guard_allow_heuristic_fallback(self):
+        """SentinelGuard should allow heuristic fallback when explicitly enabled."""
         import dspy
         from sentinelseed.integrations.dspy import SentinelGuard
 
         base = Mock(spec=dspy.Module)
-        guard = SentinelGuard(base, mode="block")  # No API key
+        guard = SentinelGuard(base, mode="block", allow_heuristic_fallback=True)
 
         assert guard.mode == "heuristic"
+        assert guard._is_degraded_mode is True
+
+    def test_guard_heuristic_mode_not_degraded(self):
+        """SentinelGuard in explicit heuristic mode should not be marked as degraded."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelGuard
+
+        base = Mock(spec=dspy.Module)
+        guard = SentinelGuard(base, mode="heuristic")
+
+        assert guard.mode == "heuristic"
+        assert guard._is_degraded_mode is False
 
 
 @pytest.mark.skipif(
@@ -1066,6 +1089,98 @@ class TestNewExports:
         from sentinelseed.integrations.dspy import __all__
 
         assert "set_logger" in __all__
+
+    def test_heuristic_fallback_error_exported(self):
+        """HeuristicFallbackError should be exported."""
+        from sentinelseed.integrations.dspy import __all__
+
+        assert "HeuristicFallbackError" in __all__
+
+    def test_confidence_levels_exported(self):
+        """Confidence level constants should be exported."""
+        from sentinelseed.integrations.dspy import __all__
+
+        assert "CONFIDENCE_NONE" in __all__
+        assert "CONFIDENCE_LOW" in __all__
+        assert "CONFIDENCE_MEDIUM" in __all__
+        assert "CONFIDENCE_HIGH" in __all__
+        assert "VALID_CONFIDENCE_LEVELS" in __all__
+
+
+class TestHeuristicFallbackError:
+    """Test HeuristicFallbackError exception."""
+
+    def test_heuristic_fallback_error_message(self):
+        """HeuristicFallbackError should have helpful message."""
+        from sentinelseed.integrations.dspy import HeuristicFallbackError
+
+        error = HeuristicFallbackError("TestComponent")
+        assert error.component == "TestComponent"
+        assert "api_key" in str(error).lower()
+        assert "allow_heuristic_fallback" in str(error)
+
+
+class TestConfidenceLevels:
+    """Test confidence level constants."""
+
+    def test_confidence_level_values(self):
+        """Confidence levels should have correct values."""
+        from sentinelseed.integrations.dspy import (
+            CONFIDENCE_NONE,
+            CONFIDENCE_LOW,
+            CONFIDENCE_MEDIUM,
+            CONFIDENCE_HIGH,
+            VALID_CONFIDENCE_LEVELS,
+        )
+
+        assert CONFIDENCE_NONE == "none"
+        assert CONFIDENCE_LOW == "low"
+        assert CONFIDENCE_MEDIUM == "medium"
+        assert CONFIDENCE_HIGH == "high"
+        assert VALID_CONFIDENCE_LEVELS == ("none", "low", "medium", "high")
+
+
+@pytest.mark.skipif(
+    not pytest.importorskip("dspy", reason="DSPy not installed"),
+    reason="DSPy not installed"
+)
+class TestDegradationFlags:
+    """Test safety_degraded and safety_confidence flags."""
+
+    def test_guard_heuristic_has_low_confidence(self):
+        """SentinelGuard in heuristic mode should have low confidence."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelGuard, CONFIDENCE_LOW
+
+        base = Mock(spec=dspy.Module)
+        guard = SentinelGuard(base, mode="heuristic")
+
+        # Validate sync returns low confidence
+        result = guard._validate_sync("safe content")
+        assert result["confidence"] == CONFIDENCE_LOW
+        assert result["degraded"] is False  # Not degraded, explicit heuristic
+
+    def test_guard_fallback_marked_degraded(self):
+        """SentinelGuard with fallback should be marked as degraded."""
+        import dspy
+        from sentinelseed.integrations.dspy import SentinelGuard, CONFIDENCE_LOW
+
+        base = Mock(spec=dspy.Module)
+        guard = SentinelGuard(base, mode="block", allow_heuristic_fallback=True)
+
+        result = guard._validate_sync("safe content")
+        assert result["confidence"] == CONFIDENCE_LOW
+        assert result["degraded"] is True  # Degraded because of fallback
+
+    def test_cot_validate_content_has_confidence(self):
+        """SentinelChainOfThought._validate_content should return confidence."""
+        from sentinelseed.integrations.dspy import SentinelChainOfThought, CONFIDENCE_LOW
+
+        cot = SentinelChainOfThought("question -> answer", mode="heuristic")
+
+        result = cot._validate_content("safe content")
+        assert "confidence" in result
+        assert result["confidence"] == CONFIDENCE_LOW
 
 
 if __name__ == "__main__":

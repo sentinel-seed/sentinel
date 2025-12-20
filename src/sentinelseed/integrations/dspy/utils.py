@@ -42,6 +42,17 @@ VALID_MODES = ("block", "flag", "heuristic")
 VALID_PROVIDERS = ("openai", "anthropic")
 VALID_GATES = ("truth", "harm", "scope", "purpose")
 
+# Safety confidence levels (ordered from lowest to highest)
+# - "none": No validation was performed (error/timeout in fail-open mode)
+# - "low": Heuristic validation only (pattern-based, ~50% accuracy)
+# - "medium": Semantic validation with fallback (some uncertainty)
+# - "high": Full semantic validation completed successfully
+VALID_CONFIDENCE_LEVELS = ("none", "low", "medium", "high")
+CONFIDENCE_NONE = "none"
+CONFIDENCE_LOW = "low"
+CONFIDENCE_MEDIUM = "medium"
+CONFIDENCE_HIGH = "high"
+
 # Module logger
 _module_logger = logging.getLogger("sentinelseed.integrations.dspy")
 
@@ -78,6 +89,29 @@ class ValidationTimeoutError(Exception):
         self.timeout = timeout
         self.operation = operation
         super().__init__(f"{operation} timed out after {timeout}s")
+
+
+class HeuristicFallbackError(Exception):
+    """
+    Raised when heuristic fallback is required but not allowed.
+
+    This occurs when:
+    - No API key is provided for semantic validation
+    - allow_heuristic_fallback=False (default)
+
+    To fix, either:
+    1. Provide an API key for semantic validation
+    2. Set allow_heuristic_fallback=True to explicitly allow degraded validation
+    3. Set mode="heuristic" to use heuristic validation intentionally
+    """
+
+    def __init__(self, component: str):
+        self.component = component
+        super().__init__(
+            f"{component} requires an API key for semantic validation. "
+            "Either provide an api_key, set allow_heuristic_fallback=True, "
+            "or use mode='heuristic' explicitly."
+        )
 
 
 class InvalidParameterError(Exception):
@@ -554,12 +588,19 @@ __all__ = [
     "VALID_MODES",
     "VALID_PROVIDERS",
     "VALID_GATES",
+    # Confidence levels
+    "VALID_CONFIDENCE_LEVELS",
+    "CONFIDENCE_NONE",
+    "CONFIDENCE_LOW",
+    "CONFIDENCE_MEDIUM",
+    "CONFIDENCE_HIGH",
     # Exceptions
     "DSPyNotAvailableError",
     "TextTooLargeError",
     "ValidationTimeoutError",
     "InvalidParameterError",
     "ConfigurationError",
+    "HeuristicFallbackError",
     # Logger
     "SentinelLogger",
     "get_logger",

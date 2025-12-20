@@ -83,12 +83,19 @@ from sentinelseed.integrations.dspy.utils import (
     VALID_MODES,
     VALID_PROVIDERS,
     VALID_GATES,
+    # Confidence levels
+    VALID_CONFIDENCE_LEVELS,
+    CONFIDENCE_NONE,
+    CONFIDENCE_LOW,
+    CONFIDENCE_MEDIUM,
+    CONFIDENCE_HIGH,
     # Exceptions
     DSPyNotAvailableError,
     TextTooLargeError,
     ValidationTimeoutError,
     InvalidParameterError,
     ConfigurationError,
+    HeuristicFallbackError,
     # Logger
     SentinelLogger,
     get_logger,
@@ -146,12 +153,19 @@ __all__ = [
     "VALID_MODES",
     "VALID_PROVIDERS",
     "VALID_GATES",
+    # Confidence levels
+    "VALID_CONFIDENCE_LEVELS",
+    "CONFIDENCE_NONE",
+    "CONFIDENCE_LOW",
+    "CONFIDENCE_MEDIUM",
+    "CONFIDENCE_HIGH",
     # Exceptions
     "DSPyNotAvailableError",
     "TextTooLargeError",
     "ValidationTimeoutError",
     "InvalidParameterError",
     "ConfigurationError",
+    "HeuristicFallbackError",
     # Logger
     "SentinelLogger",
     "get_logger",

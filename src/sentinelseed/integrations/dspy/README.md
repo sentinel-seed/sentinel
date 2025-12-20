@@ -400,6 +400,50 @@ Async methods use the shared thread pool via `asyncio.wrap_future()`:
 - Proper cancellation support on timeout
 - Same timeout behavior as sync operations
 
+## Degradation Signals
+
+Results include flags to distinguish successful validation from degraded modes:
+
+```python
+result = safe_module(question="...")
+
+# Degradation metadata
+result.safety_degraded    # bool: Was validation degraded (error/timeout/fallback)?
+result.safety_confidence  # str: "none", "low", "medium", or "high"
+```
+
+| Confidence | Meaning |
+|------------|---------|
+| `none` | No validation performed (error/timeout in fail-open) |
+| `low` | Heuristic validation only (~50% accuracy) |
+| `medium` | Semantic validation with uncertainty |
+| `high` | Full semantic validation completed |
+
+**Important:** `safety_passed=True` with `safety_confidence="none"` means content
+was NOT validated but allowed through due to fail-open mode.
+
+## Heuristic Fallback Control
+
+By default, components require an API key for semantic validation:
+
+```python
+# This raises HeuristicFallbackError
+guard = SentinelGuard(module, mode="block")  # No API key!
+
+# Option 1: Provide API key
+guard = SentinelGuard(module, api_key="sk-...", mode="block")
+
+# Option 2: Explicitly allow fallback
+guard = SentinelGuard(module, mode="block", allow_heuristic_fallback=True)
+
+# Option 3: Use heuristic intentionally
+guard = SentinelGuard(module, mode="heuristic")
+```
+
+When `allow_heuristic_fallback=True`:
+- `safety_degraded=True` indicates fallback occurred
+- `safety_confidence="low"` indicates heuristic was used
+
 ## Limitations
 
 - **Text size limit**: Default 50KB per request. Configure with `max_text_size`.
@@ -407,6 +451,26 @@ Async methods use the shared thread pool via `asyncio.wrap_future()`:
 - **Heuristic mode**: Less accurate (~50%) compared to semantic mode (~90%).
 - **Semantic mode**: Requires API key and incurs API costs.
 - **Fail-open default**: Validation errors allow content through by default. Use `fail_closed=True` for stricter security.
+
+## Roadmap
+
+The following features are planned for future versions:
+
+### Planned Features
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **Context-aware validation** | Pass prompt history, agent context | Planned |
+| **Tool call validation** | Validate agent tool/function calls | Planned |
+| **THSP as DSPy metric** | Use safety as optimization objective | Research |
+| **Adversarial validation** | Test against adversarial variations | Research |
+| **Behavioral drift detection** | Track safety changes over time | Research |
+| **Step-by-step agent validation** | Validate each agent step | Planned |
+| **Memory write validation** | Validate agent memory updates | Planned |
+
+### Contributing
+
+Contributions welcome! See the main Sentinel repository for guidelines.
 
 ## References
 

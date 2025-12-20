@@ -47,8 +47,12 @@ from sentinelseed.validators.gates import THSPValidator
 from sentinelseed.integrations.dspy.utils import (
     DEFAULT_MAX_TEXT_SIZE,
     DEFAULT_VALIDATION_TIMEOUT,
+    CONFIDENCE_NONE,
+    CONFIDENCE_LOW,
+    CONFIDENCE_HIGH,
     TextTooLargeError,
     ValidationTimeoutError,
+    HeuristicFallbackError,
     get_logger,
     get_validation_executor,
     run_with_timeout_async,
@@ -83,6 +87,13 @@ class SentinelGuard(Module):
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on validation errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
+
+    Safety Metadata:
+        Results include degradation flags to distinguish validated from degraded:
+        - safety_degraded: True if validation was degraded (error/timeout/fallback)
+        - safety_confidence: "none", "low", "medium", or "high"
 
     Example:
         base = dspy.ChainOfThought("question -> answer")
@@ -102,6 +113,7 @@ class SentinelGuard(Module):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
     ):
         super().__init__()
 
@@ -125,6 +137,8 @@ class SentinelGuard(Module):
         self.timeout = timeout
         self.fail_closed = fail_closed
         self.mode = mode
+        self.allow_heuristic_fallback = allow_heuristic_fallback
+        self._is_degraded_mode = False  # Track if we fell back to heuristic
         self._logger = logger
 
         # Log warning about fail-open default
@@ -137,13 +151,18 @@ class SentinelGuard(Module):
             self._async_validator = None
         else:
             if not api_key:
+                # Check if fallback is allowed
+                if not allow_heuristic_fallback:
+                    raise HeuristicFallbackError("SentinelGuard")
+
                 self._logger.warning(
                     "No API key provided for SentinelGuard. "
-                    "Falling back to heuristic validation."
+                    "Falling back to heuristic validation (allow_heuristic_fallback=True)."
                 )
                 self._validator = THSPValidator()
                 self._async_validator = None
                 self.mode = "heuristic"
+                self._is_degraded_mode = True  # Mark as degraded
             else:
                 self._validator = SemanticValidator(
                     provider=provider,
@@ -273,21 +292,27 @@ class SentinelGuard(Module):
         try:
             if self.mode == "heuristic":
                 result = self._validator.validate(content)
+                # Heuristic mode: low confidence, degraded if it was a fallback
                 return {
                     "is_safe": result.get("safe", True),
                     "gates": result.get("gates", {}),
                     "issues": result.get("issues", []),
                     "reasoning": "Heuristic pattern-based validation",
                     "method": "heuristic",
+                    "degraded": self._is_degraded_mode,
+                    "confidence": CONFIDENCE_LOW,
                 }
             else:
                 result: THSPResult = self._validator.validate(content)
+                # Semantic mode: high confidence, not degraded
                 return {
                     "is_safe": result.is_safe,
                     "gates": result.gate_results,
                     "issues": result.failed_gates,
                     "reasoning": result.reasoning,
                     "method": "semantic",
+                    "degraded": False,
+                    "confidence": CONFIDENCE_HIGH,
                 }
         except Exception as e:
             self._logger.error(f"Validation error: {e}")
@@ -298,14 +323,18 @@ class SentinelGuard(Module):
                     "issues": [f"Validation error: {e}"],
                     "reasoning": f"Validation failed with error: {e}",
                     "method": "error",
+                    "degraded": True,
+                    "confidence": CONFIDENCE_NONE,
                 }
-            # Fail open - assume safe if heuristic passed or error occurred
+            # Fail open - assume safe but mark as degraded with no confidence
             return {
                 "is_safe": True,
                 "gates": {},
                 "issues": [],
                 "reasoning": f"Validation error (fail_open): {e}",
                 "method": "error",
+                "degraded": True,
+                "confidence": CONFIDENCE_NONE,
             }
 
     def _handle_result(
@@ -317,6 +346,9 @@ class SentinelGuard(Module):
         result.safety_gates = validation["gates"]
         result.safety_reasoning = validation["reasoning"]
         result.safety_method = validation["method"]
+        # Add degradation flags
+        result.safety_degraded = validation.get("degraded", False)
+        result.safety_confidence = validation.get("confidence", CONFIDENCE_HIGH)
 
         if validation["is_safe"]:
             return result
@@ -328,6 +360,8 @@ class SentinelGuard(Module):
                 validation["gates"],
                 validation["issues"],
                 validation["method"],
+                validation.get("degraded", False),
+                validation.get("confidence", CONFIDENCE_NONE),
                 result,
             )
 
@@ -342,6 +376,8 @@ class SentinelGuard(Module):
         gates: Optional[Dict] = None,
         issues: Optional[List] = None,
         method: str = "error",
+        degraded: bool = False,
+        confidence: str = CONFIDENCE_NONE,
         original_result: Optional[Prediction] = None,
     ) -> Prediction:
         """Create a blocked prediction with safety metadata."""
@@ -352,6 +388,8 @@ class SentinelGuard(Module):
         blocked.safety_reasoning = reason
         blocked.safety_method = method
         blocked.safety_issues = issues or [reason]
+        blocked.safety_degraded = degraded
+        blocked.safety_confidence = confidence
 
         # Copy output fields with blocked message
         if original_result:
@@ -384,6 +422,7 @@ class SentinelPredict(Module):
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on validation errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic (default: False)
         **config: Additional config passed to dspy.Predict
 
     Example:
@@ -405,6 +444,7 @@ class SentinelPredict(Module):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
         **config,
     ):
         super().__init__()
@@ -418,6 +458,7 @@ class SentinelPredict(Module):
             max_text_size=max_text_size,
             timeout=timeout,
             fail_closed=fail_closed,
+            allow_heuristic_fallback=allow_heuristic_fallback,
         )
 
     def forward(self, **kwargs) -> Prediction:
@@ -448,7 +489,13 @@ class SentinelChainOfThought(Module):
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on validation errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic (default: False)
         **config: Additional config passed to dspy.ChainOfThought
+
+    Safety Metadata:
+        Results include degradation flags:
+        - safety_degraded: True if validation was degraded
+        - safety_confidence: "none", "low", "medium", or "high"
 
     Example:
         cot = SentinelChainOfThought(
@@ -477,6 +524,7 @@ class SentinelChainOfThought(Module):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
         **config,
     ):
         super().__init__()
@@ -503,6 +551,8 @@ class SentinelChainOfThought(Module):
         self.timeout = timeout
         self.fail_closed = fail_closed
         self.mode = mode
+        self.allow_heuristic_fallback = allow_heuristic_fallback
+        self._is_degraded_mode = False
         self._logger = logger
 
         # Log warning about fail-open default
@@ -514,12 +564,17 @@ class SentinelChainOfThought(Module):
             self._validator = THSPValidator()
         else:
             if not api_key:
+                # Check if fallback is allowed
+                if not allow_heuristic_fallback:
+                    raise HeuristicFallbackError("SentinelChainOfThought")
+
                 self._logger.warning(
                     "No API key provided for SentinelChainOfThought. "
-                    "Falling back to heuristic validation."
+                    "Falling back to heuristic validation (allow_heuristic_fallback=True)."
                 )
                 self._validator = THSPValidator()
                 self.mode = "heuristic"
+                self._is_degraded_mode = True
             else:
                 self._validator = SemanticValidator(
                     provider=provider,
@@ -567,6 +622,8 @@ class SentinelChainOfThought(Module):
                     "issues": result.get("issues", []),
                     "reasoning": "Heuristic pattern-based validation",
                     "method": "heuristic",
+                    "degraded": self._is_degraded_mode,
+                    "confidence": CONFIDENCE_LOW,
                 }
             else:
                 result: THSPResult = self._validator.validate(content)
@@ -576,6 +633,8 @@ class SentinelChainOfThought(Module):
                     "issues": result.failed_gates,
                     "reasoning": result.reasoning,
                     "method": "semantic",
+                    "degraded": False,
+                    "confidence": CONFIDENCE_HIGH,
                 }
         except Exception as e:
             self._logger.error(f"Validation error: {e}")
@@ -586,6 +645,8 @@ class SentinelChainOfThought(Module):
                     "issues": [f"Validation error: {e}"],
                     "reasoning": f"Validation failed with error: {e}",
                     "method": "error",
+                    "degraded": True,
+                    "confidence": CONFIDENCE_NONE,
                 }
             return {
                 "is_safe": True,
@@ -593,6 +654,8 @@ class SentinelChainOfThought(Module):
                 "issues": [],
                 "reasoning": f"Validation error (fail_open): {e}",
                 "method": "error",
+                "degraded": True,
+                "confidence": CONFIDENCE_NONE,
             }
 
     def _validate_all_fields(self, fields: Dict[str, str]) -> Dict[str, Any]:
@@ -609,6 +672,8 @@ class SentinelChainOfThought(Module):
         all_safe = True
         failed_fields = []
         method = "heuristic"
+        any_degraded = False
+        worst_confidence = CONFIDENCE_HIGH
 
         for field_name, content in fields.items():
             # Validate text size
@@ -618,8 +683,12 @@ class SentinelChainOfThought(Module):
                 field_results[field_name] = {
                     "is_safe": False,
                     "error": str(e),
+                    "degraded": True,
+                    "confidence": CONFIDENCE_NONE,
                 }
                 all_safe = False
+                any_degraded = True
+                worst_confidence = CONFIDENCE_NONE
                 failed_fields.append(field_name)
                 all_issues.append(f"{field_name}: {e}")
                 continue
@@ -632,10 +701,14 @@ class SentinelChainOfThought(Module):
                     timeout=self.timeout,
                 )
             except ValidationTimeoutError:
+                any_degraded = True
+                worst_confidence = CONFIDENCE_NONE
                 if self.fail_closed:
                     field_results[field_name] = {
                         "is_safe": False,
                         "error": "Validation timed out",
+                        "degraded": True,
+                        "confidence": CONFIDENCE_NONE,
                     }
                     all_safe = False
                     failed_fields.append(field_name)
@@ -644,11 +717,23 @@ class SentinelChainOfThought(Module):
                     field_results[field_name] = {
                         "is_safe": True,
                         "error": "Timeout (fail_open)",
+                        "degraded": True,
+                        "confidence": CONFIDENCE_NONE,
                     }
                 continue
 
             field_results[field_name] = result
             method = result.get("method", method)
+
+            # Track degradation
+            if result.get("degraded", False):
+                any_degraded = True
+            # Track worst confidence
+            field_confidence = result.get("confidence", CONFIDENCE_HIGH)
+            if field_confidence == CONFIDENCE_NONE:
+                worst_confidence = CONFIDENCE_NONE
+            elif field_confidence == CONFIDENCE_LOW and worst_confidence != CONFIDENCE_NONE:
+                worst_confidence = CONFIDENCE_LOW
 
             if not result["is_safe"]:
                 all_safe = False
@@ -670,6 +755,8 @@ class SentinelChainOfThought(Module):
             "fields_validated": list(fields.keys()),
             "reasoning": self._build_reasoning(field_results, failed_fields),
             "method": method,
+            "degraded": any_degraded,
+            "confidence": worst_confidence,
         }
 
     def _build_reasoning(
@@ -705,6 +792,9 @@ class SentinelChainOfThought(Module):
             k: v.get("is_safe", True) for k, v in validation["field_results"].items()
         }
         result.safety_failed_fields = validation["failed_fields"]
+        # Add degradation flags
+        result.safety_degraded = validation.get("degraded", False)
+        result.safety_confidence = validation.get("confidence", CONFIDENCE_HIGH)
 
         if validation["is_safe"]:
             return result
@@ -718,6 +808,8 @@ class SentinelChainOfThought(Module):
                 validation["method"],
                 validation["failed_fields"],
                 validation["fields_validated"],
+                validation.get("degraded", False),
+                validation.get("confidence", CONFIDENCE_NONE),
                 result,
             )
 
@@ -734,6 +826,8 @@ class SentinelChainOfThought(Module):
         method: str = "error",
         failed_fields: Optional[List] = None,
         fields_validated: Optional[List] = None,
+        degraded: bool = False,
+        confidence: str = CONFIDENCE_NONE,
         original_result: Optional[Prediction] = None,
     ) -> Prediction:
         """Create a blocked prediction with safety metadata."""
@@ -747,6 +841,8 @@ class SentinelChainOfThought(Module):
         blocked.safety_failed_fields = failed_fields or []
         blocked.safety_fields_validated = fields_validated or []
         blocked.safety_field_results = {}
+        blocked.safety_degraded = degraded
+        blocked.safety_confidence = confidence
 
         # Copy output fields with blocked message
         if original_result:
