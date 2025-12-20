@@ -42,6 +42,8 @@ def example_1_basic_guard():
         api_key=os.environ.get("OPENAI_API_KEY"),
         provider="openai",
         mode="block",  # Block unsafe content
+        timeout=30.0,  # 30 second timeout
+        fail_closed=False,  # Fail open on errors
     )
 
     # Test with safe question
@@ -77,6 +79,7 @@ def example_2_sentinel_predict():
         "topic -> explanation: str",
         api_key=os.environ.get("OPENAI_API_KEY"),
         mode="flag",  # Flag but don't block
+        timeout=30.0,
     )
 
     # Test
@@ -105,6 +108,8 @@ def example_3_chain_of_thought():
         "problem -> solution",
         api_key=os.environ.get("OPENAI_API_KEY"),
         mode="block",
+        timeout=30.0,
+        fail_closed=False,
     )
 
     # Test
@@ -129,10 +134,12 @@ def example_4_react_with_tool():
     lm = dspy.LM("openai/gpt-4o-mini")
     dspy.configure(lm=lm)
 
-    # Create safety check tool
+    # Create safety check tool with timeout
     safety_tool = create_sentinel_tool(
         api_key=os.environ.get("OPENAI_API_KEY"),
         name="check_safety",
+        timeout=30.0,
+        fail_closed=False,
     )
 
     # Create ReAct agent with safety tool
@@ -166,6 +173,7 @@ def example_5_heuristic_mode():
     safe_module = SentinelGuard(
         base,
         mode="heuristic",  # No LLM needed for validation
+        timeout=10.0,  # Shorter timeout for heuristic
     )
 
     # Test
@@ -215,8 +223,8 @@ def example_7_gate_specific_tools():
     print("=" * 60)
 
     # Create tools for each gate (using heuristic for demo)
-    truth_check = create_gate_check_tool("truth")
-    harm_check = create_gate_check_tool("harm")
+    truth_check = create_gate_check_tool("truth", timeout=10.0)
+    harm_check = create_gate_check_tool("harm", timeout=10.0)
 
     # Test
     print("\nTesting individual gates:")
@@ -251,13 +259,73 @@ async def example_8_async_usage():
         base,
         api_key=os.environ.get("OPENAI_API_KEY"),
         mode="block",
+        timeout=30.0,
     )
 
-    # Use async call
+    # Use async call via aforward (correct method name)
     print("\nAsync safety check:")
-    result = await safe_module.acall(question="What is quantum computing?")
+    result = await safe_module.aforward(question="What is quantum computing?")
     print(f"  Answer: {result.answer}")
     print(f"  Safety passed: {result.safety_passed}")
+
+
+def example_9_fail_closed_mode():
+    """Example 9: Demonstrate fail_closed mode."""
+    import dspy
+    from sentinelseed.integrations.dspy import SentinelGuard
+
+    print("\n" + "=" * 60)
+    print("Example 9: Fail-Closed Mode")
+    print("=" * 60)
+
+    # Configure DSPy
+    lm = dspy.LM("openai/gpt-4o-mini")
+    dspy.configure(lm=lm)
+
+    # Create module with fail_closed=True
+    base = dspy.Predict("question -> answer")
+    safe_module = SentinelGuard(
+        base,
+        mode="heuristic",
+        fail_closed=True,  # Block on any error
+        timeout=30.0,
+    )
+
+    print("\nFail-closed mode enabled:")
+    print("  If validation fails or errors, content will be blocked")
+
+    result = safe_module(question="What is 2+2?")
+    print(f"  Answer: {result.answer}")
+    print(f"  Safety passed: {result.safety_passed}")
+
+
+def example_10_text_size_limits():
+    """Example 10: Demonstrate text size limits."""
+    from sentinelseed.integrations.dspy import (
+        create_sentinel_tool,
+        TextTooLargeError,
+    )
+
+    print("\n" + "=" * 60)
+    print("Example 10: Text Size Limits")
+    print("=" * 60)
+
+    # Create tool with small size limit for demo
+    safety_tool = create_sentinel_tool(
+        use_heuristic=True,
+        max_text_size=100,  # Very small limit for demo
+        timeout=10.0,
+    )
+
+    # Test with content exceeding limit
+    print("\nTesting with small text:")
+    result = safety_tool("Short text")
+    print(f"  Result: {result}")
+
+    print("\nTesting with large text (>100 bytes):")
+    large_text = "x" * 200
+    result = safety_tool(large_text)
+    print(f"  Result: {result}")
 
 
 def main():
@@ -272,9 +340,10 @@ def main():
         print("Set it with: export OPENAI_API_KEY=sk-...")
         print("\nRunning examples that don't require API key...\n")
 
-        # Run heuristic example only
+        # Run heuristic examples only
         example_5_heuristic_mode()
         example_7_gate_specific_tools()
+        example_10_text_size_limits()
         return
 
     # Run all examples
@@ -319,6 +388,16 @@ def main():
         asyncio.run(example_8_async_usage())
     except Exception as e:
         print(f"  Async Error: {e}")
+
+    try:
+        example_9_fail_closed_mode()
+    except Exception as e:
+        print(f"  Error: {e}")
+
+    try:
+        example_10_text_size_limits()
+    except Exception as e:
+        print(f"  Error: {e}")
 
     print("\n" + "=" * 60)
     print("Examples completed!")

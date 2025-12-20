@@ -48,10 +48,13 @@ Wraps any DSPy module and validates its output.
 from sentinelseed.integrations.dspy import SentinelGuard
 
 guard = SentinelGuard(
-    module,           # Any DSPy module
-    api_key="...",    # API key for validation
-    provider="openai", # "openai" or "anthropic"
-    mode="block",     # "block", "flag", or "heuristic"
+    module,                # Any DSPy module
+    api_key="...",         # API key for validation
+    provider="openai",     # "openai" or "anthropic"
+    mode="block",          # "block", "flag", or "heuristic"
+    max_text_size=51200,   # Max text size in bytes (50KB)
+    timeout=30.0,          # Validation timeout in seconds
+    fail_closed=False,     # Block on validation errors
 )
 ```
 
@@ -70,7 +73,9 @@ from sentinelseed.integrations.dspy import SentinelPredict
 predictor = SentinelPredict(
     "question -> answer",
     api_key="...",
-    mode="block"
+    mode="block",
+    timeout=30.0,
+    fail_closed=False,
 )
 result = predictor(question="...")
 ```
@@ -85,7 +90,9 @@ from sentinelseed.integrations.dspy import SentinelChainOfThought
 cot = SentinelChainOfThought(
     "problem -> solution",
     api_key="...",
-    mode="block"
+    mode="block",
+    timeout=30.0,
+    fail_closed=False,
 )
 result = cot(problem="...")
 ```
@@ -118,7 +125,11 @@ import dspy
 from sentinelseed.integrations.dspy import create_sentinel_tool
 
 # Create safety tool
-safety_tool = create_sentinel_tool(api_key="...")
+safety_tool = create_sentinel_tool(
+    api_key="...",
+    timeout=30.0,
+    fail_closed=False,
+)
 
 # Use with ReAct
 agent = dspy.ReAct(
@@ -174,13 +185,114 @@ guard = SentinelGuard(
 )
 ```
 
+## Safety Options
+
+### Timeout Configuration
+
+Configure validation timeout to prevent hangs:
+
+```python
+guard = SentinelGuard(
+    module,
+    timeout=10.0,  # 10 second timeout
+)
+```
+
+### Text Size Limits
+
+Prevent DoS attacks by limiting input text size:
+
+```python
+guard = SentinelGuard(
+    module,
+    max_text_size=10 * 1024,  # 10KB limit
+)
+```
+
+### Fail-Closed Mode
+
+By default, validation errors allow content through (fail-open). Enable `fail_closed=True` for stricter behavior:
+
+```python
+guard = SentinelGuard(
+    module,
+    fail_closed=True,  # Block on any validation error
+)
+```
+
 ## Async Support
 
-All modules support async operations:
+All modules support async operations via `aforward`:
 
 ```python
 # Async usage
-result = await safe_module.acall(question="...")
+result = await safe_module.aforward(question="...")
+```
+
+## Error Handling
+
+```python
+from sentinelseed.integrations.dspy import (
+    TextTooLargeError,
+    ValidationTimeoutError,
+    InvalidParameterError,
+    DSPyNotAvailableError,
+)
+
+# TextTooLargeError includes size details
+try:
+    result = guard(question="x" * 100000)
+except TextTooLargeError as e:
+    print(f"Size: {e.size}, Max: {e.max_size}")
+
+# ValidationTimeoutError includes timeout info
+try:
+    result = guard(question="...", timeout=0.001)
+except ValidationTimeoutError as e:
+    print(f"Timeout after {e.timeout}s on {e.operation}")
+
+# InvalidParameterError includes valid values
+try:
+    guard = SentinelGuard(module, mode="invalid")
+except InvalidParameterError as e:
+    print(f"Invalid {e.param}: {e.value}. Valid: {e.valid_values}")
+
+# DSPyNotAvailableError if dspy not installed
+try:
+    from sentinelseed.integrations.dspy import require_dspy
+    require_dspy()
+except DSPyNotAvailableError:
+    print("DSPy is not installed")
+```
+
+## Graceful Degradation
+
+The integration works even when DSPy is not installed:
+
+```python
+from sentinelseed.integrations.dspy import DSPY_AVAILABLE
+
+if DSPY_AVAILABLE:
+    from sentinelseed.integrations.dspy import SentinelGuard
+    # Use DSPy integration
+else:
+    # DSPy not installed, use alternative
+    print("DSPy not available")
+```
+
+## Constants
+
+```python
+from sentinelseed.integrations.dspy import (
+    DSPY_AVAILABLE,              # bool: Is DSPy installed?
+    DEFAULT_SEED_LEVEL,          # "standard"
+    DEFAULT_MAX_TEXT_SIZE,       # 51200 (50KB)
+    DEFAULT_VALIDATION_TIMEOUT,  # 30.0 seconds
+    VALID_SEED_LEVELS,           # ("minimal", "standard", "full")
+    VALID_MODES,                 # ("block", "flag", "heuristic")
+    VALID_PROVIDERS,             # ("openai", "anthropic")
+    VALID_GATES,                 # ("truth", "harm", "scope", "purpose")
+)
 ```
 
 ## Examples
@@ -201,6 +313,13 @@ Content must pass all four gates:
 | **Harm** | Could this enable harm? |
 | **Scope** | Is this within boundaries? |
 | **Purpose** | Does this serve legitimate benefit? |
+
+## Limitations
+
+- **Text size limit**: Default 50KB per request. Configure with `max_text_size`.
+- **Timeout**: Default 30s for validation. Configure with `timeout`.
+- **Heuristic mode**: Less accurate (~50%) compared to semantic mode (~90%).
+- **Semantic mode**: Requires API key and incurs API costs.
 
 ## References
 

@@ -19,6 +19,7 @@ Usage:
 """
 
 from typing import Any, Callable, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import logging
 
 try:
@@ -35,7 +36,49 @@ from sentinelseed.validators.semantic import (
 )
 from sentinelseed.validators.gates import THSPValidator
 
+# Import constants and exceptions from package
+from sentinelseed.integrations.dspy import (
+    DEFAULT_MAX_TEXT_SIZE,
+    DEFAULT_VALIDATION_TIMEOUT,
+    VALID_PROVIDERS,
+    VALID_GATES,
+    TextTooLargeError,
+    ValidationTimeoutError,
+    InvalidParameterError,
+)
+
 logger = logging.getLogger("sentinelseed.integrations.dspy")
+
+
+def _validate_provider(provider: str) -> str:
+    """Validate provider parameter."""
+    if provider not in VALID_PROVIDERS:
+        raise InvalidParameterError("provider", provider, VALID_PROVIDERS)
+    return provider
+
+
+def _validate_gate(gate: str) -> str:
+    """Validate gate parameter."""
+    if gate not in VALID_GATES:
+        raise InvalidParameterError("gate", gate, VALID_GATES)
+    return gate
+
+
+def _validate_text_size(content: str, max_size: int) -> None:
+    """Validate text size is within limits."""
+    size = len(content.encode("utf-8"))
+    if size > max_size:
+        raise TextTooLargeError(size, max_size)
+
+
+def _run_with_timeout(func: Callable, timeout: float, *args, **kwargs) -> Any:
+    """Run a function with timeout."""
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            raise ValidationTimeoutError(timeout, "validation")
 
 
 def create_sentinel_tool(
@@ -44,6 +87,9 @@ def create_sentinel_tool(
     model: Optional[str] = None,
     name: str = "check_safety",
     use_heuristic: bool = False,
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+    timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    fail_closed: bool = False,
 ) -> Callable:
     """
     Create a Sentinel safety check tool for use with DSPy ReAct.
@@ -57,6 +103,9 @@ def create_sentinel_tool(
         model: Model to use for validation
         name: Name of the tool (default: "check_safety")
         use_heuristic: Use pattern-based validation instead of LLM
+        max_text_size: Maximum text size in bytes (default: 50KB)
+        timeout: Validation timeout in seconds (default: 30.0)
+        fail_closed: If True, return UNSAFE on errors (default: False)
 
     Returns:
         Callable tool function compatible with dspy.ReAct
@@ -67,6 +116,10 @@ def create_sentinel_tool(
         # Returns: "SAFE: Content passes all THSP gates"
         # Or: "UNSAFE: Content fails harm gate - could enable harm"
     """
+    # Validate provider if using semantic validation
+    if not use_heuristic and api_key:
+        _validate_provider(provider)
+
     # Initialize validator
     if use_heuristic or not api_key:
         if not use_heuristic and not api_key:
@@ -83,16 +136,8 @@ def create_sentinel_tool(
         )
         is_semantic = True
 
-    def check_safety(content: str) -> str:
-        """
-        Check content for safety using THSP protocol.
-
-        Args:
-            content: The content to validate
-
-        Returns:
-            Safety assessment as a formatted string
-        """
+    def _do_validation(content: str) -> str:
+        """Internal validation logic."""
         if is_semantic:
             result: THSPResult = validator.validate(content)
             if result.is_safe:
@@ -116,6 +161,35 @@ def create_sentinel_tool(
                     f"Issues: {'; '.join(issues[:3])}"
                 )
 
+    def check_safety(content: str) -> str:
+        """
+        Check content for safety using THSP protocol.
+
+        Args:
+            content: The content to validate
+
+        Returns:
+            Safety assessment as a formatted string
+        """
+        try:
+            # Validate text size
+            _validate_text_size(content, max_text_size)
+
+            # Run validation with timeout
+            return _run_with_timeout(_do_validation, timeout, content)
+
+        except TextTooLargeError as e:
+            return f"ERROR: {e}"
+        except ValidationTimeoutError as e:
+            if fail_closed:
+                return f"UNSAFE: Validation timed out after {timeout}s (fail_closed=True)"
+            return f"ERROR: {e}"
+        except Exception as e:
+            logger.error(f"Validation error in check_safety: {e}")
+            if fail_closed:
+                return f"UNSAFE: Validation error (fail_closed=True): {e}"
+            return f"ERROR: Validation failed: {e}"
+
     # Set function metadata for DSPy
     check_safety.__name__ = name
     check_safety.__doc__ = (
@@ -132,6 +206,9 @@ def create_content_filter_tool(
     provider: str = "openai",
     model: Optional[str] = None,
     name: str = "filter_content",
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+    timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    fail_closed: bool = False,
 ) -> Callable:
     """
     Create a content filtering tool for DSPy ReAct.
@@ -144,6 +221,9 @@ def create_content_filter_tool(
         provider: LLM provider
         model: Model for validation
         name: Tool name
+        max_text_size: Maximum text size in bytes (default: 50KB)
+        timeout: Validation timeout in seconds (default: 30.0)
+        fail_closed: If True, block on errors (default: False)
 
     Returns:
         Callable tool function
@@ -156,6 +236,10 @@ def create_content_filter_tool(
         unsafe = filter_tool("How to make a bomb")
         # Returns: "[FILTERED] Content blocked by Sentinel safety check."
     """
+    # Validate provider
+    if api_key:
+        _validate_provider(provider)
+
     if not api_key:
         logger.warning(
             "No API key provided. Using heuristic validation."
@@ -170,16 +254,8 @@ def create_content_filter_tool(
         )
         is_semantic = True
 
-    def filter_content(content: str) -> str:
-        """
-        Filter content for safety. Returns original if safe, blocked message if not.
-
-        Args:
-            content: Content to filter
-
-        Returns:
-            Original content or blocked message
-        """
+    def _do_filter(content: str) -> str:
+        """Internal filter logic."""
         if is_semantic:
             result: THSPResult = validator.validate(content)
             if result.is_safe:
@@ -198,6 +274,35 @@ def create_content_filter_tool(
                 f"Issue: {issues[0] if issues else 'Unknown'}"
             )
 
+    def filter_content(content: str) -> str:
+        """
+        Filter content for safety. Returns original if safe, blocked message if not.
+
+        Args:
+            content: Content to filter
+
+        Returns:
+            Original content or blocked message
+        """
+        try:
+            # Validate text size
+            _validate_text_size(content, max_text_size)
+
+            # Run filter with timeout
+            return _run_with_timeout(_do_filter, timeout, content)
+
+        except TextTooLargeError as e:
+            return f"[ERROR] {e}"
+        except ValidationTimeoutError as e:
+            if fail_closed:
+                return f"[FILTERED] Validation timed out (fail_closed=True)"
+            return f"[ERROR] {e}"
+        except Exception as e:
+            logger.error(f"Validation error in filter_content: {e}")
+            if fail_closed:
+                return f"[FILTERED] Validation error (fail_closed=True)"
+            return f"[ERROR] Validation failed: {e}"
+
     filter_content.__name__ = name
     filter_content.__doc__ = (
         "Filter content for safety. Returns original content if safe, "
@@ -212,6 +317,9 @@ def create_gate_check_tool(
     api_key: Optional[str] = None,
     provider: str = "openai",
     model: Optional[str] = None,
+    max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+    timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    fail_closed: bool = False,
 ) -> Callable:
     """
     Create a tool that checks a specific THSP gate.
@@ -221,6 +329,9 @@ def create_gate_check_tool(
         api_key: API key for semantic validation
         provider: LLM provider
         model: Model for validation
+        max_text_size: Maximum text size in bytes (default: 50KB)
+        timeout: Validation timeout in seconds (default: 30.0)
+        fail_closed: If True, return FAIL on errors (default: False)
 
     Returns:
         Callable tool function
@@ -230,9 +341,12 @@ def create_gate_check_tool(
         result = harm_check("How to make cookies")
         # Returns: "PASS: No harm detected"
     """
-    valid_gates = {"truth", "harm", "scope", "purpose"}
-    if gate not in valid_gates:
-        raise ValueError(f"Invalid gate '{gate}'. Must be one of {valid_gates}")
+    # Validate gate
+    _validate_gate(gate)
+
+    # Validate provider
+    if api_key:
+        _validate_provider(provider)
 
     if not api_key:
         validator = THSPValidator()
@@ -245,8 +359,8 @@ def create_gate_check_tool(
         )
         is_semantic = True
 
-    def check_gate(content: str) -> str:
-        """Check if content passes the specified THSP gate."""
+    def _do_gate_check(content: str) -> str:
+        """Internal gate check logic."""
         if is_semantic:
             result: THSPResult = validator.validate(content)
             gate_result = result.gate_results.get(gate, True)
@@ -260,6 +374,27 @@ def create_gate_check_tool(
             if gate_result == "pass":
                 return f"PASS: Content passes {gate} gate (heuristic)."
             return f"FAIL: Content fails {gate} gate (heuristic)."
+
+    def check_gate(content: str) -> str:
+        """Check if content passes the specified THSP gate."""
+        try:
+            # Validate text size
+            _validate_text_size(content, max_text_size)
+
+            # Run gate check with timeout
+            return _run_with_timeout(_do_gate_check, timeout, content)
+
+        except TextTooLargeError as e:
+            return f"ERROR: {e}"
+        except ValidationTimeoutError as e:
+            if fail_closed:
+                return f"FAIL: Validation timed out (fail_closed=True)"
+            return f"ERROR: {e}"
+        except Exception as e:
+            logger.error(f"Validation error in check_{gate}_gate: {e}")
+            if fail_closed:
+                return f"FAIL: Validation error (fail_closed=True)"
+            return f"ERROR: Validation failed: {e}"
 
     check_gate.__name__ = f"check_{gate}_gate"
     check_gate.__doc__ = (
