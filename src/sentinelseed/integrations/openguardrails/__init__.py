@@ -35,8 +35,8 @@ Example:
 
 from __future__ import annotations
 
-import json
 import logging
+from json import JSONDecodeError
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -77,13 +77,48 @@ class DetectionResult:
 
     @classmethod
     def from_response(cls, response: Dict[str, Any]) -> "DetectionResult":
-        """Create from OpenGuardrails API response"""
+        """
+        Create from OpenGuardrails API response.
+
+        Args:
+            response: API response dict containing 'detections' list
+
+        Returns:
+            DetectionResult instance
+
+        Raises:
+            ValueError: If response structure is invalid
+        """
+        # Validate response is a dict
+        if not isinstance(response, dict):
+            raise ValueError(
+                f"response must be a dict, got {type(response).__name__}"
+            )
+
+        # Get detections with validation
         detections = response.get("detections", [])
+
+        # Ensure detections is a list (could be None if explicitly set)
+        if detections is None:
+            detections = []
+        if not isinstance(detections, list):
+            raise ValueError(
+                f"detections must be a list, got {type(detections).__name__}"
+            )
+
+        # Validate each detection is a dict
+        for i, d in enumerate(detections):
+            if not isinstance(d, dict):
+                raise ValueError(
+                    f"detection at index {i} must be a dict, got {type(d).__name__}"
+                )
+
         # Safe if no high/critical detections
         safe = not any(
             d.get("risk_level") in ["high_risk", "critical_risk"]
             for d in detections
         )
+
         # Get highest risk level
         risk_levels = [d.get("risk_level", "low_risk") for d in detections]
         if "critical_risk" in risk_levels:
@@ -177,7 +212,22 @@ class OpenGuardrailsValidator:
 
         Returns:
             DetectionResult with safety assessment
+
+        Raises:
+            ValueError: If content is None or empty
         """
+        # Validate input
+        if content is None:
+            raise ValueError("content cannot be None")
+        if not isinstance(content, str):
+            raise ValueError(f"content must be a string, got {type(content).__name__}")
+        if not content.strip():
+            raise ValueError("content cannot be empty or whitespace-only")
+
+        # Validate scanners if provided
+        if scanners is not None and not isinstance(scanners, list):
+            raise ValueError(f"scanners must be a list, got {type(scanners).__name__}")
+
         payload = {
             "content": content,
             "scanners": scanners or self.default_scanners,
@@ -193,34 +243,68 @@ class OpenGuardrailsValidator:
                 timeout=self.timeout
             )
             response.raise_for_status()
-            return DetectionResult.from_response(response.json())
+
+            # Parse JSON response with error handling
+            try:
+                response_data = response.json()
+            except JSONDecodeError as e:
+                logger.error(f"Invalid JSON response from OpenGuardrails: {e}")
+                return self._handle_api_error(
+                    f"Invalid JSON response: {e}",
+                    error_type="json_decode_error"
+                )
+
+            # Validate response structure
+            if not isinstance(response_data, dict):
+                logger.error(f"Unexpected response type: {type(response_data)}")
+                return self._handle_api_error(
+                    f"Expected dict, got {type(response_data).__name__}",
+                    error_type="invalid_response_structure"
+                )
+
+            return DetectionResult.from_response(response_data)
 
         except requests.RequestException as e:
             logger.error(f"OpenGuardrails API error: {e}")
-            # Fail-closed by default (safe=False) to prevent bypass via API unavailability
-            # Set fail_safe=True in constructor to use fail-open behavior (NOT recommended)
-            if self.fail_safe:
-                logger.warning(
-                    "OpenGuardrails API unavailable, returning safe=True (fail_safe=True). "
-                    "This is DANGEROUS as attackers can bypass validation by making API unavailable."
-                )
-                return DetectionResult(
-                    safe=True,
-                    risk_level=RiskLevel.LOW,
-                    detections=[],
-                    raw_response={"error": str(e), "fail_mode": "fail_safe"}
-                )
-            else:
-                logger.warning(
-                    "OpenGuardrails API unavailable, returning safe=False (fail-closed). "
-                    "Set fail_safe=True to allow requests when API is down (not recommended)."
-                )
-                return DetectionResult(
-                    safe=False,
-                    risk_level=RiskLevel.HIGH,
-                    detections=[{"type": "api_error", "description": str(e)}],
-                    raw_response={"error": str(e), "fail_mode": "fail_closed"}
-                )
+            return self._handle_api_error(str(e), error_type="api_error")
+
+    def _handle_api_error(
+        self,
+        error_msg: str,
+        error_type: str = "api_error"
+    ) -> DetectionResult:
+        """
+        Handle API errors with fail-safe/fail-closed logic.
+
+        Args:
+            error_msg: Error description
+            error_type: Type of error for logging
+
+        Returns:
+            DetectionResult based on fail_safe setting
+        """
+        if self.fail_safe:
+            logger.warning(
+                f"OpenGuardrails error ({error_type}), returning safe=True (fail_safe=True). "
+                "This is DANGEROUS as attackers can bypass validation."
+            )
+            return DetectionResult(
+                safe=True,
+                risk_level=RiskLevel.LOW,
+                detections=[],
+                raw_response={"error": error_msg, "fail_mode": "fail_safe"}
+            )
+        else:
+            logger.warning(
+                f"OpenGuardrails error ({error_type}), returning safe=False (fail-closed). "
+                "Set fail_safe=True to allow requests on error (not recommended)."
+            )
+            return DetectionResult(
+                safe=False,
+                risk_level=RiskLevel.HIGH,
+                detections=[{"type": error_type, "description": error_msg}],
+                raw_response={"error": error_msg, "fail_mode": "fail_closed"}
+            )
 
     def validate_prompt(
         self,
@@ -280,7 +364,17 @@ class SentinelOpenGuardrailsScanner:
         risk_level: RiskLevel = RiskLevel.HIGH,
         scan_prompt: bool = True,
         scan_response: bool = True,
+        timeout: int = 30,
     ):
+        """
+        Args:
+            openguardrails_url: OpenGuardrails management API URL
+            jwt_token: JWT authentication token
+            risk_level: Risk level for detections
+            scan_prompt: Whether to scan prompts
+            scan_response: Whether to scan responses
+            timeout: Request timeout in seconds
+        """
         if not REQUESTS_AVAILABLE:
             raise ImportError(
                 "requests is required for OpenGuardrails integration. "
@@ -292,6 +386,7 @@ class SentinelOpenGuardrailsScanner:
         self.risk_level = risk_level
         self.scan_prompt = scan_prompt
         self.scan_response = scan_response
+        self.timeout = timeout
         self._scanner_tag: Optional[str] = None
 
     def _headers(self) -> Dict[str, str]:
@@ -322,11 +417,18 @@ class SentinelOpenGuardrailsScanner:
                 f"{self.api_url}/api/v1/custom-scanners",
                 headers=self._headers(),
                 json=payload,
-                timeout=30
+                timeout=self.timeout
             )
             response.raise_for_status()
             data = response.json()
             self._scanner_tag = data.get("tag")
+
+            if not self._scanner_tag:
+                raise RuntimeError(
+                    "OpenGuardrails API returned empty tag. "
+                    "The scanner may not have been registered correctly."
+                )
+
             logger.info(f"Registered Sentinel scanner as {self._scanner_tag}")
             return self._scanner_tag
 
@@ -349,7 +451,7 @@ class SentinelOpenGuardrailsScanner:
             response = requests.delete(
                 f"{self.api_url}/api/v1/custom-scanners/{self._scanner_tag}",
                 headers=self._headers(),
-                timeout=30
+                timeout=self.timeout
             )
             response.raise_for_status()
             logger.info(f"Unregistered scanner {self._scanner_tag}")
@@ -429,8 +531,23 @@ class SentinelGuardrailsWrapper:
             scanners: OpenGuardrails scanners to use
 
         Returns:
-            Combined validation result
+            Combined validation result with keys:
+            - safe: bool - overall safety status
+            - blocked_by: list - which validators blocked ("sentinel", "openguardrails")
+            - sentinel_result: dict or None - raw Sentinel result
+            - openguardrails_result: dict or None - processed OpenGuardrails result
+
+        Raises:
+            ValueError: If content is None or empty
         """
+        # Validate input
+        if content is None:
+            raise ValueError("content cannot be None")
+        if not isinstance(content, str):
+            raise ValueError(f"content must be a string, got {type(content).__name__}")
+        if not content.strip():
+            raise ValueError("content cannot be empty or whitespace-only")
+
         result = {
             "safe": True,
             "blocked_by": [],
@@ -443,9 +560,16 @@ class SentinelGuardrailsWrapper:
             try:
                 sentinel_result = self.sentinel.validate(content)
                 result["sentinel_result"] = sentinel_result
-                if not sentinel_result.get("safe", True):
-                    result["safe"] = False
-                    result["blocked_by"].append("sentinel")
+
+                # Validate sentinel_result structure before using
+                if sentinel_result is not None and isinstance(sentinel_result, dict):
+                    if not sentinel_result.get("safe", True):
+                        result["safe"] = False
+                        result["blocked_by"].append("sentinel")
+                else:
+                    logger.warning(
+                        f"Unexpected sentinel_result type: {type(sentinel_result)}"
+                    )
             except Exception as e:
                 logger.error(f"Sentinel validation error: {e}")
 
@@ -461,6 +585,9 @@ class SentinelGuardrailsWrapper:
                 if not og_result.safe:
                     result["safe"] = False
                     result["blocked_by"].append("openguardrails")
+            except ValueError as e:
+                # Re-raise validation errors (e.g., empty content)
+                raise
             except Exception as e:
                 logger.error(f"OpenGuardrails validation error: {e}")
 
@@ -485,11 +612,23 @@ def register_sentinel_scanner(
     Args:
         openguardrails_url: OpenGuardrails management API URL
         jwt_token: JWT authentication token
-        risk_level: Risk level for detections ("low_risk", "medium_risk", etc.)
+        risk_level: Risk level for detections. Valid values:
+            "low_risk", "medium_risk", "high_risk", "critical_risk"
 
     Returns:
         Scanner tag assigned by OpenGuardrails
+
+    Raises:
+        ValueError: If risk_level is not a valid RiskLevel value
     """
+    # Validate risk_level before converting
+    valid_levels = [level.value for level in RiskLevel]
+    if risk_level not in valid_levels:
+        raise ValueError(
+            f"Invalid risk_level '{risk_level}'. "
+            f"Must be one of: {', '.join(valid_levels)}"
+        )
+
     scanner = SentinelOpenGuardrailsScanner(
         openguardrails_url=openguardrails_url,
         jwt_token=jwt_token,
@@ -533,3 +672,6 @@ __all__ = [
     "create_combined_validator",
     "REQUESTS_AVAILABLE",
 ]
+
+
+__version__ = "1.0.0"
