@@ -6,23 +6,277 @@ Provides:
 - Text sanitization
 - Thread-safe data structures
 - LangChain availability checking
+- Shared validation executor for efficient thread pooling
 """
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol, TypeVar, Union
+import asyncio
+import atexit
 import logging
 import re
 import threading
+import concurrent.futures
 from collections import deque
+from functools import wraps
 
-# Default configuration
+# Type variable for generic validation functions
+T = TypeVar('T')
+
+# =============================================================================
+# Default Configuration
+# =============================================================================
+#
+# IMPORTANT SECURITY NOTE:
+# - DEFAULT_FAIL_CLOSED = False means validation errors allow content through
+# - For security-critical applications, set fail_closed=True explicitly
+# - This is a deliberate trade-off: availability over security by default
+#
 DEFAULT_MAX_VIOLATIONS = 1000
 DEFAULT_SEED_LEVEL = "standard"
 DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
 DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
 DEFAULT_STREAMING_VALIDATION_INTERVAL = 500  # chars between incremental validations
+DEFAULT_EXECUTOR_MAX_WORKERS = 4  # shared executor thread pool size
 
 # Module logger
 _module_logger = logging.getLogger("sentinelseed.langchain")
+
+
+# =============================================================================
+# Shared Validation Executor
+# =============================================================================
+#
+# This singleton manages a persistent ThreadPoolExecutor to avoid the overhead
+# of creating a new executor for each validation call. The executor is lazily
+# initialized and automatically cleaned up on process exit.
+#
+
+class ValidationExecutor:
+    """
+    Singleton manager for a shared ThreadPoolExecutor.
+
+    Provides efficient thread pool management for synchronous validation
+    operations that need timeout support. Uses lazy initialization and
+    automatic cleanup.
+
+    Usage:
+        executor = ValidationExecutor.get_instance()
+        result = executor.run_with_timeout(fn, args, timeout=30.0)
+
+    Thread Safety:
+        All methods are thread-safe. The executor is shared across all
+        instances of SentinelCallback, SentinelGuard, and SentinelChain.
+    """
+
+    _instance: Optional['ValidationExecutor'] = None
+    _lock = threading.Lock()
+
+    def __init__(self, max_workers: int = DEFAULT_EXECUTOR_MAX_WORKERS):
+        """Initialize executor (called only once via get_instance)."""
+        self._max_workers = max_workers
+        self._executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        self._executor_lock = threading.Lock()
+        self._shutdown = False
+
+    @classmethod
+    def get_instance(cls, max_workers: int = DEFAULT_EXECUTOR_MAX_WORKERS) -> 'ValidationExecutor':
+        """
+        Get or create the singleton executor instance.
+
+        Args:
+            max_workers: Maximum worker threads (only used on first call)
+
+        Returns:
+            Shared ValidationExecutor instance
+        """
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls(max_workers)
+                    # Register cleanup on process exit
+                    atexit.register(cls._instance.shutdown)
+        return cls._instance
+
+    def _get_executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        """Get or create the underlying executor (lazy initialization)."""
+        if self._executor is None:
+            with self._executor_lock:
+                if self._executor is None and not self._shutdown:
+                    self._executor = concurrent.futures.ThreadPoolExecutor(
+                        max_workers=self._max_workers,
+                        thread_name_prefix="sentinel-validator"
+                    )
+        return self._executor
+
+    def run_with_timeout(
+        self,
+        fn: Callable[..., T],
+        args: tuple = (),
+        kwargs: Optional[Dict[str, Any]] = None,
+        timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    ) -> T:
+        """
+        Run a function with timeout in the shared thread pool.
+
+        Args:
+            fn: Function to execute
+            args: Positional arguments for fn
+            kwargs: Keyword arguments for fn
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            Result of fn(*args, **kwargs)
+
+        Raises:
+            ValidationTimeoutError: If timeout exceeded
+            Exception: Any exception raised by fn
+        """
+        if self._shutdown:
+            raise RuntimeError("ValidationExecutor has been shut down")
+
+        kwargs = kwargs or {}
+        executor = self._get_executor()
+
+        future = executor.submit(fn, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise ValidationTimeoutError(timeout, f"executing {fn.__name__}")
+
+    async def run_with_timeout_async(
+        self,
+        fn: Callable[..., T],
+        args: tuple = (),
+        kwargs: Optional[Dict[str, Any]] = None,
+        timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+    ) -> T:
+        """
+        Run a function asynchronously with timeout using the shared thread pool.
+
+        This method uses the same controlled thread pool as run_with_timeout,
+        avoiding the creation of unbounded threads via asyncio.to_thread().
+
+        Args:
+            fn: Function to execute
+            args: Positional arguments for fn
+            kwargs: Keyword arguments for fn
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            Result of fn(*args, **kwargs)
+
+        Raises:
+            ValidationTimeoutError: If timeout exceeded
+            RuntimeError: If executor has been shut down
+            Exception: Any exception raised by fn
+        """
+        if self._shutdown:
+            raise RuntimeError("ValidationExecutor has been shut down")
+
+        kwargs = kwargs or {}
+        executor = self._get_executor()
+
+        # Submit to our controlled thread pool
+        future = executor.submit(fn, *args, **kwargs)
+
+        # Wrap the concurrent.futures.Future as asyncio.Future
+        # This allows async/await without creating additional threads
+        async_future = asyncio.wrap_future(future)
+
+        try:
+            result = await asyncio.wait_for(async_future, timeout=timeout)
+            return result
+        except asyncio.TimeoutError:
+            future.cancel()
+            raise ValidationTimeoutError(timeout, f"executing {fn.__name__}")
+
+    def shutdown(self, wait: bool = True) -> None:
+        """
+        Shutdown the executor.
+
+        Called automatically on process exit, but can be called manually
+        for testing or resource management.
+
+        Args:
+            wait: Whether to wait for pending tasks to complete
+        """
+        with self._executor_lock:
+            self._shutdown = True
+            if self._executor is not None:
+                self._executor.shutdown(wait=wait)
+                self._executor = None
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """
+        Reset the singleton instance (for testing only).
+
+        This shuts down the existing executor and clears the singleton,
+        allowing a fresh instance to be created on next get_instance() call.
+        """
+        with cls._lock:
+            if cls._instance is not None:
+                cls._instance.shutdown(wait=True)
+                cls._instance = None
+
+
+# Convenience function for getting the shared executor
+def get_validation_executor() -> ValidationExecutor:
+    """Get the shared validation executor instance."""
+    return ValidationExecutor.get_instance()
+
+
+# =============================================================================
+# Async Validation Helpers
+# =============================================================================
+#
+# These functions provide async-native validation without blocking the event loop.
+# They use the shared ValidationExecutor for controlled thread pool management.
+#
+
+async def run_sync_with_timeout_async(
+    fn: Callable[..., T],
+    args: tuple = (),
+    kwargs: Optional[Dict[str, Any]] = None,
+    timeout: float = DEFAULT_VALIDATION_TIMEOUT,
+) -> T:
+    """
+    Run a synchronous function asynchronously with timeout.
+
+    Uses the shared ValidationExecutor thread pool to run the function
+    without blocking the event loop, with proper timeout handling.
+
+    Note:
+        This function delegates to ValidationExecutor.run_with_timeout_async()
+        to ensure all async operations use the same controlled thread pool.
+
+    Args:
+        fn: Synchronous function to execute
+        args: Positional arguments for fn
+        kwargs: Keyword arguments for fn
+        timeout: Maximum time to wait in seconds
+
+    Returns:
+        Result of fn(*args, **kwargs)
+
+    Raises:
+        ValidationTimeoutError: If timeout exceeded
+        Exception: Any exception raised by fn
+
+    Example:
+        async def validate_async(text):
+            result = await run_sync_with_timeout_async(
+                sentinel.validate,
+                args=(text,),
+                timeout=30.0
+            )
+            return result
+    """
+    executor = get_validation_executor()
+    return await executor.run_with_timeout_async(
+        fn, args=args, kwargs=kwargs, timeout=timeout
+    )
 
 
 # ============================================================================
@@ -47,6 +301,106 @@ class ValidationTimeoutError(Exception):
         self.timeout = timeout
         self.operation = operation
         super().__init__(f"{operation} timed out after {timeout}s")
+
+
+class ConfigurationError(Exception):
+    """Raised when configuration parameters are invalid."""
+
+    def __init__(self, param_name: str, expected: str, got: Any):
+        self.param_name = param_name
+        self.expected = expected
+        self.got = got
+        super().__init__(
+            f"Invalid configuration: '{param_name}' expected {expected}, got {type(got).__name__}"
+        )
+
+
+# ============================================================================
+# Configuration Validation
+# ============================================================================
+
+def validate_config_types(
+    max_text_size: Any = None,
+    validation_timeout: Any = None,
+    fail_closed: Any = None,
+    max_violations: Any = None,
+    streaming_validation_interval: Any = None,
+    **kwargs: Any
+) -> None:
+    """
+    Validate configuration parameter types.
+
+    Raises ConfigurationError if any parameter has an invalid type.
+    None values are skipped (not validated).
+
+    Args:
+        max_text_size: Expected int > 0
+        validation_timeout: Expected float/int > 0
+        fail_closed: Expected bool
+        max_violations: Expected int > 0
+        streaming_validation_interval: Expected int > 0
+        **kwargs: Ignored (allows passing extra params)
+
+    Raises:
+        ConfigurationError: If any parameter has invalid type or value
+    """
+    if max_text_size is not None:
+        if not isinstance(max_text_size, int) or max_text_size <= 0:
+            raise ConfigurationError(
+                "max_text_size",
+                "positive integer",
+                max_text_size
+            )
+
+    if validation_timeout is not None:
+        if not isinstance(validation_timeout, (int, float)) or validation_timeout <= 0:
+            raise ConfigurationError(
+                "validation_timeout",
+                "positive number",
+                validation_timeout
+            )
+
+    if fail_closed is not None:
+        if not isinstance(fail_closed, bool):
+            raise ConfigurationError(
+                "fail_closed",
+                "boolean",
+                fail_closed
+            )
+
+    if max_violations is not None:
+        if not isinstance(max_violations, int) or max_violations <= 0:
+            raise ConfigurationError(
+                "max_violations",
+                "positive integer",
+                max_violations
+            )
+
+    if streaming_validation_interval is not None:
+        if not isinstance(streaming_validation_interval, int) or streaming_validation_interval <= 0:
+            raise ConfigurationError(
+                "streaming_validation_interval",
+                "positive integer",
+                streaming_validation_interval
+            )
+
+
+def warn_fail_open_default(logger: 'SentinelLogger', component: str) -> None:
+    """
+    Log a warning about fail-open default behavior.
+
+    This warning is logged once per component to alert users about
+    the security implications of fail-open mode.
+
+    Args:
+        logger: Logger instance to use
+        component: Name of the component (e.g., "SentinelCallback")
+    """
+    logger.debug(
+        f"[SENTINEL] {component} initialized with fail_closed=False (fail-open mode). "
+        "Validation errors will allow content through. "
+        "Set fail_closed=True for stricter security."
+    )
 
 
 # ============================================================================
@@ -423,10 +777,12 @@ __all__ = [
     "DEFAULT_MAX_TEXT_SIZE",
     "DEFAULT_VALIDATION_TIMEOUT",
     "DEFAULT_STREAMING_VALIDATION_INTERVAL",
+    "DEFAULT_EXECUTOR_MAX_WORKERS",
     "LANGCHAIN_AVAILABLE",
     # Exceptions
     "TextTooLargeError",
     "ValidationTimeoutError",
+    "ConfigurationError",
     # LangChain types
     "BaseCallbackHandler",
     "SystemMessage",
@@ -442,9 +798,14 @@ __all__ = [
     "get_message_role",
     "is_system_message",
     "validate_text_size",
+    "validate_config_types",
+    "warn_fail_open_default",
+    "get_validation_executor",
+    "run_sync_with_timeout_async",
     # Classes
     "SentinelLogger",
     "ThreadSafeDeque",
     "ValidationResult",
     "ViolationRecord",
+    "ValidationExecutor",
 ]

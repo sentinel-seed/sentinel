@@ -39,10 +39,12 @@ from .utils import (
     DEFAULT_MAX_TEXT_SIZE,
     DEFAULT_VALIDATION_TIMEOUT,
     DEFAULT_STREAMING_VALIDATION_INTERVAL,
+    DEFAULT_EXECUTOR_MAX_WORKERS,
     LANGCHAIN_AVAILABLE,
     # Exceptions
     TextTooLargeError,
     ValidationTimeoutError,
+    ConfigurationError,
     # LangChain types (may be None if not installed)
     BaseCallbackHandler,
     SystemMessage,
@@ -58,11 +60,16 @@ from .utils import (
     get_message_role,
     is_system_message,
     validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
+    get_validation_executor,
+    run_sync_with_timeout_async,
     # Classes
     SentinelLogger,
     ThreadSafeDeque,
     ValidationResult,
     ViolationRecord,
+    ValidationExecutor,
 )
 
 # Callbacks
@@ -95,10 +102,12 @@ __all__ = [
     "DEFAULT_MAX_TEXT_SIZE",
     "DEFAULT_VALIDATION_TIMEOUT",
     "DEFAULT_STREAMING_VALIDATION_INTERVAL",
+    "DEFAULT_EXECUTOR_MAX_WORKERS",
     "LANGCHAIN_AVAILABLE",
     # Exceptions
     "TextTooLargeError",
     "ValidationTimeoutError",
+    "ConfigurationError",
     # Classes
     "SentinelCallback",
     "SentinelGuard",
@@ -108,6 +117,7 @@ __all__ = [
     "ThreadSafeDeque",
     "ValidationResult",
     "ViolationRecord",
+    "ValidationExecutor",
     # Functions
     "inject_seed",
     "wrap_llm",
@@ -121,6 +131,10 @@ __all__ = [
     "get_message_role",
     "is_system_message",
     "validate_text_size",
+    "validate_config_types",
+    "warn_fail_open_default",
+    "get_validation_executor",
+    "run_sync_with_timeout_async",
     # For backward compatibility
     "_sanitize_text",
 ]

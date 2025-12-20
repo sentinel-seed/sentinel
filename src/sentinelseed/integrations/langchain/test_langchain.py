@@ -643,6 +643,114 @@ class TestViolationRecord(unittest.TestCase):
 
 
 # ============================================================================
+# Configuration Validation Tests
+# ============================================================================
+
+class TestConfigurationError(unittest.TestCase):
+    """Tests for ConfigurationError exception."""
+
+    def test_init_stores_values(self):
+        """Test that constructor stores values."""
+        from sentinelseed.integrations.langchain.utils import ConfigurationError
+        error = ConfigurationError("max_text_size", "positive integer", "invalid")
+        self.assertEqual(error.param_name, "max_text_size")
+        self.assertEqual(error.expected, "positive integer")
+        self.assertEqual(error.got, "invalid")
+
+    def test_message_format(self):
+        """Test error message format."""
+        from sentinelseed.integrations.langchain.utils import ConfigurationError
+        error = ConfigurationError("timeout", "positive number", -1)
+        msg = str(error)
+        self.assertIn("timeout", msg)
+        self.assertIn("positive number", msg)
+        self.assertIn("int", msg)
+
+
+class TestValidateConfigTypes(unittest.TestCase):
+    """Tests for validate_config_types function."""
+
+    def test_valid_config(self):
+        """Test that valid config passes validation."""
+        from sentinelseed.integrations.langchain.utils import validate_config_types
+        # Should not raise
+        validate_config_types(
+            max_text_size=1000,
+            validation_timeout=30.0,
+            fail_closed=True,
+            max_violations=100,
+            streaming_validation_interval=500,
+        )
+
+    def test_none_values_allowed(self):
+        """Test that None values are skipped."""
+        from sentinelseed.integrations.langchain.utils import validate_config_types
+        # Should not raise
+        validate_config_types(
+            max_text_size=None,
+            validation_timeout=None,
+            fail_closed=None,
+        )
+
+    def test_invalid_max_text_size_type(self):
+        """Test that invalid max_text_size type raises error."""
+        from sentinelseed.integrations.langchain.utils import (
+            validate_config_types,
+            ConfigurationError,
+        )
+        with self.assertRaises(ConfigurationError) as ctx:
+            validate_config_types(max_text_size="invalid")
+        self.assertEqual(ctx.exception.param_name, "max_text_size")
+
+    def test_invalid_max_text_size_value(self):
+        """Test that negative max_text_size raises error."""
+        from sentinelseed.integrations.langchain.utils import (
+            validate_config_types,
+            ConfigurationError,
+        )
+        with self.assertRaises(ConfigurationError):
+            validate_config_types(max_text_size=-100)
+
+    def test_invalid_validation_timeout_type(self):
+        """Test that invalid validation_timeout type raises error."""
+        from sentinelseed.integrations.langchain.utils import (
+            validate_config_types,
+            ConfigurationError,
+        )
+        with self.assertRaises(ConfigurationError):
+            validate_config_types(validation_timeout="30s")
+
+    def test_invalid_fail_closed_type(self):
+        """Test that invalid fail_closed type raises error."""
+        from sentinelseed.integrations.langchain.utils import (
+            validate_config_types,
+            ConfigurationError,
+        )
+        with self.assertRaises(ConfigurationError):
+            validate_config_types(fail_closed="yes")
+
+    def test_callback_validates_config(self):
+        """Test that SentinelCallback validates config on init."""
+        from sentinelseed.integrations.langchain.utils import ConfigurationError
+        with self.assertRaises(ConfigurationError):
+            SentinelCallback(max_text_size="invalid")
+
+    def test_guard_validates_config(self):
+        """Test that SentinelGuard validates config on init."""
+        from sentinelseed.integrations.langchain.utils import ConfigurationError
+        mock_agent = Mock()
+        with self.assertRaises(ConfigurationError):
+            SentinelGuard(agent=mock_agent, validation_timeout=-5)
+
+    def test_chain_validates_config(self):
+        """Test that SentinelChain validates config on init."""
+        from sentinelseed.integrations.langchain.utils import ConfigurationError
+        mock_llm = Mock()
+        with self.assertRaises(ConfigurationError):
+            SentinelChain(llm=mock_llm, streaming_validation_interval=0)
+
+
+# ============================================================================
 # Async Tests
 # ============================================================================
 
@@ -671,6 +779,262 @@ class TestAsyncOperations(unittest.TestCase):
             asyncio.run(_test())
         except Exception:
             pass  # We're testing structure, not actual LLM calls
+
+
+# ============================================================================
+# ValidationExecutor Tests
+# ============================================================================
+
+class TestValidationExecutor(unittest.TestCase):
+    """Tests for ValidationExecutor singleton."""
+
+    def setUp(self):
+        """Reset the executor before each test."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        ValidationExecutor.reset_instance()
+
+    def tearDown(self):
+        """Clean up after each test."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        ValidationExecutor.reset_instance()
+
+    def test_singleton_pattern(self):
+        """Test that get_instance returns the same instance."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        instance1 = ValidationExecutor.get_instance()
+        instance2 = ValidationExecutor.get_instance()
+        self.assertIs(instance1, instance2)
+
+    def test_run_with_timeout_success(self):
+        """Test successful execution with timeout."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+
+        def add(a, b):
+            return a + b
+
+        executor = ValidationExecutor.get_instance()
+        result = executor.run_with_timeout(add, args=(2, 3), timeout=5.0)
+        self.assertEqual(result, 5)
+
+    def test_run_with_timeout_raises_on_timeout(self):
+        """Test that timeout raises ValidationTimeoutError."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        import time
+
+        def slow_function():
+            time.sleep(5)
+            return "done"
+
+        executor = ValidationExecutor.get_instance()
+        with self.assertRaises(ValidationTimeoutError):
+            executor.run_with_timeout(slow_function, timeout=0.1)
+
+    def test_shutdown_and_reset(self):
+        """Test shutdown and reset functionality."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+
+        executor = ValidationExecutor.get_instance()
+        executor.shutdown()
+
+        # After shutdown, operations should fail
+        with self.assertRaises(RuntimeError):
+            executor.run_with_timeout(lambda: 1, timeout=1.0)
+
+        # Reset should allow new instance
+        ValidationExecutor.reset_instance()
+        new_executor = ValidationExecutor.get_instance()
+        result = new_executor.run_with_timeout(lambda: 42, timeout=1.0)
+        self.assertEqual(result, 42)
+
+    def test_run_with_timeout_async_success(self):
+        """Test successful async execution with timeout."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+
+        def multiply(a, b):
+            return a * b
+
+        async def _test():
+            executor = ValidationExecutor.get_instance()
+            result = await executor.run_with_timeout_async(
+                multiply, args=(4, 5), timeout=5.0
+            )
+            return result
+
+        result = asyncio.run(_test())
+        self.assertEqual(result, 20)
+
+    def test_run_with_timeout_async_raises_on_timeout(self):
+        """Test that async timeout raises ValidationTimeoutError."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+
+        def slow_function():
+            time.sleep(5)
+            return "done"
+
+        async def _test():
+            executor = ValidationExecutor.get_instance()
+            return await executor.run_with_timeout_async(slow_function, timeout=0.1)
+
+        with self.assertRaises(ValidationTimeoutError):
+            asyncio.run(_test())
+
+    def test_run_with_timeout_async_shutdown_raises(self):
+        """Test that async execution after shutdown raises RuntimeError."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+
+        async def _test():
+            executor = ValidationExecutor.get_instance()
+            executor.shutdown()
+            return await executor.run_with_timeout_async(lambda: 1, timeout=1.0)
+
+        with self.assertRaises(RuntimeError):
+            asyncio.run(_test())
+
+
+# ============================================================================
+# Async Helper Tests
+# ============================================================================
+
+class TestAsyncHelpers(unittest.TestCase):
+    """Tests for async helper functions."""
+
+    def test_run_sync_with_timeout_async_success(self):
+        """Test successful async execution."""
+        from sentinelseed.integrations.langchain.utils import run_sync_with_timeout_async
+
+        def multiply(a, b):
+            return a * b
+
+        async def _test():
+            result = await run_sync_with_timeout_async(
+                multiply,
+                args=(3, 4),
+                timeout=5.0,
+            )
+            return result
+
+        result = asyncio.run(_test())
+        self.assertEqual(result, 12)
+
+    def test_run_sync_with_timeout_async_timeout(self):
+        """Test timeout handling in async helper."""
+        from sentinelseed.integrations.langchain.utils import run_sync_with_timeout_async
+        import time
+
+        def slow_function():
+            time.sleep(5)
+            return "done"
+
+        async def _test():
+            return await run_sync_with_timeout_async(
+                slow_function,
+                timeout=0.1,
+            )
+
+        with self.assertRaises(ValidationTimeoutError):
+            asyncio.run(_test())
+
+
+# ============================================================================
+# wrap_llm Tests
+# ============================================================================
+
+class TestWrapLLM(unittest.TestCase):
+    """Tests for wrap_llm function."""
+
+    def test_wrap_llm_does_not_modify_original(self):
+        """Test that wrap_llm does not modify the original LLM."""
+        mock_llm = Mock()
+        mock_llm.callbacks = []
+
+        # Store original callbacks reference
+        original_callbacks = mock_llm.callbacks
+
+        # Wrap the LLM
+        wrapped = wrap_llm(mock_llm, inject_seed=True, add_callback=True)
+
+        # Original should be unchanged
+        self.assertEqual(mock_llm.callbacks, original_callbacks)
+        self.assertEqual(len(mock_llm.callbacks), 0)
+
+    def test_wrap_llm_returns_wrapper(self):
+        """Test that wrap_llm returns a wrapper instance."""
+        mock_llm = Mock()
+        wrapped = wrap_llm(mock_llm, inject_seed=True)
+
+        # Should be a wrapper, not the original
+        self.assertIsNot(wrapped, mock_llm)
+        self.assertIn("Sentinel", str(type(wrapped).__name__))
+
+
+# ============================================================================
+# _SentinelLLMWrapper Tests
+# ============================================================================
+
+class TestSentinelLLMWrapper(unittest.TestCase):
+    """Tests for _SentinelLLMWrapper class."""
+
+    def test_repr(self):
+        """Test __repr__ method."""
+        mock_llm = Mock()
+        wrapped = wrap_llm(mock_llm, seed_level="minimal")
+
+        repr_str = repr(wrapped)
+        self.assertIn("_SentinelLLMWrapper", repr_str)
+        self.assertIn("minimal", repr_str)
+
+    def test_str(self):
+        """Test __str__ method."""
+        mock_llm = Mock()
+        wrapped = wrap_llm(mock_llm)
+
+        str_result = str(wrapped)
+        self.assertIn("SentinelWrapped", str_result)
+
+    def test_getattr_proxy(self):
+        """Test that unknown attributes are proxied to wrapped LLM."""
+        mock_llm = Mock()
+        mock_llm.custom_attribute = "test_value"
+
+        wrapped = wrap_llm(mock_llm)
+
+        self.assertEqual(wrapped.custom_attribute, "test_value")
+
+
+# ============================================================================
+# get_validation_executor Tests
+# ============================================================================
+
+class TestGetValidationExecutor(unittest.TestCase):
+    """Tests for get_validation_executor convenience function."""
+
+    def setUp(self):
+        """Reset the executor before each test."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        ValidationExecutor.reset_instance()
+
+    def tearDown(self):
+        """Clean up after each test."""
+        from sentinelseed.integrations.langchain.utils import ValidationExecutor
+        ValidationExecutor.reset_instance()
+
+    def test_returns_executor_instance(self):
+        """Test that get_validation_executor returns an executor."""
+        from sentinelseed.integrations.langchain.utils import (
+            get_validation_executor,
+            ValidationExecutor,
+        )
+
+        executor = get_validation_executor()
+        self.assertIsInstance(executor, ValidationExecutor)
+
+    def test_returns_same_instance(self):
+        """Test that get_validation_executor returns the same instance."""
+        from sentinelseed.integrations.langchain.utils import get_validation_executor
+
+        executor1 = get_validation_executor()
+        executor2 = get_validation_executor()
+        self.assertIs(executor1, executor2)
 
 
 if __name__ == "__main__":

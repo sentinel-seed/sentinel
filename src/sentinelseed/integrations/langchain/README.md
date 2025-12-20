@@ -432,7 +432,84 @@ except TextTooLargeError as e:
 # ValidationTimeoutError includes timeout info
 except ValidationTimeoutError as e:
     print(f"Timeout after {e.timeout}s on {e.operation}")
+
+# ConfigurationError for invalid parameters
+from sentinelseed.integrations.langchain import ConfigurationError
+
+try:
+    callback = SentinelCallback(max_text_size="invalid")
+except ConfigurationError as e:
+    print(f"Invalid param '{e.param_name}': expected {e.expected}")
 ```
+
+## Security Considerations
+
+### Fail-Open vs Fail-Closed
+
+> **IMPORTANT SECURITY DECISION**
+
+By default, all components operate in **fail-open** mode (`fail_closed=False`). This means:
+
+- If validation times out → content is **allowed through**
+- If validation throws an exception → content is **allowed through**
+- If the executor is unavailable → content is **allowed through**
+
+This is a deliberate trade-off prioritizing **availability over security**.
+
+For security-critical applications, enable `fail_closed=True`:
+
+```python
+# Fail-closed: block on any validation error
+guard = SentinelGuard(agent=agent, fail_closed=True)
+chain = SentinelChain(llm=llm, fail_closed=True)
+callback = SentinelCallback(fail_closed=True)
+```
+
+### Streaming Exposure Window
+
+Streaming validation occurs every `streaming_validation_interval` characters (default: 500). This means:
+
+- Content in the first 0-499 characters may be sent to the client before the first validation
+- Harmful content appearing mid-stream may be partially sent before detection
+
+For maximum security, consider:
+1. Reducing the interval: `streaming_validation_interval=100`
+2. Using non-streaming mode for sensitive applications
+3. Combining with client-side filtering
+
+### wrap_llm Behavior
+
+The `wrap_llm()` function does **NOT** modify the original LLM:
+
+```python
+llm = ChatOpenAI()
+safe_llm = wrap_llm(llm)
+
+# Original LLM is unchanged - can still be used without safety
+response = llm.invoke("...")  # No safety checks
+safe_response = safe_llm.invoke("...")  # With safety checks
+```
+
+This is intentional to avoid unexpected side effects when the same LLM is used elsewhere.
+
+## Performance Notes
+
+### Shared Executor
+
+All validation operations use a shared `ValidationExecutor` singleton instead of creating new thread pools per call:
+
+- Reduces thread creation overhead
+- Limits maximum concurrent validation threads
+- Automatically cleaned up on process exit
+
+### Async Operations
+
+Async methods (`ainvoke`, `astream`, `abatch`) use the shared `ValidationExecutor` for non-blocking validation:
+
+- Does not block the event loop
+- Uses the same controlled thread pool as sync operations
+- Proper timeout handling via `asyncio.wrap_future()` and `asyncio.wait_for()`
+- Thread pool size is bounded (default: 4 workers)
 
 ## Limitations
 
@@ -440,6 +517,25 @@ except ValidationTimeoutError as e:
 - **Timeout**: Default 30s for validation. Configure with `validation_timeout`.
 - **Callback behavior**: Callbacks MONITOR but do NOT BLOCK execution. Use `SentinelGuard` or `SentinelChain` for blocking.
 - **Streaming validation**: Validated incrementally every N characters (configurable).
+- **Fail-open default**: Validation errors allow content through by default. Use `fail_closed=True` for stricter security.
+
+## Technical Notes
+
+### Configuration Validation
+
+All components validate configuration parameters at initialization:
+
+- `max_text_size`: Must be a positive integer
+- `validation_timeout`: Must be a positive number
+- `fail_closed`: Must be a boolean
+- `max_violations`: Must be a positive integer
+- `streaming_validation_interval`: Must be a positive integer
+
+Invalid parameters raise `ConfigurationError` with details about the expected type.
+
+### Fail-Open Warning
+
+When `fail_closed=False` (default), a debug-level warning is logged at initialization to alert about the fail-open behavior. This helps users understand the security implications without being intrusive.
 
 ## Links
 

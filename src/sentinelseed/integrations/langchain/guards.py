@@ -3,10 +3,13 @@ LangChain guard wrappers for Sentinel safety validation.
 
 Provides:
 - SentinelGuard: Wrap agents/chains with safety validation
+
+Performance Notes:
+- Uses shared ValidationExecutor for sync operations
+- Uses asyncio.to_thread for async operations (non-blocking)
 """
 
 from typing import Any, Dict, List, Optional, Union
-import concurrent.futures
 
 from sentinelseed import Sentinel, SeedLevel
 
@@ -17,8 +20,13 @@ from .utils import (
     SentinelLogger,
     TextTooLargeError,
     ValidationTimeoutError,
+    ConfigurationError,
     get_logger,
     validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
+    get_validation_executor,
+    run_sync_with_timeout_async,
 )
 
 
@@ -73,7 +81,17 @@ class SentinelGuard:
             max_text_size: Maximum text size in bytes (default 50KB)
             validation_timeout: Timeout for validation in seconds (default 30s)
             fail_closed: If True, block on validation errors
+
+        Raises:
+            ConfigurationError: If configuration parameters have invalid types
         """
+        # Validate configuration types before initialization
+        validate_config_types(
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+            fail_closed=fail_closed,
+        )
+
         self.agent = agent
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.seed_level = seed_level
@@ -86,6 +104,10 @@ class SentinelGuard:
         self._max_text_size = max_text_size
         self._validation_timeout = validation_timeout
         self._fail_closed = fail_closed
+
+        # Log warning about fail-open default behavior
+        if not fail_closed:
+            warn_fail_open_default(self._logger, "SentinelGuard")
 
     def _validate_input(self, text: str) -> Optional[Dict[str, Any]]:
         """
@@ -113,23 +135,26 @@ class SentinelGuard:
             return None
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate_request, text)
-                try:
-                    check = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        return {
-                            "output": f"Request blocked by Sentinel: Validation timeout",
-                            "sentinel_blocked": True,
-                            "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
-                        }
-                    else:
-                        self._logger.warning(
-                            "[SENTINEL] Validation timeout, allowing (fail-open)"
-                        )
-                        return None
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                check = executor.run_with_timeout(
+                    self.sentinel.validate_request,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": f"Request blocked by Sentinel: Validation timeout",
+                        "sentinel_blocked": True,
+                        "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
 
             if not check["should_proceed"] and self.block_unsafe:
                 return {
@@ -137,6 +162,8 @@ class SentinelGuard:
                     "sentinel_blocked": True,
                     "sentinel_reason": check["concerns"],
                 }
+        except ValidationTimeoutError:
+            raise
         except Exception as e:
             self._logger.error(f"Error validating input: {e}")
             if self.block_unsafe and self._fail_closed:
@@ -176,24 +203,27 @@ class SentinelGuard:
             return None
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate, text)
-                try:
-                    is_safe, violations = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        return {
-                            "output": f"Response blocked by Sentinel: Validation timeout",
-                            "sentinel_blocked": True,
-                            "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
-                            "original_output": original[:200] if original else None,
-                        }
-                    else:
-                        self._logger.warning(
-                            "[SENTINEL] Validation timeout, allowing (fail-open)"
-                        )
-                        return None
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                is_safe, violations = executor.run_with_timeout(
+                    self.sentinel.validate,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": f"Response blocked by Sentinel: Validation timeout",
+                        "sentinel_blocked": True,
+                        "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                        "original_output": original[:200] if original else None,
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
 
             if not is_safe and self.block_unsafe:
                 return {
@@ -202,6 +232,148 @@ class SentinelGuard:
                     "sentinel_reason": violations,
                     "original_output": original[:200] if original else None,
                 }
+        except ValidationTimeoutError:
+            raise
+        except Exception as e:
+            self._logger.error(f"Error validating output: {e}")
+            if self.block_unsafe and self._fail_closed:
+                return {
+                    "output": "Response blocked: validation error",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [str(e)],
+                }
+
+        return None
+
+    async def _validate_input_async(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Async version of _validate_input.
+
+        Uses asyncio.to_thread for non-blocking validation without
+        blocking the event loop.
+
+        Args:
+            text: Input text to validate
+
+        Returns:
+            Block response dict if unsafe, None if safe
+        """
+        if not self.validate_input:
+            return None
+
+        # Validate text size first (sync, very fast)
+        try:
+            validate_text_size(text, self._max_text_size, "input")
+        except TextTooLargeError as e:
+            if self.block_unsafe:
+                return {
+                    "output": f"Request blocked by Sentinel: Text too large ({e.size:,} bytes)",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [f"Text too large: {e}"],
+                }
+            return None
+
+        try:
+            # Use async helper for non-blocking validation
+            try:
+                check = await run_sync_with_timeout_async(
+                    self.sentinel.validate_request,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": f"Request blocked by Sentinel: Validation timeout",
+                        "sentinel_blocked": True,
+                        "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
+
+            if not check["should_proceed"] and self.block_unsafe:
+                return {
+                    "output": f"Request blocked by Sentinel: {check['concerns']}",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": check["concerns"],
+                }
+        except ValidationTimeoutError:
+            raise
+        except Exception as e:
+            self._logger.error(f"Error validating input: {e}")
+            if self.block_unsafe and self._fail_closed:
+                return {
+                    "output": "Request blocked: validation error",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [str(e)],
+                }
+
+        return None
+
+    async def _validate_output_async(self, text: str, original: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Async version of _validate_output.
+
+        Uses asyncio.to_thread for non-blocking validation without
+        blocking the event loop.
+
+        Args:
+            text: Output text to validate
+            original: Original output for reference
+
+        Returns:
+            Block response dict if unsafe, None if safe
+        """
+        if not self.validate_output:
+            return None
+
+        # Validate text size first (sync, very fast)
+        try:
+            validate_text_size(text, self._max_text_size, "output")
+        except TextTooLargeError as e:
+            if self.block_unsafe:
+                return {
+                    "output": f"Response blocked by Sentinel: Text too large ({e.size:,} bytes)",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": [f"Text too large: {e}"],
+                    "original_output": original[:200] if original else None,
+                }
+            return None
+
+        try:
+            # Use async helper for non-blocking validation
+            try:
+                is_safe, violations = await run_sync_with_timeout_async(
+                    self.sentinel.validate,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": f"Response blocked by Sentinel: Validation timeout",
+                        "sentinel_blocked": True,
+                        "sentinel_reason": [f"Validation timed out after {self._validation_timeout}s"],
+                        "original_output": original[:200] if original else None,
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
+
+            if not is_safe and self.block_unsafe:
+                return {
+                    "output": f"Response blocked by Sentinel: {violations}",
+                    "sentinel_blocked": True,
+                    "sentinel_reason": violations,
+                    "original_output": original[:200] if original else None,
+                }
+        except ValidationTimeoutError:
+            raise
         except Exception as e:
             self._logger.error(f"Error validating output: {e}")
             if self.block_unsafe and self._fail_closed:
@@ -311,13 +483,18 @@ class SentinelGuard:
         input_dict: Union[Dict[str, Any], str],
         **kwargs: Any
     ) -> Dict[str, Any]:
-        """Async version of invoke."""
+        """
+        Async version of invoke.
+
+        Uses non-blocking async validation to avoid blocking the event loop.
+        """
         if isinstance(input_dict, str):
             input_dict = {"input": input_dict}
 
         input_text = input_dict.get("input", str(input_dict))
 
-        block_response = self._validate_input(input_text)
+        # Use async validation (non-blocking)
+        block_response = await self._validate_input_async(input_text)
         if block_response:
             return block_response
 
@@ -332,7 +509,8 @@ class SentinelGuard:
         else:
             output_text = str(result)
 
-        block_response = self._validate_output(output_text, output_text)
+        # Use async validation (non-blocking)
+        block_response = await self._validate_output_async(output_text, output_text)
         if block_response:
             return block_response
 

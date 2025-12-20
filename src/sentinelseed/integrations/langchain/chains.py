@@ -5,11 +5,14 @@ Provides:
 - SentinelChain: Chain wrapper with safety validation
 - inject_seed: Add seed to message lists
 - wrap_llm: Wrap LLMs with safety features
+
+Performance Notes:
+- Uses shared ValidationExecutor for sync operations
+- Uses asyncio.to_thread for async operations (non-blocking)
 """
 
 from typing import Any, Dict, Generator, List, Optional, Union, AsyncGenerator
-import threading
-import concurrent.futures
+import copy
 
 from sentinelseed import Sentinel, SeedLevel
 
@@ -24,11 +27,16 @@ from .utils import (
     SentinelLogger,
     TextTooLargeError,
     ValidationTimeoutError,
+    ConfigurationError,
     get_logger,
     extract_content,
     is_system_message,
     require_langchain,
     validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
+    get_validation_executor,
+    run_sync_with_timeout_async,
 )
 from .callbacks import SentinelCallback
 
@@ -88,7 +96,16 @@ class SentinelChain:
 
         Raises:
             ValueError: If neither llm nor chain is provided
+            ConfigurationError: If configuration parameters have invalid types
         """
+        # Validate configuration types before initialization
+        validate_config_types(
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+            fail_closed=fail_closed,
+            streaming_validation_interval=streaming_validation_interval,
+        )
+
         if llm is None and chain is None:
             raise ValueError("Either 'llm' or 'chain' must be provided")
 
@@ -105,6 +122,10 @@ class SentinelChain:
         self._validation_timeout = validation_timeout
         self._fail_closed = fail_closed
         self._streaming_validation_interval = streaming_validation_interval
+
+        # Log warning about fail-open default behavior
+        if not fail_closed:
+            warn_fail_open_default(self._logger, "SentinelChain")
 
     def _build_messages(self, input_text: str) -> List[Any]:
         """Build message list with optional seed injection."""
@@ -151,24 +172,27 @@ class SentinelChain:
             }
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate_request, text)
-                try:
-                    check = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        return {
-                            "output": None,
-                            "blocked": True,
-                            "blocked_at": "input",
-                            "reason": [f"Validation timed out after {self._validation_timeout}s"]
-                        }
-                    else:
-                        self._logger.warning(
-                            "[SENTINEL] Validation timeout, allowing (fail-open)"
-                        )
-                        return None
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                check = executor.run_with_timeout(
+                    self.sentinel.validate_request,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": None,
+                        "blocked": True,
+                        "blocked_at": "input",
+                        "reason": [f"Validation timed out after {self._validation_timeout}s"]
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
 
             if not check["should_proceed"]:
                 return {
@@ -177,6 +201,8 @@ class SentinelChain:
                     "blocked_at": "input",
                     "reason": check["concerns"]
                 }
+        except ValidationTimeoutError:
+            raise
         except Exception as e:
             self._logger.error(f"Error validating input: {e}")
             if self._fail_closed:
@@ -206,24 +232,27 @@ class SentinelChain:
             }
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate, output)
-                try:
-                    is_safe, violations = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        return {
-                            "output": output,
-                            "blocked": True,
-                            "blocked_at": "output",
-                            "violations": [f"Validation timed out after {self._validation_timeout}s"]
-                        }
-                    else:
-                        self._logger.warning(
-                            "[SENTINEL] Validation timeout, allowing (fail-open)"
-                        )
-                        return None
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                is_safe, violations = executor.run_with_timeout(
+                    self.sentinel.validate,
+                    args=(output,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": output,
+                        "blocked": True,
+                        "blocked_at": "output",
+                        "violations": [f"Validation timed out after {self._validation_timeout}s"]
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
 
             if not is_safe:
                 return {
@@ -232,6 +261,134 @@ class SentinelChain:
                     "blocked_at": "output",
                     "violations": violations
                 }
+        except ValidationTimeoutError:
+            raise
+        except Exception as e:
+            self._logger.error(f"Error validating output: {e}")
+            if self._fail_closed:
+                return {
+                    "output": output,
+                    "blocked": True,
+                    "blocked_at": "output",
+                    "violations": [f"Validation error: {e}"]
+                }
+
+        return None
+
+    async def _validate_input_async(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Async version of _validate_input_safe.
+
+        Uses asyncio.to_thread for non-blocking validation.
+        """
+        if not self.validate_input:
+            return None
+
+        # Validate text size first (sync, very fast)
+        try:
+            validate_text_size(text, self._max_text_size, "input")
+        except TextTooLargeError as e:
+            return {
+                "output": None,
+                "blocked": True,
+                "blocked_at": "input",
+                "reason": [f"Text too large: {e}"]
+            }
+
+        try:
+            # Use async helper for non-blocking validation
+            try:
+                check = await run_sync_with_timeout_async(
+                    self.sentinel.validate_request,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": None,
+                        "blocked": True,
+                        "blocked_at": "input",
+                        "reason": [f"Validation timed out after {self._validation_timeout}s"]
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
+
+            if not check["should_proceed"]:
+                return {
+                    "output": None,
+                    "blocked": True,
+                    "blocked_at": "input",
+                    "reason": check["concerns"]
+                }
+        except ValidationTimeoutError:
+            raise
+        except Exception as e:
+            self._logger.error(f"Error validating input: {e}")
+            if self._fail_closed:
+                return {
+                    "output": None,
+                    "blocked": True,
+                    "blocked_at": "input",
+                    "reason": [f"Validation error: {e}"]
+                }
+
+        return None
+
+    async def _validate_output_async(self, output: str) -> Optional[Dict[str, Any]]:
+        """
+        Async version of _validate_output_safe.
+
+        Uses asyncio.to_thread for non-blocking validation.
+        """
+        if not self.validate_output:
+            return None
+
+        # Validate text size first (sync, very fast)
+        try:
+            validate_text_size(output, self._max_text_size, "output")
+        except TextTooLargeError as e:
+            return {
+                "output": output,
+                "blocked": True,
+                "blocked_at": "output",
+                "violations": [f"Text too large: {e}"]
+            }
+
+        try:
+            # Use async helper for non-blocking validation
+            try:
+                is_safe, violations = await run_sync_with_timeout_async(
+                    self.sentinel.validate,
+                    args=(output,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    return {
+                        "output": output,
+                        "blocked": True,
+                        "blocked_at": "output",
+                        "violations": [f"Validation timed out after {self._validation_timeout}s"]
+                    }
+                else:
+                    self._logger.warning(
+                        "[SENTINEL] Validation timeout, allowing (fail-open)"
+                    )
+                    return None
+
+            if not is_safe:
+                return {
+                    "output": output,
+                    "blocked": True,
+                    "blocked_at": "output",
+                    "violations": violations
+                }
+        except ValidationTimeoutError:
+            raise
         except Exception as e:
             self._logger.error(f"Error validating output: {e}")
             if self._fail_closed:
@@ -302,13 +459,18 @@ class SentinelChain:
         input_data: Union[str, Dict[str, Any]],
         **kwargs: Any
     ) -> Dict[str, Any]:
-        """Async version of invoke."""
+        """
+        Async version of invoke.
+
+        Uses non-blocking async validation to avoid blocking the event loop.
+        """
         if isinstance(input_data, str):
             input_text = input_data
         else:
             input_text = input_data.get("input", str(input_data))
 
-        block_result = self._validate_input_safe(input_text)
+        # Use async validation (non-blocking)
+        block_result = await self._validate_input_async(input_text)
         if block_result:
             return block_result
 
@@ -327,7 +489,8 @@ class SentinelChain:
 
         output = self._extract_output(response)
 
-        block_result = self._validate_output_safe(output)
+        # Use async validation (non-blocking)
+        block_result = await self._validate_output_async(output)
         if block_result:
             return block_result
 
@@ -644,6 +807,10 @@ def wrap_llm(
     1. Inject the Sentinel seed into system prompts
     2. Add a SentinelCallback for monitoring
 
+    IMPORTANT: This function does NOT modify the original LLM. It creates
+    a wrapper that delegates to the original. The original LLM can still
+    be used independently without Sentinel safety features.
+
     Args:
         llm: LangChain LLM instance to wrap
         sentinel: Sentinel instance (creates default if None)
@@ -655,7 +822,7 @@ def wrap_llm(
         on_violation: Action on violation
 
     Returns:
-        Wrapped LLM with Sentinel safety
+        Wrapped LLM with Sentinel safety (original LLM is not modified)
 
     Example:
         from langchain_openai import ChatOpenAI
@@ -664,10 +831,14 @@ def wrap_llm(
         llm = ChatOpenAI(model="gpt-4o")
         safe_llm = wrap_llm(llm)
         response = safe_llm.invoke("Help me with something")
+
+        # Original LLM is unchanged
+        unsafe_response = llm.invoke("Same message, no safety")
     """
     sentinel = sentinel or Sentinel(seed_level=seed_level)
 
-    # Add callback if requested
+    # Create callback if requested
+    callback = None
     if add_callback:
         callback = SentinelCallback(
             sentinel=sentinel,
@@ -675,13 +846,14 @@ def wrap_llm(
             validate_input=validate_input,
             validate_output=validate_output,
         )
-        existing_callbacks = getattr(llm, 'callbacks', None) or []
-        if hasattr(llm, 'callbacks'):
-            llm.callbacks = list(existing_callbacks) + [callback]
 
-    # Create wrapper class that injects seed
+    # Create wrapper class that injects seed (does not modify original)
     if inject_seed:
-        return _SentinelLLMWrapper(llm, sentinel)
+        return _SentinelLLMWrapper(llm, sentinel, callback=callback)
+
+    # If not injecting seed but adding callback, create a minimal wrapper
+    if add_callback and callback:
+        return _SentinelLLMWrapper(llm, sentinel, callback=callback, inject_seed=False)
 
     return llm
 
@@ -691,21 +863,32 @@ class _SentinelLLMWrapper:
     Internal wrapper class that injects Sentinel seed into LLM calls.
 
     Supports invoke, ainvoke, stream, astream, batch, and abatch.
+
+    IMPORTANT: This wrapper does NOT modify the original LLM. Callbacks are
+    passed per-call via kwargs, not set on the original LLM instance.
     """
 
-    def __init__(self, llm: Any, sentinel: Sentinel):
+    def __init__(
+        self,
+        llm: Any,
+        sentinel: Sentinel,
+        callback: Optional[SentinelCallback] = None,
+        inject_seed: bool = True,
+    ):
         self._llm = llm
         self._sentinel = sentinel
-        self._seed = sentinel.get_seed()
+        self._seed = sentinel.get_seed() if inject_seed else None
+        self._callback = callback
+        self._inject_seed_enabled = inject_seed
 
-        # Copy attributes from wrapped LLM for compatibility
-        for attr in ['model_name', 'temperature', 'max_tokens', 'callbacks']:
+        # Copy common attributes from wrapped LLM for compatibility
+        for attr in ['model_name', 'temperature', 'max_tokens']:
             if hasattr(llm, attr):
                 setattr(self, attr, getattr(llm, attr))
 
     def _inject_seed(self, messages: Any) -> Any:
-        """Inject seed into messages."""
-        if not messages:
+        """Inject seed into messages if enabled."""
+        if not self._inject_seed_enabled or not messages:
             return messages
 
         if isinstance(messages, list):
@@ -713,39 +896,75 @@ class _SentinelLLMWrapper:
 
         return messages
 
+    def _get_callbacks(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get kwargs with callback added if configured.
+
+        Does NOT modify the original LLM - callbacks are passed per-call.
+        """
+        if not self._callback:
+            return kwargs
+
+        # Get existing callbacks from kwargs, don't modify original
+        existing = kwargs.get('callbacks', []) or []
+        if not isinstance(existing, list):
+            existing = [existing]
+
+        # Create new kwargs with our callback added
+        new_kwargs = dict(kwargs)
+        new_kwargs['callbacks'] = list(existing) + [self._callback]
+        return new_kwargs
+
     def invoke(self, messages: Any, **kwargs: Any) -> Any:
-        """Invoke LLM with seed injection."""
+        """Invoke LLM with seed injection and optional callback."""
         messages = self._inject_seed(messages)
+        kwargs = self._get_callbacks(kwargs)
         return self._llm.invoke(messages, **kwargs)
 
     async def ainvoke(self, messages: Any, **kwargs: Any) -> Any:
-        """Async invoke LLM with seed injection."""
+        """Async invoke LLM with seed injection and optional callback."""
         messages = self._inject_seed(messages)
+        kwargs = self._get_callbacks(kwargs)
         return await self._llm.ainvoke(messages, **kwargs)
 
     def stream(self, messages: Any, **kwargs: Any) -> Generator:
-        """Stream LLM with seed injection."""
+        """Stream LLM with seed injection and optional callback."""
         messages = self._inject_seed(messages)
+        kwargs = self._get_callbacks(kwargs)
         return self._llm.stream(messages, **kwargs)
 
     async def astream(self, messages: Any, **kwargs: Any) -> AsyncGenerator:
-        """Async stream LLM with seed injection."""
+        """Async stream LLM with seed injection and optional callback."""
         messages = self._inject_seed(messages)
+        kwargs = self._get_callbacks(kwargs)
         return self._llm.astream(messages, **kwargs)
 
     def batch(self, messages_list: List[Any], **kwargs: Any) -> List[Any]:
-        """Batch invoke with seed injection."""
+        """Batch invoke with seed injection and optional callback."""
         injected = [self._inject_seed(m) for m in messages_list]
+        kwargs = self._get_callbacks(kwargs)
         return self._llm.batch(injected, **kwargs)
 
     async def abatch(self, messages_list: List[Any], **kwargs: Any) -> List[Any]:
-        """Async batch invoke with seed injection."""
+        """Async batch invoke with seed injection and optional callback."""
         injected = [self._inject_seed(m) for m in messages_list]
+        kwargs = self._get_callbacks(kwargs)
         return await self._llm.abatch(injected, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
         """Proxy unknown attributes to wrapped LLM."""
         return getattr(self._llm, name)
+
+    def __repr__(self) -> str:
+        """Return detailed representation for debugging."""
+        llm_repr = repr(self._llm)
+        seed_level = self._sentinel.seed_level.value if self._sentinel else "none"
+        return f"_SentinelLLMWrapper(llm={llm_repr}, seed_level={seed_level}, inject_seed={self._inject_seed_enabled})"
+
+    def __str__(self) -> str:
+        """Return human-readable string representation."""
+        llm_str = str(self._llm)
+        return f"SentinelWrapped({llm_str})"
 
 
 __all__ = [

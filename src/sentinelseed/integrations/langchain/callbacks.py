@@ -4,11 +4,14 @@ LangChain callback handlers for Sentinel safety monitoring.
 Provides:
 - SentinelCallback: Callback handler to monitor LLM calls
 - StreamingBuffer: Buffer for accumulating streaming tokens
+
+Performance Notes:
+- Uses shared ValidationExecutor to avoid per-call thread pool overhead
+- Thread-safe for concurrent use across multiple LLM calls
 """
 
 from typing import Any, Dict, List, Optional, Union
 import threading
-import concurrent.futures
 
 from sentinelseed import Sentinel, SeedLevel
 
@@ -25,11 +28,15 @@ from .utils import (
     ViolationRecord,
     TextTooLargeError,
     ValidationTimeoutError,
+    ConfigurationError,
     get_logger,
     sanitize_text,
     extract_content,
     require_langchain,
     validate_text_size,
+    validate_config_types,
+    warn_fail_open_default,
+    get_validation_executor,
 )
 
 
@@ -167,7 +174,18 @@ class SentinelCallback(BaseCallbackHandler):
             max_text_size: Maximum text size in bytes (default 50KB)
             validation_timeout: Timeout for validation in seconds (default 30s)
             fail_closed: If True, block on validation errors; if False, allow
+
+        Raises:
+            ConfigurationError: If configuration parameters have invalid types
         """
+        # Validate configuration types before initialization
+        validate_config_types(
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+            fail_closed=fail_closed,
+            max_violations=max_violations,
+        )
+
         if LANGCHAIN_AVAILABLE and BaseCallbackHandler is not object:
             super().__init__()
 
@@ -183,6 +201,10 @@ class SentinelCallback(BaseCallbackHandler):
         self._max_text_size = max_text_size
         self._validation_timeout = validation_timeout
         self._fail_closed = fail_closed
+
+        # Log warning about fail-open default behavior
+        if not fail_closed:
+            warn_fail_open_default(self._logger, "SentinelCallback")
 
         # Thread-safe storage
         self._violations_log = ThreadSafeDeque(maxlen=max_violations)
@@ -379,24 +401,27 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate_request, text)
-                try:
-                    result = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        self._handle_violation(
-                            stage=stage,
-                            text=text,
-                            concerns=[f"Validation timed out after {self._validation_timeout}s"],
-                            risk_level="high"
-                        )
-                    else:
-                        self._logger.warning(
-                            f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
-                        )
-                    return
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                result = executor.run_with_timeout(
+                    self.sentinel.validate_request,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    self._handle_violation(
+                        stage=stage,
+                        text=text,
+                        concerns=[f"Validation timed out after {self._validation_timeout}s"],
+                        risk_level="high"
+                    )
+                else:
+                    self._logger.warning(
+                        f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
+                    )
+                return
 
             # Log validation
             self._validation_log.append(ValidationResult(
@@ -418,6 +443,9 @@ class SentinelCallback(BaseCallbackHandler):
 
         except SentinelViolationError:
             # Re-raise violation errors (for on_violation="raise")
+            raise
+        except ValidationTimeoutError:
+            # Already handled above, but catch here if re-raised
             raise
         except Exception as e:
             self._logger.error(f"Error validating input at {stage}: {e}")
@@ -447,24 +475,27 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Run validation with timeout
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.sentinel.validate, text)
-                try:
-                    is_safe, violations = future.result(timeout=self._validation_timeout)
-                except concurrent.futures.TimeoutError:
-                    if self._fail_closed:
-                        self._handle_violation(
-                            stage=stage,
-                            text=text,
-                            concerns=[f"Validation timed out after {self._validation_timeout}s"],
-                            risk_level="high"
-                        )
-                    else:
-                        self._logger.warning(
-                            f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
-                        )
-                    return
+            # Use shared executor for validation with timeout
+            executor = get_validation_executor()
+            try:
+                is_safe, violations = executor.run_with_timeout(
+                    self.sentinel.validate,
+                    args=(text,),
+                    timeout=self._validation_timeout,
+                )
+            except ValidationTimeoutError:
+                if self._fail_closed:
+                    self._handle_violation(
+                        stage=stage,
+                        text=text,
+                        concerns=[f"Validation timed out after {self._validation_timeout}s"],
+                        risk_level="high"
+                    )
+                else:
+                    self._logger.warning(
+                        f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
+                    )
+                return
 
             # Log validation
             self._validation_log.append(ValidationResult(
@@ -486,6 +517,9 @@ class SentinelCallback(BaseCallbackHandler):
 
         except SentinelViolationError:
             # Re-raise violation errors (for on_violation="raise")
+            raise
+        except ValidationTimeoutError:
+            # Already handled above, but catch here if re-raised
             raise
         except Exception as e:
             self._logger.error(f"Error validating output at {stage}: {e}")
