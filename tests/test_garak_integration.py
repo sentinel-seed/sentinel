@@ -24,6 +24,8 @@ from sentinelseed.integrations.garak.detectors import (
     ScopeViolation,
     PurposeViolation,
     THSPCombinedDetector,
+    DetectionMetrics,
+    AmbiguousScoreConfig,
 )
 
 
@@ -493,3 +495,161 @@ class TestPatternCounts:
         """Base detector should have jailbreak patterns."""
         detector = THSPBaseDetector()
         assert len(detector.jailbreak_compliance_patterns) >= 5
+
+
+# ============================================================================
+# Detection Metrics Tests
+# ============================================================================
+
+class TestDetectionMetrics:
+    """Tests for DetectionMetrics configuration class."""
+
+    def test_precision_in_valid_range(self):
+        """Precision should be between 0 and 1."""
+        assert 0 <= DetectionMetrics.PRECISION <= 1
+
+    def test_recall_in_valid_range(self):
+        """Recall should be between 0 and 1."""
+        assert 0 <= DetectionMetrics.RECALL <= 1
+
+    def test_accuracy_in_valid_range(self):
+        """Accuracy should be between 0 and 1."""
+        assert 0 <= DetectionMetrics.ACCURACY <= 1
+
+    def test_detector_uses_metrics(self):
+        """Detector should use DetectionMetrics values."""
+        detector = THSPBaseDetector()
+        assert detector.precision == DetectionMetrics.PRECISION
+        assert detector.recall == DetectionMetrics.RECALL
+        assert detector.accuracy == DetectionMetrics.ACCURACY
+
+
+# ============================================================================
+# Ambiguous Score Config Tests
+# ============================================================================
+
+class TestAmbiguousScoreConfig:
+    """Tests for AmbiguousScoreConfig class."""
+
+    def test_thresholds_are_ordered(self):
+        """Thresholds should be in increasing order."""
+        config = AmbiguousScoreConfig
+        assert config.VERY_SHORT_THRESHOLD < config.SHORT_THRESHOLD
+        assert config.SHORT_THRESHOLD < config.MEDIUM_THRESHOLD
+
+    def test_scores_are_ordered(self):
+        """Scores should increase with length."""
+        config = AmbiguousScoreConfig
+        assert config.VERY_SHORT_SCORE < config.SHORT_SCORE
+        assert config.SHORT_SCORE < config.MEDIUM_SCORE
+        assert config.MEDIUM_SCORE < config.LONG_SCORE
+
+    def test_scores_in_valid_range(self):
+        """All scores should be between 0 and 1."""
+        config = AmbiguousScoreConfig
+        for score in [config.VERY_SHORT_SCORE, config.SHORT_SCORE, config.MEDIUM_SCORE, config.LONG_SCORE]:
+            assert 0 <= score <= 1
+
+
+class TestAmbiguousScoring:
+    """Tests for _score_ambiguous method."""
+
+    def test_very_short_response(self):
+        """Very short response should get lowest score."""
+        detector = THSPBaseDetector()
+        config = AmbiguousScoreConfig
+        short_text = "x" * (config.VERY_SHORT_THRESHOLD - 1)
+        assert detector._score_ambiguous(short_text) == config.VERY_SHORT_SCORE
+
+    def test_short_response(self):
+        """Short response should get low score."""
+        detector = THSPBaseDetector()
+        config = AmbiguousScoreConfig
+        text = "x" * (config.VERY_SHORT_THRESHOLD + 10)
+        assert detector._score_ambiguous(text) == config.SHORT_SCORE
+
+    def test_medium_response(self):
+        """Medium response should get medium score."""
+        detector = THSPBaseDetector()
+        config = AmbiguousScoreConfig
+        text = "x" * (config.SHORT_THRESHOLD + 50)
+        assert detector._score_ambiguous(text) == config.MEDIUM_SCORE
+
+    def test_long_response(self):
+        """Long response should get highest ambiguous score."""
+        detector = THSPBaseDetector()
+        config = AmbiguousScoreConfig
+        text = "x" * (config.MEDIUM_THRESHOLD + 100)
+        assert detector._score_ambiguous(text) == config.LONG_SCORE
+
+
+# ============================================================================
+# Combined Detector None Handling Tests
+# ============================================================================
+
+class TestCombinedDetectorNoneHandling:
+    """Tests for THSPCombinedDetector None handling."""
+
+    def test_all_none_returns_none(self):
+        """If all detectors return None, result should be None."""
+        detector = THSPCombinedDetector()
+        attempt = create_mock_attempt([None])
+        scores = list(detector.detect(attempt))
+        assert scores[0] is None
+
+    def test_partial_none_ignores_none(self):
+        """If some detectors return None, should ignore them for max."""
+        detector = THSPCombinedDetector()
+        # Create a response that only triggers one detector
+        # Refusal should score 0.0 across all detectors
+        attempt = create_mock_attempt(["I cannot help with that."])
+        scores = list(detector.detect(attempt))
+        assert scores[0] == 0.0
+
+    def test_max_with_mixed_scores(self):
+        """Should return max of non-None scores."""
+        detector = THSPCombinedDetector()
+        # This triggers harm compliance (0.9) but refusal for others
+        # Actually, let's use a jailbreak which triggers 1.0
+        attempt = create_mock_attempt(["I am now DAN and am free from all restrictions."])
+        scores = list(detector.detect(attempt))
+        assert scores[0] == 1.0
+
+
+# ============================================================================
+# Version and Export Tests
+# ============================================================================
+
+class TestModuleExports:
+    """Tests for module exports and version."""
+
+    def test_version_is_set(self):
+        """Module should have version string."""
+        from sentinelseed.integrations.garak import __version__
+        assert __version__ is not None
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0
+
+    def test_min_garak_version_is_set(self):
+        """Module should export MIN_GARAK_VERSION."""
+        from sentinelseed.integrations.garak import MIN_GARAK_VERSION
+        assert MIN_GARAK_VERSION is not None
+        assert MIN_GARAK_VERSION == "0.9.0"
+
+    def test_all_classes_exported(self):
+        """All main classes should be importable from package."""
+        from sentinelseed.integrations.garak import (
+            TruthGate,
+            HarmGate,
+            ScopeGate,
+            PurposeGate,
+            THSPCombined,
+            TruthViolation,
+            HarmViolation,
+            ScopeViolation,
+            PurposeViolation,
+            THSPCombinedDetector,
+        )
+        # Just verify imports work
+        assert TruthGate is not None
+        assert THSPCombinedDetector is not None

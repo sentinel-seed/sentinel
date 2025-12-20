@@ -43,8 +43,11 @@ References:
     - THSP Protocol: https://sentinelseed.dev/docs/methodology
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Sentinel Team"
+
+# Minimum required Garak version
+MIN_GARAK_VERSION = "0.9.0"
 
 # Re-export probe and detector classes for convenience
 from sentinelseed.integrations.garak.probes import (
