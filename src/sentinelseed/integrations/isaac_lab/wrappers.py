@@ -283,7 +283,9 @@ class SentinelSafetyWrapper(Wrapper):
 
         # Validate action
         if self._num_envs > 1:
-            result = self.validator.validate_batch(action, contexts=None)
+            # Build contexts for each environment in the batch
+            contexts = self._build_batch_contexts()
+            result = self.validator.validate_batch(action, contexts=contexts)
             is_safe = not result.any_unsafe
             modified_action = result.modified_actions
             level = result.level
@@ -367,9 +369,11 @@ class SentinelSafetyWrapper(Wrapper):
                 for name, articulation in scene.articulations.items():
                     if hasattr(articulation, 'data'):
                         data = articulation.data
-                        if hasattr(data, 'joint_pos'):
+                        # Check joint_pos exists and has at least one element
+                        if hasattr(data, 'joint_pos') and len(data.joint_pos) > 0:
                             context['current_joint_position'] = data.joint_pos[0]
-                        if hasattr(data, 'joint_vel'):
+                        # Check joint_vel exists and has at least one element
+                        if hasattr(data, 'joint_vel') and len(data.joint_vel) > 0:
                             context['current_joint_velocity'] = data.joint_vel[0]
                         break
 
@@ -380,6 +384,52 @@ class SentinelSafetyWrapper(Wrapper):
             context['dt'] = unwrapped.cfg.sim.dt
 
         return context
+
+    def _build_batch_contexts(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Build context dicts for each environment in a vectorized batch.
+
+        Returns:
+            List of context dicts, one per environment, or None if unavailable.
+        """
+        unwrapped = self.env.unwrapped if hasattr(self.env, 'unwrapped') else self.env
+
+        # Get physics dt (shared across all envs)
+        dt = None
+        if hasattr(unwrapped, 'physics_dt'):
+            dt = unwrapped.physics_dt
+        elif hasattr(unwrapped, 'cfg') and hasattr(unwrapped.cfg, 'sim'):
+            dt = unwrapped.cfg.sim.dt
+
+        contexts = []
+
+        # Try to get per-environment state from Isaac Lab scene
+        if hasattr(unwrapped, 'scene'):
+            scene = unwrapped.scene
+            if hasattr(scene, 'articulations'):
+                for name, articulation in scene.articulations.items():
+                    if hasattr(articulation, 'data'):
+                        data = articulation.data
+                        # Build context for each environment
+                        for i in range(self._num_envs):
+                            ctx = {}
+                            if dt is not None:
+                                ctx['dt'] = dt
+
+                            # Get joint state for this environment
+                            if hasattr(data, 'joint_pos') and len(data.joint_pos) > i:
+                                ctx['current_joint_position'] = data.joint_pos[i]
+                            if hasattr(data, 'joint_vel') and len(data.joint_vel) > i:
+                                ctx['current_joint_velocity'] = data.joint_vel[i]
+
+                            contexts.append(ctx)
+                        break
+
+        # If we couldn't get per-env contexts, return None (validator will handle)
+        if len(contexts) != self._num_envs:
+            return None
+
+        return contexts
 
     def _get_blocked_action(self, action: Any) -> Any:
         """Get action to use when blocking."""

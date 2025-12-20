@@ -89,6 +89,10 @@ class JointLimits:
 
     def __post_init__(self):
         """Validate and normalize limits after initialization."""
+        # Validate num_joints
+        if self.num_joints < 1:
+            raise ValueError(f"num_joints must be >= 1, got {self.num_joints}")
+
         # Expand single values to per-joint lists
         if len(self.position_lower) == 1:
             self.position_lower = self.position_lower * self.num_joints
@@ -106,9 +110,21 @@ class JointLimits:
             self.velocity_max = [2.0] * self.num_joints
 
         # Validate lengths
-        assert len(self.position_lower) == self.num_joints
-        assert len(self.position_upper) == self.num_joints
-        assert len(self.velocity_max) == self.num_joints
+        if len(self.position_lower) != self.num_joints:
+            raise ValueError(
+                f"position_lower length ({len(self.position_lower)}) "
+                f"must match num_joints ({self.num_joints})"
+            )
+        if len(self.position_upper) != self.num_joints:
+            raise ValueError(
+                f"position_upper length ({len(self.position_upper)}) "
+                f"must match num_joints ({self.num_joints})"
+            )
+        if len(self.velocity_max) != self.num_joints:
+            raise ValueError(
+                f"velocity_max length ({len(self.velocity_max)}) "
+                f"must match num_joints ({self.num_joints})"
+            )
 
     def check_position(self, positions: Union[List[float], Any]) -> Tuple[bool, List[str]]:
         """

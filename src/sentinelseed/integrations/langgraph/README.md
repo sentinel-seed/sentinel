@@ -1,94 +1,127 @@
 # LangGraph Integration
 
-Safety nodes for LangGraph state machines.
+Safety nodes and tools for LangGraph state machines.
 
 ## Requirements
 
 ```bash
-pip install sentinelseed[langgraph]
-# or manually:
 pip install sentinelseed langgraph
 ```
 
 **Dependencies:**
 - `langgraph>=0.0.1` — [Docs](https://langchain-ai.github.io/langgraph/)
+- `langchain` (optional, for `create_sentinel_tool`)
 
 ## Overview
 
 | Component | Description |
 |-----------|-------------|
 | `SentinelSafetyNode` | Node that validates state/messages |
-| `SentinelCheckpoint` | Safety checkpoint for workflows |
-| `create_safe_graph` | Add safety to existing graphs |
-| `sentinel_edge` | Conditional edge based on safety |
+| `SentinelGuardNode` | Wrapper that validates before/after node execution |
+| `SentinelAgentExecutor` | Wrapper for compiled graphs with safety |
+| `add_safety_layer` | Add safety nodes to existing graphs |
+| `conditional_safety_edge` | Conditional edge based on safety state |
+| `create_safety_router` | Factory for custom safety routers |
+| `sentinel_gate_tool` | Tool for agents to self-check actions |
+| `create_sentinel_tool` | LangChain-compatible safety tool |
 
-## Usage
+## Quick Start
 
 ### Option 1: Safety Node
 
 Add safety validation as a graph node:
 
 ```python
-from langgraph.graph import StateGraph
-from sentinelseed.integrations.langgraph import SentinelSafetyNode
+from langgraph.graph import StateGraph, MessagesState, START, END
+from sentinelseed.integrations.langgraph import (
+    SentinelSafetyNode,
+    conditional_safety_edge,
+)
 
 # Create safety node
 safety_node = SentinelSafetyNode(
-    seed_level="standard",
-    block_unsafe=True,
-    validate_messages=True,
+    on_violation="block",  # "log", "block", or "flag"
+    check_input=True,
+    check_output=False,
 )
 
-# Add to graph
-graph = StateGraph(State)
-graph.add_node("safety_check", safety_node.run)
-graph.add_node("llm", llm_node)
+# Build graph
+graph = StateGraph(MessagesState)
+graph.add_node("safety_check", safety_node)
+graph.add_node("agent", agent_node)
+graph.add_node("blocked", blocked_response_node)
 
-# Route through safety
+# Connect edges
 graph.add_edge(START, "safety_check")
 graph.add_conditional_edges(
     "safety_check",
-    safety_node.should_continue,
-    {"continue": "llm", "blocked": END}
+    conditional_safety_edge,
+    {"continue": "agent", "blocked": "blocked"}
 )
+graph.add_edge("agent", END)
+graph.add_edge("blocked", END)
+
+app = graph.compile()
 ```
 
-### Option 2: Wrap Existing Graph
+### Option 2: Guard Node (Wrap Existing Node)
 
 ```python
-from sentinelseed.integrations.langgraph import create_safe_graph
+from sentinelseed.integrations.langgraph import SentinelGuardNode
 
-# Your existing graph
-workflow = StateGraph(State)
-workflow.add_node("agent", agent_node)
-workflow.add_edge(START, "agent")
+# Your existing node
+def tool_node(state):
+    # Execute tools...
+    return state
 
-# Add safety layer
-safe_workflow = create_safe_graph(
-    workflow,
-    validate_input=True,
-    validate_output=True,
+# Wrap with safety validation
+safe_tool_node = SentinelGuardNode(
+    tool_node,
+    on_violation="block",
 )
 
-app = safe_workflow.compile()
+graph.add_node("safe_tools", safe_tool_node)
 ```
 
-### Option 3: Safety Checkpoint
+### Option 3: Agent Executor
 
 ```python
-from sentinelseed.integrations.langgraph import SentinelCheckpoint
+from sentinelseed.integrations.langgraph import SentinelAgentExecutor
 
-checkpoint = SentinelCheckpoint(
-    checkpoint_id="pre_action",
-    validation_type="action",  # action, content, both
+# Your compiled graph
+app = graph.compile()
+
+# Wrap with safety
+executor = SentinelAgentExecutor(
+    app,
+    on_violation="block",
+    max_output_messages=5,
 )
 
-# Use in node
-def my_node(state):
-    check = checkpoint.validate(state)
-    if not check.safe:
-        return {"blocked": True, "reason": check.concerns}
-    # proceed
+# Use the executor
+result = executor.invoke({
+    "messages": [{"role": "user", "content": "Hello"}]
+})
+
+# Async support
+result = await executor.ainvoke({...})
+```
+
+### Option 4: Safety Tool for Agents
+
+```python
+from sentinelseed.integrations.langgraph import sentinel_gate_tool
+
+# Check if an action is safe
+result = sentinel_gate_tool("Delete all files in /tmp")
+print(result["safe"])  # False
+print(result["concerns"])  # ["Potentially harmful action..."]
+
+# Or create a LangChain tool
+from sentinelseed.integrations.langgraph import create_sentinel_tool
+
+safety_tool = create_sentinel_tool()
+agent = create_react_agent(llm, tools=[..., safety_tool])
 ```
 
 ## Configuration
@@ -97,13 +130,42 @@ def my_node(state):
 
 ```python
 SentinelSafetyNode(
-    sentinel=None,
-    seed_level="standard",
-    block_unsafe=True,
-    validate_messages=True,      # Check message content
-    validate_actions=True,       # Check planned actions
-    inject_seed=False,           # Add seed to messages
-    state_key="messages",        # Key for messages in state
+    sentinel=None,              # Sentinel instance (creates default if None)
+    seed_level="standard",      # "minimal", "standard", "full"
+    on_violation="log",         # "log", "block", "flag"
+    check_input=True,           # Validate user messages
+    check_output=True,          # Validate assistant messages
+    message_key="messages",     # Key in state for messages
+    max_text_size=50*1024,      # Max text size in bytes (50KB)
+    fail_closed=False,          # Raise exception on errors
+    logger=None,                # Custom logger instance
+)
+```
+
+### SentinelGuardNode
+
+```python
+SentinelGuardNode(
+    wrapped_node,               # Node function to wrap
+    sentinel=None,              # Sentinel instance
+    on_violation="block",       # "log", "block", "flag"
+    max_text_size=50*1024,      # Max text size in bytes
+    fail_closed=False,          # Raise exception on errors
+    logger=None,                # Custom logger instance
+)
+```
+
+### SentinelAgentExecutor
+
+```python
+SentinelAgentExecutor(
+    graph,                      # Compiled LangGraph
+    sentinel=None,              # Sentinel instance
+    on_violation="block",       # "log", "block", "flag"
+    max_text_size=50*1024,      # Max text size in bytes
+    max_output_messages=5,      # Number of output messages to validate
+    fail_closed=False,          # Raise exception on errors
+    logger=None,                # Custom logger instance
 )
 ```
 
@@ -120,42 +182,27 @@ Every validation passes through four gates:
 
 **Key Insight:** The Purpose gate is unique to THSP. Actions that pass harm checks may still fail purpose validation—"delete all records" causes harm, but even "reorganize files randomly" fails purpose without legitimate benefit.
 
-### Purpose Gate Configuration
-
-For financial or agentic workflows, require explicit purpose:
-
-```python
-safety_node = SentinelSafetyNode(
-    require_purpose_for=["transfer", "delete", "execute", "approve"],
-)
-
-# In your state
-class State(TypedDict):
-    messages: List[dict]
-    action_purpose: str  # Required for sensitive actions
-```
-
 ## State Integration
 
-The safety node works with LangGraph's state:
+The safety nodes add these fields to state:
 
 ```python
-from typing import TypedDict, List
+{
+    "sentinel_safe": bool,          # True if all validations passed
+    "sentinel_blocked": bool,       # True if blocked by on_violation="block"
+    "sentinel_violations": list,    # List of violation descriptions
+    "sentinel_risk_level": str,     # "low", "medium", "high"
+}
+```
 
-class State(TypedDict):
-    messages: List[dict]
-    safe: bool
-    safety_concerns: List[str]
+Example:
 
-# Safety node updates state
-def safety_node(state: State) -> State:
-    node = SentinelSafetyNode()
-    result = node.validate_state(state)
-    return {
-        **state,
-        "safe": result.safe,
-        "safety_concerns": result.concerns,
-    }
+```python
+result = safety_node(state)
+
+if not result["sentinel_safe"]:
+    print(f"Violations: {result['sentinel_violations']}")
+    print(f"Risk: {result['sentinel_risk_level']}")
 ```
 
 ## Conditional Routing
@@ -163,16 +210,120 @@ def safety_node(state: State) -> State:
 Route based on safety validation:
 
 ```python
-from sentinelseed.integrations.langgraph import sentinel_edge
+from sentinelseed.integrations.langgraph import conditional_safety_edge
 
 graph.add_conditional_edges(
     "safety_check",
-    sentinel_edge(
-        safe_path="continue",
-        unsafe_path="human_review",
-        state_key="safe",
-    )
+    conditional_safety_edge,
+    {
+        "continue": "agent",
+        "blocked": "safe_response",
+    }
 )
+```
+
+For custom route names, use `create_safety_router`:
+
+```python
+from sentinelseed.integrations.langgraph import create_safety_router
+
+router = create_safety_router(
+    safe_route="process",
+    unsafe_route="reject"
+)
+
+graph.add_conditional_edges(
+    "safety_check",
+    router,
+    {
+        "process": "agent",
+        "reject": "rejection_handler",
+    }
+)
+```
+
+## Adding Safety Layer to Existing Graphs
+
+```python
+from langgraph.graph import StateGraph, START, END
+from sentinelseed.integrations.langgraph import add_safety_layer
+
+graph = StateGraph(MyState)
+graph.add_node("agent", agent_node)
+
+# Add safety nodes
+result = add_safety_layer(graph)
+
+# Connect edges manually:
+# START -> sentinel_entry -> agent -> sentinel_exit -> END
+graph.add_edge(START, result["entry_node"])
+graph.add_edge(result["entry_node"], "agent")
+graph.add_edge("agent", result["exit_node"])
+graph.add_edge(result["exit_node"], END)
+
+compiled = graph.compile()
+```
+
+## Custom Logger
+
+```python
+from sentinelseed.integrations.langgraph import set_logger
+
+class MyLogger:
+    def debug(self, msg): print(f"[DEBUG] {msg}")
+    def info(self, msg): print(f"[INFO] {msg}")
+    def warning(self, msg): print(f"[WARN] {msg}")
+    def error(self, msg): print(f"[ERROR] {msg}")
+
+set_logger(MyLogger())
+```
+
+## Error Handling
+
+### Exceptions
+
+```python
+from sentinelseed.integrations.langgraph import (
+    TextTooLargeError,
+    ValidationTimeoutError,
+    SafetyValidationError,
+)
+
+try:
+    result = safety_node(state)
+except TextTooLargeError as e:
+    print(f"Text size: {e.size}, max: {e.max_size}")
+except SafetyValidationError as e:
+    print(f"Validation failed: {e.violations}")
+```
+
+### Fail-Closed Mode
+
+For strict environments, enable `fail_closed` to raise exceptions on validation errors:
+
+```python
+safety_node = SentinelSafetyNode(
+    on_violation="block",
+    fail_closed=True,  # Raise SafetyValidationError on any error
+)
+```
+
+## Async Support
+
+All components support async execution:
+
+```python
+# SentinelGuardNode with async wrapped node
+async def async_tool_node(state):
+    await some_async_operation()
+    return state
+
+guard = SentinelGuardNode(async_tool_node)
+result = await guard.__acall__(state)
+
+# SentinelAgentExecutor
+executor = SentinelAgentExecutor(compiled_graph)
+result = await executor.ainvoke(state)
 ```
 
 ## API Reference
@@ -182,16 +333,37 @@ graph.add_conditional_edges(
 | Class | Description |
 |-------|-------------|
 | `SentinelSafetyNode` | Safety validation node |
-| `SentinelCheckpoint` | Checkpoint for validation |
-| `SafetyState` | TypedDict with safety fields |
+| `SentinelGuardNode` | Wrapper for existing nodes with validation |
+| `SentinelAgentExecutor` | Wrapper for compiled graphs |
+| `SentinelState` | TypedDict with safety fields |
+| `SafetyLayerResult` | Result of add_safety_layer |
 
 ### Functions
 
 | Function | Description |
 |----------|-------------|
-| `create_safe_graph(graph)` | Wrap graph with safety |
-| `sentinel_edge(safe, unsafe)` | Create conditional edge |
-| `inject_seed_to_state(state)` | Add seed to state messages |
+| `sentinel_gate_tool(action)` | Validate an action, returns dict |
+| `create_sentinel_tool()` | Create LangChain-compatible tool |
+| `add_safety_layer(graph)` | Add safety nodes to graph |
+| `conditional_safety_edge(state)` | Route based on safety state |
+| `create_safety_router(safe, unsafe)` | Create custom router |
+| `set_logger(logger)` | Set custom logger |
+| `get_logger()` | Get current logger |
+
+### Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `TextTooLargeError` | Text exceeds max_text_size |
+| `ValidationTimeoutError` | Validation timed out |
+| `SafetyValidationError` | Validation failed (fail_closed mode) |
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `DEFAULT_MAX_TEXT_SIZE` | 51200 | 50KB max text size |
+| `DEFAULT_VALIDATION_TIMEOUT` | 30.0 | 30 second timeout |
 
 ## Links
 

@@ -390,7 +390,10 @@ def create_wandb_callback(
         wandb.init(project=project, **wandb_kwargs)
 
     def log_to_wandb(metrics: Dict[str, float]):
-        wandb.log(metrics)
+        try:
+            wandb.log(metrics)
+        except Exception as e:
+            logger.warning(f"Failed to log to WandB: {e}")
 
     return SentinelSB3Callback(
         env=env,
@@ -426,10 +429,13 @@ def create_tensorboard_callback(
     writer = SummaryWriter(log_dir=log_dir)
 
     def log_to_tensorboard(metrics: Dict[str, float]):
-        step = int(metrics.get("sentinel/steps", 0))
-        for key, value in metrics.items():
-            writer.add_scalar(key, value, step)
-        writer.flush()
+        try:
+            step = int(metrics.get("sentinel/steps", 0))
+            for key, value in metrics.items():
+                writer.add_scalar(key, value, step)
+            writer.flush()
+        except Exception as e:
+            logger.warning(f"Failed to log to TensorBoard: {e}")
 
     return SentinelSB3Callback(
         env=env,

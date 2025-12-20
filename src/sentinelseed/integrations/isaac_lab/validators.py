@@ -414,14 +414,24 @@ class THSPRobotValidator:
         if (self.action_type in (ActionType.JOINT_VELOCITY, ActionType.NORMALIZED)
                 and self.constraints.joint_limits):
 
+            num_joints = self.constraints.joint_limits.num_joints
+
+            # Validate action has enough dimensions before processing
+            if len(action) < num_joints:
+                violations.append(
+                    f"[HARM] Action has {len(action)} dims, expected {num_joints} for velocity check"
+                )
+                types.append(ConstraintViolationType.INVALID_VALUE)
+                return len(violations) == 0, violations, types
+
             # For normalized actions, scale by typical velocity
             if self.action_type == ActionType.NORMALIZED:
                 scaled_action = [
-                    a * self.constraints.action_scale
-                    for a in action[:self.constraints.joint_limits.num_joints]
+                    action[i] * self.constraints.action_scale
+                    for i in range(num_joints)
                 ]
             else:
-                scaled_action = action[:self.constraints.joint_limits.num_joints]
+                scaled_action = [action[i] for i in range(num_joints)]
 
             valid, vel_violations = self.constraints.joint_limits.check_velocity(scaled_action)
             if not valid:
@@ -472,18 +482,30 @@ class THSPRobotValidator:
         if self.action_type in (ActionType.NORMALIZED, ActionType.JOINT_VELOCITY):
             current_position = context.get("current_joint_position")
             if current_position is not None and self.constraints.joint_limits:
-                # Predict next position
-                dt = context.get("dt", 0.01)
-                scale = self.constraints.action_scale if self.action_type == ActionType.NORMALIZED else 1.0
-                predicted = [
-                    p + a * scale * dt
-                    for p, a in zip(current_position, action)
-                ]
-                valid, pos_violations = self.constraints.joint_limits.check_position(predicted)
-                if not valid:
-                    for v in pos_violations:
-                        violations.append(f"[SCOPE] Predicted: {v}")
-                        types.append(ConstraintViolationType.JOINT_POSITION)
+                # Convert to list if needed
+                pos_list = self._to_list(current_position)
+                num_joints = self.constraints.joint_limits.num_joints
+
+                # Validate dimensions match
+                if len(pos_list) < num_joints or len(action) < num_joints:
+                    violations.append(
+                        f"[SCOPE] Dimension mismatch: position has {len(pos_list)}, "
+                        f"action has {len(action)}, expected {num_joints}"
+                    )
+                    types.append(ConstraintViolationType.INVALID_VALUE)
+                else:
+                    # Predict next position (use only the required joints)
+                    dt = context.get("dt", 0.01)
+                    scale = self.constraints.action_scale if self.action_type == ActionType.NORMALIZED else 1.0
+                    predicted = [
+                        pos_list[i] + action[i] * scale * dt
+                        for i in range(num_joints)
+                    ]
+                    valid, pos_violations = self.constraints.joint_limits.check_position(predicted)
+                    if not valid:
+                        for v in pos_violations:
+                            violations.append(f"[SCOPE] Predicted: {v}")
+                            types.append(ConstraintViolationType.JOINT_POSITION)
 
         # Check workspace limits
         if self.constraints.workspace_limits:
