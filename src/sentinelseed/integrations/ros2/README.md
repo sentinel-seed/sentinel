@@ -2,6 +2,8 @@
 
 Safety middleware for ROS2 robots using THSP (Truth-Harm-Scope-Purpose) validation.
 
+**Version:** 1.0.0
+
 ## Overview
 
 This integration provides THSP-based safety validation for ROS2 robots. It implements a subscribe-validate-publish pattern that filters unsafe commands before they reach robot actuators.
@@ -293,6 +295,50 @@ print(f"Blocked: {diagnostics.commands_blocked}")
 ```bash
 # Run examples
 python -m sentinelseed.integrations.ros2.example
+```
+
+## Error Handling
+
+The integration includes comprehensive error handling:
+
+```python
+from sentinelseed.integrations.ros2 import (
+    ValidationError,
+    VelocityLimits,
+    SafetyZone,
+)
+
+# ValidationError is raised for invalid parameters
+try:
+    limits = VelocityLimits(max_linear_x=-1.0)  # Negative not allowed
+except ValidationError as e:
+    print(f"Error: {e.message}, Field: {e.field}")
+
+try:
+    zone = SafetyZone(min_x=10, max_x=-10)  # min > max not allowed
+except ValidationError as e:
+    print(f"Error: {e.message}")
+
+# ValueError is raised for invalid mode/msg_type
+try:
+    filter = CommandSafetyFilter(mode="invalid")
+except ValueError as e:
+    print(f"Invalid mode: {e}")
+```
+
+## Constants
+
+Available constants for configuration:
+
+```python
+from sentinelseed.integrations.ros2 import (
+    VALID_MODES,           # ("block", "clamp")
+    VALID_MSG_TYPES,       # ("twist", "string")
+    DEFAULT_MAX_LINEAR_VEL,  # 1.0 m/s
+    DEFAULT_MAX_ANGULAR_VEL, # 0.5 rad/s
+    DEFAULT_ROOM_SIZE,     # 10.0 m
+    DEFAULT_MAX_ALTITUDE,  # 2.0 m
+)
 ```
 
 ## References

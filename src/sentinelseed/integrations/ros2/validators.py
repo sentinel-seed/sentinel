@@ -18,6 +18,24 @@ import math
 import re
 
 
+# Validation constants
+VALID_MODES = ("block", "clamp")
+VALID_MSG_TYPES = ("twist", "string")
+DEFAULT_MAX_LINEAR_VEL = 1.0
+DEFAULT_MAX_ANGULAR_VEL = 0.5
+DEFAULT_ROOM_SIZE = 10.0
+DEFAULT_MAX_ALTITUDE = 2.0
+
+
+class ValidationError(Exception):
+    """Raised when validation fails."""
+
+    def __init__(self, message: str, field: Optional[str] = None):
+        self.message = message
+        self.field = field
+        super().__init__(message)
+
+
 class SafetyLevel(Enum):
     """Safety level classification for robot commands."""
     SAFE = "safe"
@@ -38,16 +56,45 @@ class VelocityLimits:
         max_angular_x: Max roll rate (rad/s)
         max_angular_y: Max pitch rate (rad/s)
         max_angular_z: Max yaw rate (rad/s)
+
+    Raises:
+        ValidationError: If any limit is negative
     """
-    max_linear_x: float = 1.0
+    max_linear_x: float = DEFAULT_MAX_LINEAR_VEL
     max_linear_y: float = 0.0
     max_linear_z: float = 0.0
     max_angular_x: float = 0.0
     max_angular_y: float = 0.0
-    max_angular_z: float = 0.5
+    max_angular_z: float = DEFAULT_MAX_ANGULAR_VEL
+
+    def __post_init__(self):
+        """Validate all limits are non-negative."""
+        fields = [
+            ("max_linear_x", self.max_linear_x),
+            ("max_linear_y", self.max_linear_y),
+            ("max_linear_z", self.max_linear_z),
+            ("max_angular_x", self.max_angular_x),
+            ("max_angular_y", self.max_angular_y),
+            ("max_angular_z", self.max_angular_z),
+        ]
+        for name, value in fields:
+            if value < 0:
+                raise ValidationError(
+                    f"{name} cannot be negative (got {value})",
+                    field=name,
+                )
+            if math.isnan(value) or math.isinf(value):
+                raise ValidationError(
+                    f"{name} must be a finite number (got {value})",
+                    field=name,
+                )
 
     @classmethod
-    def differential_drive(cls, max_linear: float = 1.0, max_angular: float = 0.5):
+    def differential_drive(
+        cls,
+        max_linear: float = DEFAULT_MAX_LINEAR_VEL,
+        max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
+    ):
         """Create limits for a differential drive robot."""
         return cls(
             max_linear_x=max_linear,
@@ -59,7 +106,11 @@ class VelocityLimits:
         )
 
     @classmethod
-    def omnidirectional(cls, max_linear: float = 1.0, max_angular: float = 0.5):
+    def omnidirectional(
+        cls,
+        max_linear: float = DEFAULT_MAX_LINEAR_VEL,
+        max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
+    ):
         """Create limits for an omnidirectional robot."""
         return cls(
             max_linear_x=max_linear,
@@ -71,7 +122,12 @@ class VelocityLimits:
         )
 
     @classmethod
-    def drone(cls, max_linear: float = 2.0, max_vertical: float = 1.0, max_angular: float = 1.0):
+    def drone(
+        cls,
+        max_linear: float = 2.0,
+        max_vertical: float = 1.0,
+        max_angular: float = 1.0,
+    ):
         """Create limits for a drone/UAV."""
         return cls(
             max_linear_x=max_linear,
@@ -95,16 +151,46 @@ class SafetyZone:
         max_y: Maximum y coordinate (meters)
         min_z: Minimum z coordinate (meters)
         max_z: Maximum z coordinate (meters)
+
+    Raises:
+        ValidationError: If min > max for any axis
     """
-    min_x: float = -10.0
-    max_x: float = 10.0
-    min_y: float = -10.0
-    max_y: float = 10.0
+    min_x: float = -DEFAULT_ROOM_SIZE / 2
+    max_x: float = DEFAULT_ROOM_SIZE / 2
+    min_y: float = -DEFAULT_ROOM_SIZE / 2
+    max_y: float = DEFAULT_ROOM_SIZE / 2
     min_z: float = 0.0
-    max_z: float = 2.0
+    max_z: float = DEFAULT_MAX_ALTITUDE
+
+    # Flag to skip validation for unlimited zones
+    _skip_validation: bool = field(default=False, repr=False)
+
+    def __post_init__(self):
+        """Validate min <= max for all axes."""
+        if self._skip_validation:
+            return
+
+        axes = [
+            ("x", self.min_x, self.max_x),
+            ("y", self.min_y, self.max_y),
+            ("z", self.min_z, self.max_z),
+        ]
+        for axis, min_val, max_val in axes:
+            if math.isnan(min_val) or math.isnan(max_val):
+                raise ValidationError(
+                    f"{axis} axis contains NaN values",
+                    field=f"min_{axis}/max_{axis}",
+                )
+            if min_val > max_val:
+                raise ValidationError(
+                    f"min_{axis} ({min_val}) cannot be greater than max_{axis} ({max_val})",
+                    field=f"min_{axis}",
+                )
 
     def contains(self, x: float, y: float, z: float = 0.0) -> bool:
         """Check if a position is within the safety zone."""
+        if math.isnan(x) or math.isnan(y) or math.isnan(z):
+            return False
         return (
             self.min_x <= x <= self.max_x and
             self.min_y <= y <= self.max_y and
@@ -113,19 +199,31 @@ class SafetyZone:
 
     @classmethod
     def unlimited(cls):
-        """Create unlimited safety zone."""
+        """
+        Create unlimited safety zone.
+
+        Note: Uses very large finite values instead of inf to avoid
+        potential issues with mathematical operations.
+        """
+        large_val = 1e9  # 1 billion meters
         return cls(
-            min_x=float('-inf'),
-            max_x=float('inf'),
-            min_y=float('-inf'),
-            max_y=float('inf'),
-            min_z=float('-inf'),
-            max_z=float('inf'),
+            min_x=-large_val,
+            max_x=large_val,
+            min_y=-large_val,
+            max_y=large_val,
+            min_z=-large_val,
+            max_z=large_val,
+            _skip_validation=False,
         )
 
     @classmethod
-    def indoor(cls, room_size: float = 10.0):
+    def indoor(cls, room_size: float = DEFAULT_ROOM_SIZE):
         """Create indoor safety zone."""
+        if room_size <= 0:
+            raise ValidationError(
+                f"room_size must be positive (got {room_size})",
+                field="room_size",
+            )
         half = room_size / 2
         return cls(
             min_x=-half, max_x=half,
@@ -325,9 +423,25 @@ class RobotSafetyRules:
 
         Returns:
             CommandValidationResult with validation details
+
+        Raises:
+            ValueError: If command is None
         """
+        if command is None:
+            raise ValueError("command cannot be None")
+
         violations = []
         gates = {"truth": True, "harm": True, "scope": True, "purpose": True}
+
+        # Handle empty command
+        if not command or not command.strip():
+            return CommandValidationResult(
+                is_safe=True,
+                level=SafetyLevel.SAFE,
+                gates=gates,
+                violations=[],
+                reasoning="Empty command - no action required.",
+            )
 
         # Harm Gate: Check for dangerous patterns
         for pattern in self._danger_patterns:
@@ -420,10 +534,15 @@ class RobotSafetyRules:
             violations.append(f"[HARM] Excessive yaw rate: {angular_z} > {limits.max_angular_z}")
 
         # Check for dangerous velocity combinations
-        total_linear = math.sqrt(linear_x**2 + linear_y**2 + linear_z**2)
-        max_total_linear = math.sqrt(limits.max_linear_x**2 + limits.max_linear_y**2 + limits.max_linear_z**2)
-        if total_linear > max_total_linear * 1.1:
-            violations.append(f"[HARM] Combined velocity magnitude too high: {total_linear:.2f}")
+        # Skip NaN/inf values (already caught by truth gate)
+        if not any(math.isnan(v) or math.isinf(v) for v in [linear_x, linear_y, linear_z]):
+            total_linear = math.sqrt(linear_x**2 + linear_y**2 + linear_z**2)
+            max_total_linear = math.sqrt(
+                limits.max_linear_x**2 + limits.max_linear_y**2 + limits.max_linear_z**2
+            )
+            # Only check magnitude if there's a meaningful limit
+            if max_total_linear > 0 and total_linear > max_total_linear * 1.1:
+                violations.append(f"[HARM] Combined velocity magnitude too high: {total_linear:.2f}")
 
         return violations
 

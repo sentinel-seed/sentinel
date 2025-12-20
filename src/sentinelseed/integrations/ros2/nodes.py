@@ -23,19 +23,25 @@ Note:
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from sentinelseed.integrations.ros2.validators import (
     CommandValidationResult,
     RobotSafetyRules,
     SafetyLevel,
     SafetyZone,
+    ValidationError,
     VelocityLimits,
+    VALID_MODES,
+    VALID_MSG_TYPES,
+    DEFAULT_MAX_LINEAR_VEL,
+    DEFAULT_MAX_ANGULAR_VEL,
 )
 
-logger = logging.getLogger("sentinelseed.ros2")
+# Logger for module-level warnings
+_logger = logging.getLogger("sentinelseed.ros2")
 
 # Try to import ROS2 packages
 try:
@@ -46,7 +52,7 @@ try:
     ROS2_AVAILABLE = True
 except ImportError:
     ROS2_AVAILABLE = False
-    logger.warning(
+    _logger.warning(
         "ROS2 packages not found. Install rclpy and ROS2 to use ROS2 integration. "
         "The mock classes will be used for testing."
     )
@@ -108,6 +114,14 @@ except ImportError:
         frame_id: str = ""
 
 
+def _escape_diagnostic_value(value: str) -> str:
+    """Escape special characters in diagnostic values."""
+    if value is None:
+        return ""
+    # Escape commas and equals signs to prevent parsing issues
+    return str(value).replace("\\", "\\\\").replace(",", "\\,").replace("=", "\\=")
+
+
 @dataclass
 class SentinelDiagnostics:
     """
@@ -118,20 +132,68 @@ class SentinelDiagnostics:
     is_safe: bool
     level: str
     gates: Dict[str, bool]
-    violations: list
-    commands_processed: int
-    commands_blocked: int
-    last_violation: Optional[str]
+    violations: List[str] = field(default_factory=list)
+    commands_processed: int = 0
+    commands_blocked: int = 0
+    last_violation: Optional[str] = None
 
     def to_string(self) -> str:
-        """Convert to string for std_msgs/String publishing."""
+        """
+        Convert to string for std_msgs/String publishing.
+
+        Uses escaped format to handle special characters in violation messages.
+        """
+        # Escape the last_violation if present
+        escaped_violation = ""
+        if self.last_violation:
+            escaped_violation = _escape_diagnostic_value(self.last_violation)
+
         return (
             f"safe={self.is_safe},"
-            f"level={self.level},"
+            f"level={_escape_diagnostic_value(self.level)},"
             f"processed={self.commands_processed},"
             f"blocked={self.commands_blocked},"
-            f"violations={len(self.violations)}"
+            f"violations={len(self.violations)},"
+            f"last={escaped_violation}"
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "is_safe": self.is_safe,
+            "level": self.level,
+            "gates": self.gates,
+            "violations": self.violations,
+            "commands_processed": self.commands_processed,
+            "commands_blocked": self.commands_blocked,
+            "last_violation": self.last_violation,
+        }
+
+
+def _validate_mode(mode: str) -> None:
+    """Validate filter mode parameter."""
+    if mode not in VALID_MODES:
+        raise ValueError(f"Invalid mode '{mode}'. Must be one of: {VALID_MODES}")
+
+
+def _safe_get_velocity(twist: Any, attr_path: str, default: float = 0.0) -> float:
+    """
+    Safely extract velocity value from twist message.
+
+    Handles cases where linear/angular might be None or missing attributes.
+    """
+    try:
+        parts = attr_path.split(".")
+        value = twist
+        for part in parts:
+            value = getattr(value, part, None)
+            if value is None:
+                return default
+        if isinstance(value, (int, float)):
+            return float(value)
+        return default
+    except (AttributeError, TypeError):
+        return default
 
 
 class CommandSafetyFilter:
@@ -146,6 +208,9 @@ class CommandSafetyFilter:
         safety_zone: Spatial operation boundaries
         require_purpose: Require explicit purpose for commands
         mode: Filter mode - 'block' (reject unsafe), 'clamp' (limit to safe values)
+
+    Raises:
+        ValueError: If mode is not 'block' or 'clamp'
 
     Example:
         filter = CommandSafetyFilter(
@@ -162,6 +227,7 @@ class CommandSafetyFilter:
         require_purpose: bool = False,
         mode: str = "clamp",
     ):
+        _validate_mode(mode)
         self.mode = mode
         self.rules = RobotSafetyRules(
             velocity_limits=velocity_limits,
@@ -185,16 +251,23 @@ class CommandSafetyFilter:
 
         Returns:
             Tuple of (filtered_twist, validation_result)
+
+        Raises:
+            ValueError: If twist is None
         """
+        if twist is None:
+            raise ValueError("twist cannot be None")
+
         self._stats["processed"] += 1
 
+        # Safely extract velocity values, handling None linear/angular
         result = self.rules.validate_velocity(
-            linear_x=twist.linear.x,
-            linear_y=twist.linear.y,
-            linear_z=twist.linear.z,
-            angular_x=twist.angular.x,
-            angular_y=twist.angular.y,
-            angular_z=twist.angular.z,
+            linear_x=_safe_get_velocity(twist, "linear.x"),
+            linear_y=_safe_get_velocity(twist, "linear.y"),
+            linear_z=_safe_get_velocity(twist, "linear.z"),
+            angular_x=_safe_get_velocity(twist, "angular.x"),
+            angular_y=_safe_get_velocity(twist, "angular.y"),
+            angular_z=_safe_get_velocity(twist, "angular.z"),
             purpose=purpose,
         )
 
@@ -264,6 +337,19 @@ class CommandSafetyFilter:
             )
 
 
+def _safe_get_string_data(msg: Any) -> str:
+    """Safely extract string data from message."""
+    if msg is None:
+        return ""
+    try:
+        data = getattr(msg, "data", None)
+        if data is None:
+            return ""
+        return str(data)
+    except (AttributeError, TypeError):
+        return ""
+
+
 class StringSafetyFilter:
     """
     Safety filter for String messages (natural language commands).
@@ -298,10 +384,18 @@ class StringSafetyFilter:
 
         Returns:
             Tuple of (filtered_string, validation_result)
+
+        Raises:
+            ValueError: If msg is None
         """
+        if msg is None:
+            raise ValueError("msg cannot be None")
+
         self._stats["processed"] += 1
 
-        result = self.rules.validate_string_command(msg.data)
+        # Safely extract string data
+        data = _safe_get_string_data(msg)
+        result = self.rules.validate_string_command(data)
 
         if result.is_safe:
             return msg, result
@@ -317,6 +411,45 @@ class StringSafetyFilter:
     def get_stats(self) -> Dict[str, int]:
         """Get filter statistics."""
         return self._stats.copy()
+
+
+def _validate_msg_type(msg_type: str) -> None:
+    """Validate message type parameter."""
+    if msg_type not in VALID_MSG_TYPES:
+        raise ValueError(f"Invalid msg_type '{msg_type}'. Must be one of: {VALID_MSG_TYPES}")
+
+
+def _safe_get_result_level(result: Any) -> str:
+    """Safely get level value from result, handling both Enum and string."""
+    if result is None:
+        return "unknown"
+    level = getattr(result, "level", None)
+    if level is None:
+        return "unknown"
+    # Handle SafetyLevel enum
+    if hasattr(level, "value"):
+        return str(level.value)
+    return str(level)
+
+
+def _safe_get_result_gates(result: Any) -> Dict[str, bool]:
+    """Safely get gates from result."""
+    if result is None:
+        return {}
+    gates = getattr(result, "gates", None)
+    if gates is None or not isinstance(gates, dict):
+        return {}
+    return gates.copy()
+
+
+def _safe_get_result_violations(result: Any) -> List[str]:
+    """Safely get violations from result."""
+    if result is None:
+        return []
+    violations = getattr(result, "violations", None)
+    if violations is None or not isinstance(violations, list):
+        return []
+    return [str(v) for v in violations]
 
 
 class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
@@ -344,6 +477,9 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
         max_angular_vel: Maximum angular velocity (rad/s)
         mode: Filter mode ('block' or 'clamp')
 
+    Raises:
+        ValueError: If mode or msg_type is invalid
+
     Example:
         node = SentinelSafetyNode(
             input_topic='/cmd_vel_raw',
@@ -360,11 +496,15 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
         output_topic: str = "/cmd_vel",
         status_topic: str = "/sentinel/status",
         msg_type: str = "twist",
-        max_linear_vel: float = 1.0,
-        max_angular_vel: float = 0.5,
+        max_linear_vel: float = DEFAULT_MAX_LINEAR_VEL,
+        max_angular_vel: float = DEFAULT_MAX_ANGULAR_VEL,
         mode: str = "clamp",
         require_purpose: bool = False,
     ):
+        # Validate parameters before calling super().__init__
+        _validate_mode(mode)
+        _validate_msg_type(msg_type)
+
         super().__init__(node_name)
 
         self.input_topic = input_topic
@@ -393,6 +533,9 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
         self._commands_processed = 0
         self._commands_blocked = 0
         self._last_violation: Optional[str] = None
+
+        # Store last validation result for get_diagnostics
+        self._last_result: Optional[CommandValidationResult] = None
 
         # ROS2 objects (created in configure)
         self._subscription = None
@@ -482,50 +625,85 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
 
     def _twist_callback(self, msg: Twist):
         """Process incoming Twist message."""
-        self._commands_processed += 1
+        try:
+            self._commands_processed += 1
 
-        safe_msg, result = self.filter.filter(msg)
+            safe_msg, result = self.filter.filter(msg)
+            self._last_result = result
 
-        if not result.is_safe:
-            self._commands_blocked += 1
-            self._last_violation = result.violations[0] if result.violations else None
-            self.get_logger().warning(f"Unsafe command: {result.reasoning}")
+            if not result.is_safe:
+                self._commands_blocked += 1
+                violations = _safe_get_result_violations(result)
+                self._last_violation = violations[0] if violations else None
+                reasoning = getattr(result, "reasoning", "Unknown")
+                self.get_logger().warning(f"Unsafe command: {reasoning}")
 
-        # Publish filtered message
-        if self._publisher:
-            self._publisher.publish(safe_msg)
+            # Publish filtered message
+            if self._publisher:
+                self._publisher.publish(safe_msg)
 
-        # Publish status
-        self._publish_status(result)
+            # Publish status
+            self._publish_status(result)
+
+        except Exception as e:
+            self.get_logger().error(f"Error in _twist_callback: {e}")
+            # Publish stop command on error for safety
+            if self._publisher:
+                stop_twist = Twist()
+                if MSGS_AVAILABLE:
+                    stop_twist.linear = Vector3(x=0.0, y=0.0, z=0.0)
+                    stop_twist.angular = Vector3(x=0.0, y=0.0, z=0.0)
+                else:
+                    stop_twist.linear = Vector3(0.0, 0.0, 0.0)
+                    stop_twist.angular = Vector3(0.0, 0.0, 0.0)
+                self._publisher.publish(stop_twist)
 
     def _string_callback(self, msg: String):
         """Process incoming String message."""
-        self._commands_processed += 1
+        try:
+            self._commands_processed += 1
 
-        safe_msg, result = self.filter.filter(msg)
+            safe_msg, result = self.filter.filter(msg)
+            self._last_result = result
 
-        if not result.is_safe:
-            self._commands_blocked += 1
-            self._last_violation = result.violations[0] if result.violations else None
-            self.get_logger().warning(f"Unsafe command: {result.reasoning}")
+            if not result.is_safe:
+                self._commands_blocked += 1
+                violations = _safe_get_result_violations(result)
+                self._last_violation = violations[0] if violations else None
+                reasoning = getattr(result, "reasoning", "Unknown")
+                self.get_logger().warning(f"Unsafe command: {reasoning}")
 
-        # Publish filtered message
-        if self._publisher:
-            self._publisher.publish(safe_msg)
+            # Publish filtered message
+            if self._publisher:
+                self._publisher.publish(safe_msg)
 
-        # Publish status
-        self._publish_status(result)
+            # Publish status
+            self._publish_status(result)
+
+        except Exception as e:
+            self.get_logger().error(f"Error in _string_callback: {e}")
+            # Publish blocked message on error for safety
+            if self._publisher:
+                blocked_msg = String()
+                blocked_msg.data = "[ERROR] Command processing failed."
+                self._publisher.publish(blocked_msg)
 
     def _publish_status(self, result: CommandValidationResult):
         """Publish safety status to /sentinel/status."""
         if not self._status_publisher:
             return
 
+        # Safely extract values from result
+        is_safe = getattr(result, "is_safe", True)
+        level = _safe_get_result_level(result)
+        gates = _safe_get_result_gates(result)
+        violations = _safe_get_result_violations(result)
+
         diagnostics = SentinelDiagnostics(
-            is_safe=result.is_safe,
-            level=result.level.value,
-            gates=result.gates,
-            violations=result.violations,
+            is_safe=is_safe,
+            level=level,
+            gates=gates,
+            violations=violations,
             commands_processed=self._commands_processed,
             commands_blocked=self._commands_blocked,
             last_violation=self._last_violation,
@@ -536,12 +714,30 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
         self._status_publisher.publish(status_msg)
 
     def get_diagnostics(self) -> SentinelDiagnostics:
-        """Get current diagnostics."""
+        """
+        Get current diagnostics.
+
+        Returns actual values from the last validation result,
+        not hardcoded placeholders.
+        """
+        # Use last result if available, otherwise return default safe state
+        if self._last_result is not None:
+            is_safe = getattr(self._last_result, "is_safe", True)
+            level = _safe_get_result_level(self._last_result)
+            gates = _safe_get_result_gates(self._last_result)
+            violations = _safe_get_result_violations(self._last_result)
+        else:
+            # No commands processed yet - return default safe state
+            is_safe = True
+            level = "safe"
+            gates = {"truth": True, "harm": True, "scope": True, "purpose": True}
+            violations = []
+
         return SentinelDiagnostics(
-            is_safe=True,
-            level="safe",
-            gates={"truth": True, "harm": True, "scope": True, "purpose": True},
-            violations=[],
+            is_safe=is_safe,
+            level=level,
+            gates=gates,
+            violations=violations,
             commands_processed=self._commands_processed,
             commands_blocked=self._commands_blocked,
             last_violation=self._last_violation,
@@ -551,8 +747,8 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
 def create_safety_node(
     input_topic: str = "/cmd_vel_raw",
     output_topic: str = "/cmd_vel",
-    max_linear_vel: float = 1.0,
-    max_angular_vel: float = 0.5,
+    max_linear_vel: float = DEFAULT_MAX_LINEAR_VEL,
+    max_angular_vel: float = DEFAULT_MAX_ANGULAR_VEL,
     mode: str = "clamp",
 ) -> SentinelSafetyNode:
     """
@@ -570,6 +766,9 @@ def create_safety_node(
 
     Returns:
         Configured SentinelSafetyNode
+
+    Raises:
+        ValueError: If mode is invalid
 
     Example:
         import rclpy
