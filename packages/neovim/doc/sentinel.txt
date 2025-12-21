@@ -1,0 +1,294 @@
+*sentinel.txt*  AI Safety validation using THSP protocol
+
+                           SENTINEL.NVIM
+                   AI Safety for Neovim
+
+Author:   Sentinel Team <team@sentinelseed.dev>
+License:  MIT
+Homepage: https://sentinelseed.dev
+GitHub:   https://github.com/sentinel-seed/sentinel
+
+==============================================================================
+CONTENTS                                               *sentinel-contents*
+
+  1. Introduction .......................... |sentinel-introduction|
+  2. Installation .......................... |sentinel-installation|
+  3. Configuration ......................... |sentinel-configuration|
+  4. Commands .............................. |sentinel-commands|
+  5. Keymappings ........................... |sentinel-keymappings|
+  6. Functions ............................. |sentinel-functions|
+  7. THSP Protocol ......................... |sentinel-thsp|
+  8. Health Check .......................... |sentinel-health|
+
+==============================================================================
+1. INTRODUCTION                                    *sentinel-introduction*
+
+sentinel.nvim is a Neovim plugin that provides AI safety validation using
+the THSP (Truth-Harm-Scope-Purpose) protocol. It analyzes text for potential
+safety violations and displays diagnostics directly in your editor.
+
+Features:
+- Two analysis modes: Semantic (LLM-based, ~90% accuracy) and Heuristic
+  (pattern-based, ~50% accuracy)
+- Support for OpenAI and Anthropic APIs
+- Native Neovim diagnostics integration
+- Alignment seed insertion for AI prompts
+- Configurable keybindings and autocommands
+
+==============================================================================
+2. INSTALLATION                                    *sentinel-installation*
+
+Using lazy.nvim: >lua
+  {
+    'sentinel-seed/sentinel',
+    opts = {
+      -- your configuration here
+    },
+  }
+<
+
+Using packer.nvim: >lua
+  use {
+    'sentinel-seed/sentinel',
+    config = function()
+      require('sentinel').setup({
+        -- your configuration here
+      })
+    end
+  }
+<
+
+Manual installation:
+Clone the repository to your Neovim packages directory: >bash
+  git clone https://github.com/sentinel-seed/sentinel \
+    ~/.local/share/nvim/site/pack/plugins/start/sentinel
+<
+
+==============================================================================
+3. CONFIGURATION                                  *sentinel-configuration*
+
+Call `require('sentinel').setup(opts)` with a table of options.
+
+Default configuration: >lua
+  require('sentinel').setup({
+    -- Analysis mode: true = semantic (LLM), false = heuristic
+    semantic_mode = true,
+
+    -- LLM provider: 'openai' or 'anthropic'
+    llm_provider = 'openai',
+
+    -- API keys (can also use environment variables)
+    openai_api_key = nil,    -- or OPENAI_API_KEY env var
+    anthropic_api_key = nil, -- or ANTHROPIC_API_KEY env var
+
+    -- Auto-analyze on text change
+    auto_analyze = false,
+
+    -- Debounce delay for auto-analyze (ms)
+    debounce_ms = 500,
+
+    -- Filetypes to analyze
+    filetypes = { '*' },
+
+    -- Set up default keymaps
+    default_keymaps = false,
+
+    -- Default keymap bindings
+    keymaps = {
+      analyze = '<leader>sa',
+      analyze_buffer = '<leader>sA',
+      insert_seed = '<leader>si',
+      clear = '<leader>sc',
+      toggle = '<leader>st',
+    },
+
+    -- Diagnostic severity for violations
+    severity = {
+      truth = vim.diagnostic.severity.ERROR,
+      harm = vim.diagnostic.severity.ERROR,
+      scope = vim.diagnostic.severity.WARN,
+      purpose = vim.diagnostic.severity.WARN,
+    },
+
+    -- Show virtual text for diagnostics
+    virtual_text = true,
+  })
+<
+
+                                                   *sentinel-api-keys*
+API Keys~
+
+For semantic analysis, you need to configure an API key:
+
+Using environment variables (recommended): >bash
+  export OPENAI_API_KEY="sk-..."
+  # or
+  export ANTHROPIC_API_KEY="sk-ant-..."
+<
+
+Using setup configuration: >lua
+  require('sentinel').setup({
+    openai_api_key = "sk-...",
+    -- or
+    anthropic_api_key = "sk-ant-...",
+  })
+<
+
+If no API key is available, the plugin falls back to heuristic mode.
+
+==============================================================================
+4. COMMANDS                                            *sentinel-commands*
+
+                                                       *:SentinelAnalyze*
+:SentinelAnalyze [range]
+    Analyze the current line or selected range for THSP violations.
+    In visual mode, analyzes the selection.
+
+                                                 *:SentinelAnalyzeBuffer*
+:SentinelAnalyzeBuffer
+    Analyze the entire buffer for THSP violations.
+
+                                                    *:SentinelInsertSeed*
+:SentinelInsertSeed [variant]
+    Insert an alignment seed at the cursor position.
+    Variants: `standard` (default), `minimal`
+
+                                                         *:SentinelClear*
+:SentinelClear
+    Clear all Sentinel diagnostics from the current buffer.
+
+                                                        *:SentinelToggle*
+:SentinelToggle
+    Toggle Sentinel analysis on/off.
+
+                                                        *:SentinelStatus*
+:SentinelStatus
+    Show a floating window with current Sentinel status and configuration.
+
+==============================================================================
+5. KEYMAPPINGS                                      *sentinel-keymappings*
+
+sentinel.nvim provides `<Plug>` mappings for user customization.
+
+Available mappings:
+  `<Plug>(SentinelAnalyze)`          - Analyze current line (normal) or
+                                     selection (visual)
+  `<Plug>(SentinelAnalyzeBuffer)`    - Analyze entire buffer
+  `<Plug>(SentinelInsertSeed)`       - Insert standard seed
+  `<Plug>(SentinelInsertSeedMinimal)` - Insert minimal seed
+  `<Plug>(SentinelClear)`            - Clear diagnostics
+  `<Plug>(SentinelToggle)`           - Toggle on/off
+
+Example custom mappings: >lua
+  vim.keymap.set('n', '<leader>a', '<Plug>(SentinelAnalyze)')
+  vim.keymap.set('v', '<leader>a', '<Plug>(SentinelAnalyze)')
+  vim.keymap.set('n', '<leader>A', '<Plug>(SentinelAnalyzeBuffer)')
+  vim.keymap.set('n', '<leader>si', '<Plug>(SentinelInsertSeed)')
+<
+
+Or enable default keymaps in configuration: >lua
+  require('sentinel').setup({
+    default_keymaps = true,
+    keymaps = {
+      analyze = '<leader>sa',
+      analyze_buffer = '<leader>sA',
+      insert_seed = '<leader>si',
+      clear = '<leader>sc',
+      toggle = '<leader>st',
+    },
+  })
+<
+
+==============================================================================
+6. FUNCTIONS                                          *sentinel-functions*
+
+                                                      *sentinel.setup()*
+sentinel.setup({opts})
+    Initialize the plugin with given options. See |sentinel-configuration|.
+
+                                                    *sentinel.analyze()*
+sentinel.analyze([range])
+    Analyze text at current cursor or given range.
+    Parameters:
+      - range: Optional table {start_line, end_line}
+
+                                             *sentinel.analyze_visual()*
+sentinel.analyze_visual()
+    Analyze the current visual selection.
+
+                                             *sentinel.analyze_buffer()*
+sentinel.analyze_buffer([bufnr])
+    Analyze the entire buffer.
+    Parameters:
+      - bufnr: Optional buffer number (default: current buffer)
+
+                                                *sentinel.insert_seed()*
+sentinel.insert_seed([variant])
+    Insert an alignment seed at cursor.
+    Parameters:
+      - variant: 'standard' (default) or 'minimal'
+
+                                          *sentinel.clear_diagnostics()*
+sentinel.clear_diagnostics([bufnr])
+    Clear Sentinel diagnostics.
+    Parameters:
+      - bufnr: Optional buffer number (default: current buffer)
+
+                                                     *sentinel.toggle()*
+sentinel.toggle()
+    Toggle Sentinel on/off.
+
+                                                *sentinel.show_status()*
+sentinel.show_status()
+    Show status in a floating window.
+
+==============================================================================
+7. THSP PROTOCOL                                          *sentinel-thsp*
+
+THSP is a four-gate safety protocol for AI alignment:
+
+GATE 1: TRUTH                                             *sentinel-truth*
+    Validates that content doesn't involve deception or manipulation.
+    Detects: false claims, misinformation, manipulative intent.
+
+GATE 2: HARM                                               *sentinel-harm*
+    Assesses potential for causing harm to people or systems.
+    Detects: violence, hacking, exploitation, dangerous content.
+
+GATE 3: SCOPE                                             *sentinel-scope*
+    Checks if actions are within appropriate boundaries.
+    Detects: authority bypass, scope creep, system overrides.
+
+GATE 4: PURPOSE                                         *sentinel-purpose*
+    Verifies that actions serve legitimate benefit.
+    Detects: purposeless destruction, frivolous harmful actions.
+
+All four gates must pass for content to be considered safe.
+
+Analysis Modes~
+
+Semantic Mode (default):
+  Uses LLM (OpenAI/Anthropic) for deep semantic analysis.
+  Accuracy: ~90%
+  Requires: API key
+
+Heuristic Mode:
+  Uses pattern matching for fast local analysis.
+  Accuracy: ~50%
+  Requires: Nothing (works offline)
+
+==============================================================================
+8. HEALTH CHECK                                          *sentinel-health*
+
+Run `:checkhealth sentinel` to verify your installation.
+
+The health check validates:
+  - Neovim version compatibility
+  - Plugin loading
+  - API key configuration
+  - curl availability (for API calls)
+  - Seeds loading
+  - Current status
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
