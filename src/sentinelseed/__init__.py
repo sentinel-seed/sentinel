@@ -89,7 +89,7 @@ from sentinelseed.compliance import (
     check_eu_ai_act_compliance,
 )
 
-__version__ = "2.11.1"
+__version__ = "2.12.0"
 
 
 def get_seed(level: str = "standard") -> str:

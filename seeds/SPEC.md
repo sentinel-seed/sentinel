@@ -28,7 +28,8 @@ The **Sentinel Seed** is a structured prompt that improves LLM safety through ex
 ## Version Architecture
 
 ```
-seed/versions/
+seeds/
+├── SPEC.md                      # This document
 ├── v1/                          # Legacy (THS Protocol)
 │   ├── minimal/seed.txt         # ~500 tokens
 │   ├── standard/seed.txt        # ~1.3K tokens
@@ -243,18 +244,17 @@ v1 remains available for backward compatibility but is no longer recommended for
 ## File Structure
 
 ```
-seed/
-├── SEED_SPEC.md              # This document
-└── versions/
-    ├── v1/                   # Legacy
-    │   ├── minimal/seed.txt
-    │   ├── standard/seed.txt
-    │   └── full/seed.txt
-    │
-    └── v2/                   # Production ✅
-        ├── minimal/seed.txt
-        ├── standard/seed.txt  ← DEFAULT
-        └── full/seed.txt
+seeds/
+├── SPEC.md                   # This document
+├── v1/                       # Legacy
+│   ├── minimal/seed.txt
+│   ├── standard/seed.txt
+│   └── full/seed.txt
+│
+└── v2/                       # Production ✅
+    ├── minimal/seed.txt
+    ├── standard/seed.txt     ← DEFAULT
+    └── full/seed.txt
 ```
 
 ---

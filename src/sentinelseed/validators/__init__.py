@@ -34,7 +34,14 @@ from sentinelseed.validators.semantic import (
 )
 
 # Heuristic validators (regex-based, legacy)
-from sentinelseed.validators.gates import TruthGate, HarmGate, ScopeGate, THSValidator
+from sentinelseed.validators.gates import (
+    TruthGate,
+    HarmGate,
+    ScopeGate,
+    PurposeGate,
+    THSValidator,
+    THSPValidator,
+)
 
 __all__ = [
     # Semantic (recommended)
@@ -45,9 +52,11 @@ __all__ = [
     "RiskLevel",
     "create_validator",
     "validate_content",
-    # Heuristic (legacy)
+    # Heuristic (regex-based)
     "TruthGate",
     "HarmGate",
     "ScopeGate",
+    "PurposeGate",
     "THSValidator",
+    "THSPValidator",
 ]

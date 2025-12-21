@@ -712,14 +712,23 @@ class TestWrapLLM:
         assert result is llm
 
     def test_wrap_llm_adds_callback(self):
-        """Test wrap_llm adds callback when requested."""
+        """Test wrap_llm returns wrapper with callback when add_callback=True.
+
+        Note: wrap_llm does NOT modify the original LLM. It creates a wrapper
+        that maintains the callback internally and passes it per-call.
+        """
         llm = MockLLM()
         llm.callbacks = []
 
-        wrap_llm(llm, inject_seed=False, add_callback=True)
+        wrapper = wrap_llm(llm, inject_seed=False, add_callback=True)
 
-        assert len(llm.callbacks) == 1
-        assert isinstance(llm.callbacks[0], SentinelCallback)
+        # Should return a wrapper, not the original LLM
+        assert wrapper is not llm
+        # Wrapper should have the callback stored internally
+        assert hasattr(wrapper, '_callback')
+        assert isinstance(wrapper._callback, SentinelCallback)
+        # Original LLM should NOT be modified
+        assert len(llm.callbacks) == 0
 
     def test_wrap_llm_wrapper_has_invoke(self):
         """Test wrapper has invoke method."""
