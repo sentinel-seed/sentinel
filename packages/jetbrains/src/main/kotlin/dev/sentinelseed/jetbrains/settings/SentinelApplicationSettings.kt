@@ -61,7 +61,10 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
         set(value) = setSecureKey(ANTHROPIC_KEY_ID, value)
 
     private fun createCredentialAttributes(key: String): CredentialAttributes {
-        return CredentialAttributes(generateServiceName("SentinelAISafety", key))
+        return CredentialAttributes(
+            generateServiceName("SentinelAISafety", key),
+            key  // userName parameter required for non-deprecated constructor
+        )
     }
 
     private fun getSecureKey(key: String): String? {
