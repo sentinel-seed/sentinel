@@ -110,12 +110,15 @@ violations = detector.detect("I recommend our premium service for your needs")
 from sentinelseed.fiduciary import ViolationType
 
 # Available violation types:
-ViolationType.CONFLICT_OF_INTEREST    # Provider vs user interests
-ViolationType.UNDISCLOSED_RISK        # Hidden dangers
-ViolationType.MISALIGNED_RECOMMENDATION  # Against user goals
-ViolationType.SCOPE_CREEP             # Beyond authorized actions
-ViolationType.INFORMATION_ASYMMETRY   # Exploiting knowledge gaps
-ViolationType.PRESSURE_TACTICS        # Urgency manipulation
+ViolationType.CONFLICT_OF_INTEREST      # Provider vs user interests
+ViolationType.SELF_DEALING              # Acting in own interest
+ViolationType.MISALIGNED_RECOMMENDATION # Against user goals
+ViolationType.INADEQUATE_DISCLOSURE     # Missing disclosures
+ViolationType.PRIVACY_VIOLATION         # Exposing user information
+ViolationType.LACK_OF_TRANSPARENCY      # Unexplained decisions
+ViolationType.INCOMPETENT_ACTION        # Vague or uncertain guidance
+ViolationType.UNDISCLOSED_RISK          # Hidden dangers
+ViolationType.USER_HARM                 # Potential user harm
 ```
 
 ## Quick Validation Functions

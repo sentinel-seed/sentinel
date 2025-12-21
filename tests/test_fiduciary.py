@@ -1,6 +1,7 @@
 """Tests for sentinelseed.fiduciary module."""
 
 import pytest
+import threading
 
 from sentinelseed.fiduciary import (
     FiduciaryValidator,
@@ -8,6 +9,8 @@ from sentinelseed.fiduciary import (
     FiduciaryResult,
     UserContext,
     Violation,
+    Severity,
+    RiskTolerance,
     FiduciaryDuty,
     ViolationType,
     FiduciaryStep,
@@ -327,3 +330,272 @@ class TestConvenienceFunctions:
         )
         # May or may not be compliant depending on detection
         assert isinstance(result, bool)
+
+
+class TestSeverityEnum:
+    """Tests for Severity enum."""
+
+    def test_all_values(self):
+        """Test all severity values exist."""
+        assert Severity.LOW == "low"
+        assert Severity.MEDIUM == "medium"
+        assert Severity.HIGH == "high"
+        assert Severity.CRITICAL == "critical"
+
+    def test_from_string_valid(self):
+        """Test from_string with valid values."""
+        assert Severity.from_string("low") == Severity.LOW
+        assert Severity.from_string("HIGH") == Severity.HIGH
+
+    def test_from_string_invalid(self):
+        """Test from_string with invalid value defaults to MEDIUM."""
+        assert Severity.from_string("invalid") == Severity.MEDIUM
+
+
+class TestRiskToleranceEnum:
+    """Tests for RiskTolerance enum."""
+
+    def test_all_values(self):
+        """Test all risk tolerance values exist."""
+        assert RiskTolerance.LOW == "low"
+        assert RiskTolerance.MODERATE == "moderate"
+        assert RiskTolerance.HIGH == "high"
+
+    def test_from_string_valid(self):
+        """Test from_string with valid values."""
+        assert RiskTolerance.from_string("low") == RiskTolerance.LOW
+        assert RiskTolerance.from_string("MODERATE") == RiskTolerance.MODERATE
+
+    def test_from_string_invalid(self):
+        """Test from_string with invalid value defaults to MODERATE."""
+        assert RiskTolerance.from_string("invalid") == RiskTolerance.MODERATE
+
+
+class TestViolationDataclass:
+    """Tests for Violation dataclass with Severity enum."""
+
+    def test_severity_auto_conversion(self):
+        """Test that string severity is auto-converted to enum."""
+        violation = Violation(
+            duty=FiduciaryDuty.LOYALTY,
+            type=ViolationType.CONFLICT_OF_INTEREST,
+            description="Test",
+            severity="high",  # String should be converted
+        )
+        assert violation.severity == Severity.HIGH
+
+    def test_is_blocking(self):
+        """Test is_blocking method."""
+        high_violation = Violation(
+            duty=FiduciaryDuty.CARE,
+            type=ViolationType.USER_HARM,
+            description="High severity",
+            severity=Severity.HIGH,
+        )
+        assert high_violation.is_blocking() is True
+
+        low_violation = Violation(
+            duty=FiduciaryDuty.CARE,
+            type=ViolationType.INCOMPETENT_ACTION,
+            description="Low severity",
+            severity=Severity.LOW,
+        )
+        assert low_violation.is_blocking() is False
+
+
+class TestUserContextWithEnum:
+    """Tests for UserContext with RiskTolerance enum."""
+
+    def test_risk_tolerance_enum(self):
+        """Test risk_tolerance is converted to enum."""
+        ctx = UserContext(risk_tolerance="low")
+        assert ctx.risk_tolerance == RiskTolerance.LOW
+
+    def test_from_dict_with_string(self):
+        """Test from_dict converts string to enum."""
+        ctx = UserContext.from_dict({"risk_tolerance": "high"})
+        assert ctx.risk_tolerance == RiskTolerance.HIGH
+
+    def test_to_dict(self):
+        """Test to_dict outputs string value."""
+        ctx = UserContext(risk_tolerance=RiskTolerance.LOW)
+        d = ctx.to_dict()
+        assert d["risk_tolerance"] == "low"
+
+
+class TestConflictDetectorValidation:
+    """Tests for ConflictDetector input validation."""
+
+    def test_detect_none_action(self):
+        """Test detect raises TypeError for None action."""
+        detector = ConflictDetector()
+        with pytest.raises(TypeError, match="cannot be None"):
+            detector.detect(None)
+
+    def test_detect_invalid_type(self):
+        """Test detect raises TypeError for non-string action."""
+        detector = ConflictDetector()
+        with pytest.raises(TypeError, match="must be a string"):
+            detector.detect(123)
+
+    def test_custom_patterns_validation(self):
+        """Test custom_patterns validation."""
+        with pytest.raises(TypeError):
+            ConflictDetector(custom_patterns="not a list")
+
+        with pytest.raises(ValueError, match="must be.*tuple"):
+            ConflictDetector(custom_patterns=[("pattern",)])  # Missing second element
+
+        with pytest.raises(ValueError, match="must contain strings"):
+            ConflictDetector(custom_patterns=[(123, "type")])
+
+    def test_invalid_regex_pattern(self):
+        """Test invalid regex pattern raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid regex"):
+            ConflictDetector(custom_patterns=[("[invalid", "type")])
+
+
+class TestFiduciaryValidatorValidation:
+    """Tests for FiduciaryValidator input validation."""
+
+    def test_validate_none_action(self):
+        """Test validate raises TypeError for None action."""
+        validator = FiduciaryValidator()
+        with pytest.raises(TypeError, match="cannot be None"):
+            validator.validate_action(None)
+
+    def test_validate_empty_action(self):
+        """Test validate raises ValueError for empty action."""
+        validator = FiduciaryValidator()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            validator.validate_action("")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            validator.validate_action("   ")
+
+    def test_validate_invalid_type(self):
+        """Test validate raises TypeError for non-string action."""
+        validator = FiduciaryValidator()
+        with pytest.raises(TypeError, match="must be a string"):
+            validator.validate_action(123)
+
+    def test_custom_rules_validation(self):
+        """Test custom_rules validation."""
+        with pytest.raises(TypeError):
+            FiduciaryValidator(custom_rules="not a list")
+
+        with pytest.raises(TypeError, match="must be callable"):
+            FiduciaryValidator(custom_rules=["not callable"])
+
+    def test_statistics_tracking(self):
+        """Test statistics are tracked."""
+        validator = FiduciaryValidator()
+        validator.validate_action("Test action 1")
+        validator.validate_action("Test action 2")
+
+        stats = validator.get_stats()
+        assert stats["total_validated"] == 2
+
+        validator.reset_stats()
+        stats = validator.get_stats()
+        assert stats["total_validated"] == 0
+
+    def test_dict_user_context_conversion(self):
+        """Test dict is converted to UserContext."""
+        validator = FiduciaryValidator()
+        result = validator.validate_action(
+            "Test action",
+            user_context={"risk_tolerance": "low", "goals": ["save money"]}
+        )
+        assert isinstance(result, FiduciaryResult)
+
+
+class TestFiduciaryGuardValidation:
+    """Tests for FiduciaryGuard input validation."""
+
+    def test_validate_and_execute_non_callable(self):
+        """Test validate_and_execute raises TypeError for non-callable."""
+        guard = FiduciaryGuard(block_on_violation=False)
+        with pytest.raises(TypeError, match="must be callable"):
+            guard.validate_and_execute("not callable")
+
+    def test_clear_log(self):
+        """Test clear_log method."""
+        guard = FiduciaryGuard(log_decisions=True, block_on_violation=False)
+
+        @guard.protect
+        def test_func():
+            return "result"
+
+        test_func()
+        assert len(guard.decision_log) == 1
+
+        guard.clear_log()
+        assert len(guard.decision_log) == 0
+
+    def test_max_log_size(self):
+        """Test log size is limited."""
+        guard = FiduciaryGuard(
+            log_decisions=True,
+            block_on_violation=False,
+            max_log_size=5,
+        )
+
+        @guard.protect
+        def test_func():
+            return "result"
+
+        for _ in range(10):
+            test_func()
+
+        assert len(guard.decision_log) == 5
+
+
+class TestThreadSafety:
+    """Tests for thread safety."""
+
+    def test_validator_thread_safety(self):
+        """Test FiduciaryValidator is thread-safe."""
+        validator = FiduciaryValidator()
+        errors = []
+
+        def validate_loop():
+            try:
+                for i in range(50):
+                    validator.validate_action(f"Test action {i}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=validate_loop) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0
+        stats = validator.get_stats()
+        assert stats["total_validated"] == 250
+
+    def test_guard_thread_safety(self):
+        """Test FiduciaryGuard is thread-safe."""
+        guard = FiduciaryGuard(log_decisions=True, block_on_violation=False)
+        errors = []
+
+        @guard.protect
+        def test_func(x):
+            return x * 2
+
+        def call_loop():
+            try:
+                for i in range(50):
+                    test_func(i)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=call_loop) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0
+        assert len(guard.decision_log) == 250
