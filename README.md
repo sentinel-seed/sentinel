@@ -59,7 +59,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 | Challenge | Sentinel Solution |
 |-----------|-------------------|
 | Jailbreaks | +10% resistance (Qwen), 100% refusal (DeepSeek) |
-| Toxic content | THS gates block at source |
+| Toxic content | THSP gates block at source |
 | False refusals | 0% on legitimate tasks |
 
 ### For Agents (Action Safety)
@@ -220,7 +220,7 @@ from sentinelseed import Sentinel
 
 sentinel = Sentinel()
 
-# Validate text through THS gates
+# Validate text through THSP gates
 is_safe, violations = sentinel.validate("Some AI response...")
 
 if not is_safe:
@@ -330,6 +330,38 @@ REQUEST
 ```
 
 **Key difference from v1:** The PURPOSE gate ensures actions serve legitimate benefit — the absence of harm is not sufficient.
+
+### Programmatic Validators
+
+Use gates directly in your code for fine-grained control:
+
+```python
+from sentinelseed.validators import (
+    THSPValidator,    # All 4 gates combined
+    TruthGate,        # Individual gates
+    HarmGate,
+    ScopeGate,
+    PurposeGate,
+)
+
+# Validate through all 4 gates
+validator = THSPValidator()
+result = validator.validate("How do I help someone learn Python?")
+# {'safe': True, 'gates': {'truth': 'pass', 'harm': 'pass', 'scope': 'pass', 'purpose': 'pass'}, 'issues': []}
+
+# Or use individual gates
+harm_gate = HarmGate()
+is_safe, violations = harm_gate.validate("Some content to check")
+```
+
+For production use with higher accuracy (~90%), use the semantic validator:
+
+```python
+from sentinelseed.validators import SemanticValidator
+
+validator = SemanticValidator(provider="openai", api_key="...")
+result = validator.validate("Content to analyze")
+```
 
 ---
 
