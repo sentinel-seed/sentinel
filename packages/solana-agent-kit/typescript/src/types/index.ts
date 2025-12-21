@@ -16,6 +16,19 @@ export enum RiskLevel {
 }
 
 /**
+ * Address validation modes - how to handle invalid Solana addresses
+ *
+ * IGNORE: Don't validate address format (not recommended)
+ * WARN: Log warning but allow transaction to proceed
+ * STRICT: Reject transactions with invalid address format (default)
+ */
+export enum AddressValidationMode {
+  IGNORE = "ignore",
+  WARN = "warn",
+  STRICT = "strict",
+}
+
+/**
  * THSP Gate identifiers - the four gates of the Sentinel protocol
  * Truth: Is the action based on accurate information?
  * Harm: Could this cause damage to users or systems?
@@ -96,6 +109,15 @@ export interface SentinelPluginConfig {
   strictMode?: boolean;
 
   /**
+   * Address validation mode - how to handle invalid Solana addresses
+   * IGNORE: Don't validate (not recommended)
+   * WARN: Log warning but proceed
+   * STRICT: Reject invalid addresses (default)
+   * @default AddressValidationMode.STRICT
+   */
+  addressValidation?: AddressValidationMode;
+
+  /**
    * Maximum number of validation results to keep in history
    * Older entries are removed when limit is exceeded
    * @default 1000
@@ -166,6 +188,7 @@ export const DEFAULT_CONFIG: Required<
   allowedPrograms: [],
   requirePurposeFor: ["transfer", "swap", "approve", "bridge", "withdraw", "stake"],
   strictMode: false,
+  addressValidation: AddressValidationMode.STRICT,
   maxHistorySize: 1000,
   customPatterns: [],
 };

@@ -842,3 +842,380 @@ class TestEdgeCases:
 
         # Should not complain about missing purpose
         assert not any("requires explicit purpose" in c for c in result.concerns)
+
+
+class TestStrictMode:
+    """Tests for strict_mode configuration."""
+
+    def test_strict_mode_disabled_by_default(self):
+        """Test strict mode is disabled by default."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        assert validator.strict_mode is False
+
+    def test_strict_mode_blocks_with_concerns(self):
+        """Test strict mode blocks transactions with any concerns."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(strict_mode=True)
+
+        # Missing purpose creates a concern but normally would proceed
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        )
+
+        # Should not proceed in strict mode
+        assert not result.should_proceed
+
+    def test_normal_mode_allows_medium_risk(self):
+        """Test normal mode allows MEDIUM risk transactions."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        validator = SentinelValidator(strict_mode=False)
+
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        )
+
+        # MEDIUM risk should proceed in normal mode
+        if result.risk_level == TransactionRisk.MEDIUM:
+            assert result.should_proceed
+
+
+class TestCustomPatterns:
+    """Tests for custom_patterns configuration."""
+
+    def test_default_patterns_loaded(self):
+        """Test default suspicious patterns are loaded."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            DEFAULT_SUSPICIOUS_PATTERNS,
+        )
+
+        validator = SentinelValidator()
+
+        assert len(validator.custom_patterns) >= len(DEFAULT_SUSPICIOUS_PATTERNS)
+
+    def test_custom_pattern_detection(self):
+        """Test custom pattern detection."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            SuspiciousPattern,
+            TransactionRisk,
+        )
+
+        custom = SuspiciousPattern(
+            name="test_pattern",
+            pattern=r"forbidden_word",
+            risk_level=TransactionRisk.HIGH,
+            message="Forbidden word detected",
+        )
+
+        validator = SentinelValidator(custom_patterns=[custom])
+
+        result = validator.check(
+            action="forbidden_word_action",
+            amount=1.0,
+            purpose="Testing custom patterns",
+        )
+
+        assert any("Forbidden word" in c for c in result.concerns)
+
+    def test_pattern_matches_method(self):
+        """Test SuspiciousPattern.matches() method."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SuspiciousPattern,
+            TransactionRisk,
+        )
+
+        pattern = SuspiciousPattern(
+            name="test",
+            pattern=r"danger",
+            risk_level=TransactionRisk.HIGH,
+            message="Danger detected",
+        )
+
+        assert pattern.matches("This is dangerous")
+        assert pattern.matches("DANGER ahead")
+        assert not pattern.matches("Safe text")
+
+
+class TestOnValidationCallback:
+    """Tests for on_validation callback."""
+
+    def test_callback_called_on_validation(self):
+        """Test callback is called after each validation."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        results = []
+
+        def callback(result):
+            results.append(result)
+
+        validator = SentinelValidator(on_validation=callback)
+
+        validator.check(action="transfer", amount=5.0, purpose="Test 1")
+        validator.check(action="swap", amount=10.0, purpose="Test 2")
+
+        assert len(results) == 2
+        assert results[0].transaction_type == "transfer"
+        assert results[1].transaction_type == "swap"
+
+    def test_callback_error_handled(self):
+        """Test callback errors are handled gracefully."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        def bad_callback(result):
+            raise ValueError("Callback error")
+
+        validator = SentinelValidator(on_validation=bad_callback)
+
+        # Should not raise, error is logged
+        result = validator.check(action="transfer", amount=5.0, purpose="Test")
+
+        assert result is not None
+
+
+class TestBlockUnblockAddress:
+    """Tests for block_address and unblock_address methods."""
+
+    def test_block_address(self):
+        """Test blocking an address."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        address = "TestAddress123456789012345678901234"
+
+        validator.block_address(address)
+
+        assert address in validator.blocked_addresses
+
+    def test_unblock_address(self):
+        """Test unblocking an address."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        address = "TestAddress123456789012345678901234"
+        validator = SentinelValidator(blocked_addresses=[address])
+
+        validator.unblock_address(address)
+
+        assert address not in validator.blocked_addresses
+
+    def test_unblock_nonexistent_address(self):
+        """Test unblocking non-existent address is safe."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Should not raise
+        validator.unblock_address("nonexistent")
+
+    def test_block_address_prevents_transaction(self):
+        """Test blocked address prevents transaction."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        address = "BlockMeAddress123456789012345678901"
+
+        validator.block_address(address)
+
+        result = validator.check(
+            action="transfer",
+            amount=1.0,
+            recipient=address,
+            purpose="Test transfer",
+        )
+
+        assert not result.should_proceed
+        assert any("blocked" in c.lower() for c in result.concerns)
+
+
+class TestUpdateConfig:
+    """Tests for get_config and update_config methods."""
+
+    def test_get_config(self):
+        """Test get_config returns current configuration."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(
+            max_transfer=50.0,
+            strict_mode=True,
+        )
+
+        config = validator.get_config()
+
+        assert config["max_transfer"] == 50.0
+        assert config["strict_mode"] is True
+        assert "blocked_addresses" in config
+        assert "custom_patterns_count" in config
+
+    def test_update_config(self):
+        """Test update_config modifies configuration."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(max_transfer=100.0)
+
+        validator.update_config(max_transfer=50.0, strict_mode=True)
+
+        assert validator.max_transfer == 50.0
+        assert validator.strict_mode is True
+
+    def test_update_config_partial(self):
+        """Test update_config with partial updates."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(max_transfer=100.0, confirm_above=10.0)
+
+        # Only update max_transfer
+        validator.update_config(max_transfer=50.0)
+
+        assert validator.max_transfer == 50.0
+        assert validator.confirm_above == 10.0  # Unchanged
+
+    def test_update_config_address_validation(self):
+        """Test update_config with address validation mode."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            AddressValidationMode,
+        )
+
+        validator = SentinelValidator()
+
+        validator.update_config(address_validation="strict")
+        assert validator.address_validation == AddressValidationMode.STRICT
+
+        validator.update_config(address_validation=AddressValidationMode.IGNORE)
+        assert validator.address_validation == AddressValidationMode.IGNORE
+
+
+class TestNegativeAmountValidation:
+    """Tests for negative amount validation."""
+
+    def test_negative_amount_blocked(self):
+        """Test negative amount is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transfer",
+            amount=-5.0,
+            purpose="Test transfer",
+        )
+
+        assert not result.should_proceed
+        assert result.risk_level == TransactionRisk.CRITICAL
+        assert any("negative" in c.lower() for c in result.concerns)
+
+    def test_zero_amount_allowed(self):
+        """Test zero amount is allowed."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="query",
+            amount=0,
+            purpose="Balance check",
+        )
+
+        assert not any("negative" in c.lower() for c in result.concerns)
+
+
+class TestHighRiskActions:
+    """Tests for HIGH_RISK_ACTIONS detection."""
+
+    def test_drain_action_blocked(self):
+        """Test drain action is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="drainWallet",
+            amount=100.0,
+            purpose="Drain operation",
+        )
+
+        assert not result.should_proceed
+        assert any("High-risk action" in c for c in result.concerns)
+
+    def test_sweep_action_blocked(self):
+        """Test sweep action is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="sweepTokens",
+            amount=100.0,
+            purpose="Sweep operation",
+        )
+
+        assert not result.should_proceed
+        assert any("High-risk action" in c for c in result.concerns)
+
+    def test_transfer_all_blocked(self):
+        """Test transferAll action is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transferAll",
+            amount=100.0,
+            purpose="Transfer all tokens",
+        )
+
+        assert not result.should_proceed
+
+    def test_normal_transfer_allowed(self):
+        """Test normal transfer is allowed."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="Normal payment",
+        )
+
+        # Normal transfer should not be blocked by high-risk action check
+        assert not any("High-risk action" in c for c in result.concerns)
+
+
+class TestNewExports:
+    """Tests for new module exports."""
+
+    def test_suspicious_pattern_export(self):
+        """Test SuspiciousPattern is exported."""
+        from sentinelseed.integrations.solana_agent_kit import SuspiciousPattern
+
+        assert SuspiciousPattern is not None
+
+    def test_default_patterns_export(self):
+        """Test DEFAULT_SUSPICIOUS_PATTERNS is exported."""
+        from sentinelseed.integrations.solana_agent_kit import DEFAULT_SUSPICIOUS_PATTERNS
+
+        assert isinstance(DEFAULT_SUSPICIOUS_PATTERNS, list)
+        assert len(DEFAULT_SUSPICIOUS_PATTERNS) > 0
+
+    def test_high_risk_actions_export(self):
+        """Test HIGH_RISK_ACTIONS is exported."""
+        from sentinelseed.integrations.solana_agent_kit import HIGH_RISK_ACTIONS
+
+        assert isinstance(HIGH_RISK_ACTIONS, list)
+        assert "drain" in HIGH_RISK_ACTIONS

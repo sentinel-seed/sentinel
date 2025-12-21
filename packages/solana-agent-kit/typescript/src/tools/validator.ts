@@ -14,10 +14,21 @@ import {
   type ValidationStats,
   RiskLevel,
   THSPGate,
+  AddressValidationMode,
   DEFAULT_CONFIG,
   DEFAULT_SUSPICIOUS_PATTERNS,
   HIGH_RISK_ACTIONS,
 } from "../types";
+
+// Solana address validation regex (base58, 32-44 chars)
+const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * Validate Solana address format
+ */
+function isValidSolanaAddress(address: string): boolean {
+  return SOLANA_ADDRESS_REGEX.test(address);
+}
 
 /**
  * Sentinel Validator - Core safety validation engine
@@ -147,37 +158,55 @@ export class SentinelValidator {
    * TRUTH GATE: Verify the accuracy and validity of transaction data
    */
   private checkTruthGate(input: ValidationInput): GateResult {
-    // Check for valid recipient address format (Solana base58, 32-44 chars)
+    const addressMode = this.config.addressValidation;
+
+    // Check for valid recipient address format based on validation mode
     if (input.recipient) {
-      const isValidAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input.recipient);
+      const isValidAddress = isValidSolanaAddress(input.recipient);
+
       if (!isValidAddress) {
-        return {
-          gate: THSPGate.TRUTH,
-          passed: false,
-          reason: "Invalid recipient address format",
-        };
+        if (addressMode === AddressValidationMode.STRICT) {
+          return {
+            gate: THSPGate.TRUTH,
+            passed: false,
+            reason: `Invalid recipient address format: ${input.recipient.slice(0, 16)}...`,
+          };
+        } else if (addressMode === AddressValidationMode.WARN) {
+          // Log warning but continue - address format issue is noted
+          console.warn(
+            `[Sentinel] Address may be invalid (not base58): ${input.recipient.slice(0, 16)}...`
+          );
+        }
+        // IGNORE mode: no action, proceed silently
       }
     }
 
-    // Check for valid program ID format
+    // Check for valid program ID format (always strict - programs must be valid)
     if (input.programId) {
-      const isValidProgram = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input.programId);
+      const isValidProgram = isValidSolanaAddress(input.programId);
       if (!isValidProgram) {
         return {
           gate: THSPGate.TRUTH,
           passed: false,
-          reason: "Invalid program ID format",
+          reason: `Invalid program ID format: ${input.programId.slice(0, 16)}...`,
         };
       }
     }
 
     // Check for reasonable amount (not negative, not NaN)
     if (input.amount !== undefined) {
-      if (isNaN(input.amount) || input.amount < 0) {
+      if (isNaN(input.amount)) {
         return {
           gate: THSPGate.TRUTH,
           passed: false,
-          reason: "Invalid transaction amount",
+          reason: "Transaction amount is not a valid number",
+        };
+      }
+      if (input.amount < 0) {
+        return {
+          gate: THSPGate.TRUTH,
+          passed: false,
+          reason: `Transaction amount cannot be negative: ${input.amount}`,
         };
       }
     }

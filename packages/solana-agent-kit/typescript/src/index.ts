@@ -69,6 +69,7 @@ export {
 export {
   RiskLevel,
   THSPGate,
+  AddressValidationMode,
   DEFAULT_CONFIG,
   HIGH_RISK_ACTIONS,
   DEFAULT_SUSPICIOUS_PATTERNS,

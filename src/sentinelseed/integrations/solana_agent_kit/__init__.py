@@ -111,6 +111,60 @@ class TransactionRisk(Enum):
 
 
 @dataclass
+class SuspiciousPattern:
+    """Pattern definition for detecting suspicious behavior."""
+    name: str
+    pattern: str  # Regex pattern string
+    risk_level: TransactionRisk
+    message: str
+
+    def matches(self, text: str) -> bool:
+        """Check if pattern matches the given text."""
+        return bool(re.search(self.pattern, text, re.IGNORECASE))
+
+
+# Default suspicious patterns for crypto transactions
+DEFAULT_SUSPICIOUS_PATTERNS: List[SuspiciousPattern] = [
+    SuspiciousPattern(
+        name="drain_operation",
+        pattern=r"drain|sweep|empty",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Potential drain operation detected",
+    ),
+    SuspiciousPattern(
+        name="unlimited_approval",
+        pattern=r"unlimited|infinite|max.*approv",
+        risk_level=TransactionRisk.HIGH,
+        message="Unlimited approval request detected",
+    ),
+    SuspiciousPattern(
+        name="bulk_transfer",
+        pattern=r"(?:send|transfer).*(?:all|entire|whole)|(?:all|entire|whole).*(?:send|transfer)",
+        risk_level=TransactionRisk.HIGH,
+        message="Bulk transfer operation detected",
+    ),
+    SuspiciousPattern(
+        name="private_key_exposure",
+        pattern=r"private.*key|secret.*key|seed.*phrase|mnemonic",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Potential private key exposure in transaction data",
+    ),
+    SuspiciousPattern(
+        name="suspicious_urgency",
+        pattern=r"urgent|immediately|right.*now|asap",
+        risk_level=TransactionRisk.MEDIUM,
+        message="Suspicious urgency language detected",
+    ),
+]
+
+# High-risk action keywords that always trigger blocking
+HIGH_RISK_ACTIONS = [
+    "drain", "sweep", "transferall", "sendall",
+    "approveunlimited", "infiniteapproval",
+]
+
+
+@dataclass
 class TransactionSafetyResult:
     """Result of transaction safety validation."""
     safe: bool
@@ -163,6 +217,9 @@ class SentinelValidator:
         memory_integrity_check: bool = False,
         memory_secret_key: Optional[str] = None,
         address_validation: Union[str, AddressValidationMode] = AddressValidationMode.WARN,
+        strict_mode: bool = False,
+        custom_patterns: Optional[List[SuspiciousPattern]] = None,
+        on_validation: Optional[Callable[[TransactionSafetyResult], None]] = None,
     ):
         """
         Initialize validator.
@@ -178,6 +235,9 @@ class SentinelValidator:
             memory_integrity_check: Enable memory integrity verification
             memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
             address_validation: How to handle invalid addresses ("ignore", "warn", "strict")
+            strict_mode: If True, block any transaction with concerns (default False)
+            custom_patterns: Additional suspicious patterns to check
+            on_validation: Callback function called after each validation
 
         Note:
             Default max_transfer=100.0 SOL may be too high for some use cases.
@@ -192,6 +252,9 @@ class SentinelValidator:
         self.max_history_size = max_history_size
         self.memory_integrity_check = memory_integrity_check
         self.memory_secret_key = memory_secret_key
+        self.strict_mode = strict_mode
+        self.custom_patterns = DEFAULT_SUSPICIOUS_PATTERNS + (custom_patterns or [])
+        self.on_validation = on_validation
         self.history: List[TransactionSafetyResult] = []
 
         # Parse address validation mode
@@ -262,6 +325,29 @@ class SentinelValidator:
                     recommendations.append("Verify recipient address format")
                 # IGNORE mode: no action
 
+        # Validate amount is a valid number and not negative
+        if amount is not None:
+            try:
+                amount = float(amount)
+            except (ValueError, TypeError):
+                concerns.append(f"Invalid transaction amount: {amount}")
+                risk_level = TransactionRisk.CRITICAL
+                amount = 0  # Set to 0 to prevent further errors
+
+            if amount < 0:
+                concerns.append(f"Transaction amount cannot be negative: {amount}")
+                risk_level = TransactionRisk.CRITICAL
+                logger.warning(f"Negative amount rejected: {amount}")
+
+        # Check for high-risk action patterns
+        action_lower = action.lower().replace("_", "").replace("-", "")
+        for high_risk in HIGH_RISK_ACTIONS:
+            if high_risk in action_lower:
+                concerns.append(f"High-risk action detected: {action}")
+                risk_level = TransactionRisk.CRITICAL
+                logger.warning(f"High-risk action blocked: {action}")
+                break
+
         # Check blocked addresses
         if recipient and recipient in self.blocked_addresses:
             concerns.append(f"Recipient is blocked: {recipient[:8]}...")
@@ -315,14 +401,21 @@ class SentinelValidator:
             logger.info(f"Sentinel validation failed: {sentinel_concerns}")
 
         # Check suspicious patterns
-        suspicious = self._check_patterns(action, amount, memo)
+        effective_purpose = purpose or kwargs.get("reason", "")
+        suspicious, pattern_risk = self._check_patterns(action, amount, memo, effective_purpose)
         if suspicious:
             concerns.extend(suspicious)
-            if risk_level < TransactionRisk.MEDIUM:
-                risk_level = TransactionRisk.MEDIUM
+            if risk_level < pattern_risk:
+                risk_level = pattern_risk
 
-        # Determine if should proceed
-        should_proceed = risk_level not in [TransactionRisk.CRITICAL, TransactionRisk.HIGH]
+        # Determine if should proceed based on risk level and strict_mode
+        is_safe = len(concerns) == 0
+        if self.strict_mode:
+            # In strict mode, block any transaction with concerns
+            should_proceed = is_safe
+        else:
+            # In normal mode, only block HIGH and CRITICAL
+            should_proceed = risk_level not in [TransactionRisk.CRITICAL, TransactionRisk.HIGH]
 
         # Add recommendations
         if requires_confirmation:
@@ -333,7 +426,7 @@ class SentinelValidator:
             recommendations.append(f"Provide purpose= for {action} actions")
 
         result = TransactionSafetyResult(
-            safe=len(concerns) == 0,
+            safe=is_safe,
             risk_level=risk_level,
             transaction_type=action,
             concerns=concerns,
@@ -346,6 +439,13 @@ class SentinelValidator:
         self.history.append(result)
         if len(self.history) > self.max_history_size:
             self.history.pop(0)
+
+        # Call validation callback if provided
+        if self.on_validation is not None:
+            try:
+                self.on_validation(result)
+            except Exception as e:
+                logger.error(f"on_validation callback error: {e}")
 
         logger.debug(f"Check result: safe={result.safe}, risk={risk_level.name}")
         return result
@@ -369,31 +469,45 @@ class SentinelValidator:
         self,
         action: str,
         amount: float,
-        memo: str
-    ) -> List[str]:
-        """Check for suspicious transaction patterns."""
+        memo: str,
+        purpose: str = "",
+    ) -> tuple:
+        """
+        Check for suspicious transaction patterns.
+
+        Returns:
+            Tuple of (concerns_list, max_risk_level)
+        """
         suspicious = []
+        max_risk = TransactionRisk.LOW
+
+        # Build text to check against patterns
+        text_to_check = " ".join(filter(None, [action, memo, purpose]))
+
+        # Check against custom patterns
+        for pattern in self.custom_patterns:
+            if pattern.matches(text_to_check):
+                suspicious.append(pattern.message)
+                if pattern.risk_level > max_risk:
+                    max_risk = pattern.risk_level
+
+        # Unlimited approvals (special case - amount == 0 for approve)
         action_lower = action.lower()
-
-        # Drain patterns
-        if "drain" in action_lower or "sweep" in action_lower:
-            suspicious.append("Potential drain operation detected")
-
-        # Bulk operations
-        if "all" in action_lower and ("transfer" in action_lower or "send" in action_lower):
-            suspicious.append("Bulk transfer operation")
-
-        # Unlimited approvals
         if "approve" in action_lower and amount == 0:
-            suspicious.append("Potential unlimited approval")
+            if "Unlimited approval" not in " ".join(suspicious):
+                suspicious.append("Potential unlimited approval (amount=0)")
+                if max_risk < TransactionRisk.HIGH:
+                    max_risk = TransactionRisk.HIGH
 
-        # Suspicious memo
+        # Suspicious memo (Sentinel check)
         if memo:
             memo_check = self.sentinel.validate_request(memo)
             if not memo_check.get("should_proceed", True):
                 suspicious.append("Suspicious memo content")
+                if max_risk < TransactionRisk.MEDIUM:
+                    max_risk = TransactionRisk.MEDIUM
 
-        return suspicious
+        return suspicious, max_risk
 
     def get_stats(self) -> Dict[str, Any]:
         """Get validation statistics."""
@@ -415,6 +529,75 @@ class SentinelValidator:
     def clear_history(self) -> None:
         """Clear validation history."""
         self.history = []
+
+    def block_address(self, address: str) -> None:
+        """
+        Add address to blocklist.
+
+        Args:
+            address: Solana wallet address to block
+        """
+        if address and address not in self.blocked_addresses:
+            self.blocked_addresses.add(address)
+            logger.info(f"Address blocked: {address[:8]}...")
+
+    def unblock_address(self, address: str) -> None:
+        """
+        Remove address from blocklist.
+
+        Args:
+            address: Solana wallet address to unblock
+        """
+        if address in self.blocked_addresses:
+            self.blocked_addresses.remove(address)
+            logger.info(f"Address unblocked: {address[:8]}...")
+
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get current validator configuration.
+
+        Returns:
+            Dict with current configuration values
+        """
+        return {
+            "max_transfer": self.max_transfer,
+            "confirm_above": self.confirm_above,
+            "blocked_addresses": list(self.blocked_addresses),
+            "allowed_programs": list(self.allowed_programs),
+            "require_purpose_for": self.require_purpose_for,
+            "max_history_size": self.max_history_size,
+            "address_validation": self.address_validation.value,
+            "strict_mode": self.strict_mode,
+            "custom_patterns_count": len(self.custom_patterns),
+        }
+
+    def update_config(
+        self,
+        max_transfer: Optional[float] = None,
+        confirm_above: Optional[float] = None,
+        strict_mode: Optional[bool] = None,
+        address_validation: Optional[Union[str, AddressValidationMode]] = None,
+    ) -> None:
+        """
+        Update validator configuration.
+
+        Args:
+            max_transfer: New maximum transfer limit
+            confirm_above: New confirmation threshold
+            strict_mode: Enable/disable strict mode
+            address_validation: New address validation mode
+        """
+        if max_transfer is not None:
+            self.max_transfer = max_transfer
+        if confirm_above is not None:
+            self.confirm_above = confirm_above
+        if strict_mode is not None:
+            self.strict_mode = strict_mode
+        if address_validation is not None:
+            if isinstance(address_validation, str):
+                self.address_validation = AddressValidationMode(address_validation.lower())
+            else:
+                self.address_validation = address_validation
 
 
 def safe_transaction(
@@ -735,8 +918,13 @@ __all__ = [
     # Enums
     "TransactionRisk",
     "AddressValidationMode",
-    # Classes
+    # Dataclasses
     "TransactionSafetyResult",
+    "SuspiciousPattern",
+    # Constants
+    "DEFAULT_SUSPICIOUS_PATTERNS",
+    "HIGH_RISK_ACTIONS",
+    # Classes
     "SentinelValidator",
     "SentinelSafetyMiddleware",
     "TransactionBlockedError",
