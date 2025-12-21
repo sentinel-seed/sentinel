@@ -111,11 +111,12 @@ export const THSP_PATTERNS: THSPPattern[] = [
 
 /**
  * Patterns that indicate good safety practices
+ * Note: Using 'i' flag only (case-insensitive) since we use .test() which doesn't need global flag
  */
 export const SAFE_PATTERNS: RegExp[] = [
-    /sentinel\s+alignment\s+seed/gi,
-    /thsp\s+protocol/gi,
-    /truth.*harm.*scope.*purpose/gi
+    /sentinel\s+alignment\s+seed/i,
+    /thsp\s+protocol/i,
+    /truth.*harm.*scope.*purpose/i
 ];
 
 /**
@@ -142,10 +143,8 @@ export function checkPatterns(content: string): {
 
 /**
  * Check if content contains Sentinel seed
+ * Note: SAFE_PATTERNS use 'i' flag only, no need for lastIndex reset
  */
 export function hasSentinelSeed(content: string): boolean {
-    return SAFE_PATTERNS.some(pattern => {
-        pattern.lastIndex = 0;
-        return pattern.test(content);
-    });
+    return SAFE_PATTERNS.some(pattern => pattern.test(content));
 }

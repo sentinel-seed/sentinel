@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { THSP_PATTERNS, SAFE_PATTERNS, THSPPattern } from './patterns';
+import { THSP_PATTERNS, SAFE_PATTERNS } from './patterns';
 
 /**
  * Real-time linter for detecting potential safety issues in prompts.
@@ -7,16 +7,47 @@ import { THSP_PATTERNS, SAFE_PATTERNS, THSPPattern } from './patterns';
  * NOTE: This uses heuristic pattern matching for performance reasons.
  * Real-time LLM calls would be too slow and expensive.
  * For accurate semantic analysis, use the "Analyze Selection" command.
+ *
+ * Implements vscode.Disposable for proper cleanup.
  */
-export class SentinelLinter {
+export class SentinelLinter implements vscode.Disposable {
     private diagnosticCollection: vscode.DiagnosticCollection;
     private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+    private disposed: boolean = false;
 
     constructor(diagnosticCollection: vscode.DiagnosticCollection) {
+        if (!diagnosticCollection) {
+            throw new Error('diagnosticCollection is required');
+        }
         this.diagnosticCollection = diagnosticCollection;
     }
 
+    /**
+     * Dispose of all resources and clear timers
+     */
+    public dispose(): void {
+        if (this.disposed) {
+            return;
+        }
+
+        this.disposed = true;
+
+        // Clear all debounce timers
+        for (const timer of this.debounceTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.debounceTimers.clear();
+
+        // Clear diagnostics
+        this.diagnosticCollection.clear();
+    }
+
     public lintDocument(document: vscode.TextDocument): void {
+        // Don't lint if disposed
+        if (this.disposed) {
+            return;
+        }
+
         // Debounce to avoid excessive linting during typing
         const uri = document.uri.toString();
         const existingTimer = this.debounceTimers.get(uri);
@@ -25,7 +56,10 @@ export class SentinelLinter {
         }
 
         const timer = setTimeout(() => {
-            this.performLinting(document);
+            // Check again before performing linting
+            if (!this.disposed) {
+                this.performLinting(document);
+            }
             this.debounceTimers.delete(uri);
         }, 500);
 
@@ -43,10 +77,8 @@ export class SentinelLinter {
         const diagnostics: vscode.Diagnostic[] = [];
 
         // Check if document contains Sentinel seed (good practice)
-        const hasSentinelSeed = SAFE_PATTERNS.some(pattern => {
-            pattern.lastIndex = 0;
-            return pattern.test(text);
-        });
+        // Note: SAFE_PATTERNS now use 'i' flag only, no need for lastIndex reset
+        const hasSentinelSeed = SAFE_PATTERNS.some(pattern => pattern.test(text));
 
         // Check for unsafe patterns using shared THSP patterns
         for (const thspPattern of THSP_PATTERNS) {
@@ -101,17 +133,15 @@ export class SentinelLinter {
     }
 
     private looksLikeSystemPrompt(text: string): boolean {
+        // Using 'i' flag only - 'g' is unnecessary for .test()
         const promptIndicators = [
-            /system\s*prompt/gi,
-            /you\s+are\s+(a|an)\s+/gi,
-            /your\s+role\s+is/gi,
-            /as\s+an?\s+ai\s+assistant/gi,
-            /instructions?:/gi
+            /system\s*prompt/i,
+            /you\s+are\s+(a|an)\s+/i,
+            /your\s+role\s+is/i,
+            /as\s+an?\s+ai\s+assistant/i,
+            /instructions?:/i
         ];
 
-        return promptIndicators.some(pattern => {
-            pattern.lastIndex = 0;
-            return pattern.test(text);
-        });
+        return promptIndicators.some(pattern => pattern.test(text));
     }
 }

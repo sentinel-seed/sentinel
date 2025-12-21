@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { SentinelLinter } from './linter';
 import { SentinelAnalyzer, AnalysisResult } from './analyzer';
-import { SEED_MINIMAL, SEED_STANDARD } from './seeds';
+import { SEED_MINIMAL, SEED_STANDARD, estimateTokenCount } from './seeds';
 import { SecretManager, promptForApiKey } from './secrets';
 
 let linter: SentinelLinter;
@@ -23,7 +23,11 @@ export async function activate(context: vscode.ExtensionContext) {
     await loadSecretKeys();
 
     // Migrate API keys from settings to secure storage (if any)
-    await secretManager.migrateFromSettings();
+    try {
+        await secretManager.migrateFromSettings();
+    } catch (error) {
+        console.warn('Failed to migrate API keys from settings:', error);
+    }
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -109,9 +113,10 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(onChangeDisposable, onOpenDisposable);
     }
 
-    // Add all disposables
+    // Add all disposables (including linter for proper cleanup)
     context.subscriptions.push(
         diagnosticCollection,
+        linter, // Added: linter implements Disposable
         statusBarItem,
         analyzeSelectionCmd,
         analyzeFileCmd,
@@ -162,13 +167,18 @@ function showStatus(): void {
 }
 
 async function loadSecretKeys(): Promise<void> {
-    const openaiKey = await secretManager.getOpenAIKey();
-    const anthropicKey = await secretManager.getAnthropicKey();
+    try {
+        const openaiKey = await secretManager.getOpenAIKey();
+        const anthropicKey = await secretManager.getAnthropicKey();
 
-    analyzer.setExternalKeys({
-        openaiKey,
-        anthropicKey
-    });
+        analyzer.setExternalKeys({
+            openaiKey,
+            anthropicKey
+        });
+    } catch (error) {
+        console.warn('Failed to load API keys from secure storage:', error);
+        // Continue with heuristic analysis - don't block extension activation
+    }
 }
 
 function shouldLintDocument(document: vscode.TextDocument): boolean {
@@ -215,6 +225,12 @@ async function analyzeFile() {
     }
 
     const text = editor.document.getText();
+
+    // Check for empty file
+    if (!text || text.trim() === '') {
+        vscode.window.showInformationMessage('File is empty - nothing to analyze');
+        return;
+    }
 
     vscode.window.withProgress(
         {
@@ -279,7 +295,9 @@ async function insertSeed(variant: 'minimal' | 'standard') {
         editBuilder.insert(position, seed);
     });
 
+    // Calculate approximate token count dynamically
+    const tokenCount = estimateTokenCount(seed);
     vscode.window.showInformationMessage(
-        `Sentinel ${variant} seed inserted (${variant === 'minimal' ? '~450' : '~1,400'} tokens)`
+        `Sentinel ${variant} seed inserted (~${tokenCount} tokens)`
     );
 }

@@ -60,6 +60,9 @@ suite('THSP Patterns Test Suite', () => {
             const result = checkPatterns(educational);
             // Note: This may still trigger due to heuristic limitations
             // The test documents expected behavior, not ideal behavior
+            // At minimum, verify the result structure is valid
+            assert.ok('gates' in result, 'Result has gates');
+            assert.ok('issues' in result, 'Result has issues');
         });
 
     });

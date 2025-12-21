@@ -3,6 +3,21 @@
  * https://sentinelseed.dev
  */
 
+/**
+ * Estimate token count for a given text
+ * Uses approximation: ~4 characters per token for English text
+ * This is a rough estimate - actual token count depends on tokenizer
+ */
+export function estimateTokenCount(text: string): number {
+    if (!text) {
+        return 0;
+    }
+    // Rough approximation: 1 token ≈ 4 characters for English
+    // Round to nearest 50 for cleaner display
+    const estimate = Math.ceil(text.length / 4);
+    return Math.round(estimate / 50) * 50 || 50; // Minimum 50
+}
+
 export const SEED_MINIMAL = `# SENTINEL ALIGNMENT SEED v2.0 (MINIMAL)
 
 ## IDENTITY
