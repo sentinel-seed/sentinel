@@ -2,6 +2,39 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
+## [0.3.3] - 2025-12-20
+
+### Security
+
+- **Critical**: Added response validation for OpenAI and Anthropic API calls
+- **Critical**: User content now sanitized to prevent prompt injection attacks
+- **Critical**: Added 30-second timeout with AbortController for all API calls
+
+### Added
+
+- Result caching system (1-minute TTL, 50 entries max) for better performance
+- Comprehensive test suite for semantic, analyzer, linter, seeds, and secrets modules
+- ESLint configuration (`.eslintrc.json`) for code quality enforcement
+- Dynamic token count estimation for alignment seeds
+- Type guards for LLM response validation
+
+### Fixed
+
+- Added try/catch to `loadSecretKeys` and `migrateFromSettings` for graceful error handling
+- Implemented `dispose()` in SentinelLinter for proper resource cleanup
+- Linter now properly added to context.subscriptions for automatic cleanup
+- Empty file validation in `analyzeFile` command
+- API key prefix validation made more flexible (accepts non-standard formats)
+- Removed unnecessary global flag from regex patterns
+
+### Changed
+
+- Optimized validator re-initialization with config hash comparison
+- Updated Anthropic API version to `2024-01-01`
+- Migration now offers to auto-clear settings after successful migration
+- Added `noUnusedLocals` and `noUnusedParameters` to tsconfig
+- Added `engines.node >= 18.0.0` requirement
+
 ## [0.3.2] - 2025-12-17
 
 ### Fixed
