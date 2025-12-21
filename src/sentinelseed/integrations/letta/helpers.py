@@ -13,12 +13,31 @@ Classes:
     - ApprovalDecision: Result of an approval decision
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
-logger = logging.getLogger("sentinelseed.integrations.letta")
+_logger = logging.getLogger("sentinelseed.integrations.letta")
+
+# Valid configuration values
+VALID_MODES = ("block", "flag", "log")
+VALID_PROVIDERS = ("openai", "anthropic")
+
+
+def _validate_provider(provider: str) -> None:
+    """Validate provider is supported."""
+    if provider not in VALID_PROVIDERS:
+        raise ValueError(f"Invalid provider '{provider}'. Must be one of: {VALID_PROVIDERS}")
+
+
+def _sanitize_for_log(text: str, max_length: int = 50) -> str:
+    """Sanitize text for logging to avoid exposing sensitive content."""
+    if not text:
+        return "<empty>"
+    if len(text) <= max_length:
+        return f"[{len(text)} chars]"
+    return f"[{len(text)} chars]"
 
 
 class ApprovalStatus(str, Enum):
@@ -88,10 +107,14 @@ def validate_message(
 
     Returns:
         Dict with validation results:
-            - is_safe: bool
+            - is_safe: bool or None if validation unavailable
             - gates: Dict of gate results
             - reasoning: str explanation
-            - method: "semantic" or "heuristic"
+            - failed_gates: List of failed gate names
+            - method: "semantic", "heuristic", or "none"
+
+    Raises:
+        ValueError: If content is None or provider is invalid
 
     Example:
         result = validate_message(
@@ -101,6 +124,26 @@ def validate_message(
         if not result["is_safe"]:
             print(f"Blocked: {result['reasoning']}")
     """
+    # Input validation
+    if content is None:
+        raise ValueError("content cannot be None")
+
+    if not isinstance(content, str):
+        raise ValueError(f"content must be a string, got {type(content).__name__}")
+
+    # Validate provider
+    _validate_provider(provider)
+
+    # Handle empty content
+    if not content.strip():
+        return {
+            "is_safe": True,
+            "gates": {"truth": True, "harm": True, "scope": True, "purpose": True},
+            "reasoning": "Empty content - no validation needed",
+            "failed_gates": [],
+            "method": "validation",
+        }
+
     if api_key:
         try:
             from sentinelseed.validators.semantic import SemanticValidator
@@ -114,13 +157,16 @@ def validate_message(
 
             return {
                 "is_safe": result.is_safe,
-                "gates": result.gate_results,
-                "reasoning": result.reasoning,
-                "failed_gates": result.failed_gates,
+                "gates": result.gate_results if hasattr(result, 'gate_results') else {},
+                "reasoning": result.reasoning if hasattr(result, 'reasoning') else "Semantic validation",
+                "failed_gates": result.failed_gates if hasattr(result, 'failed_gates') else [],
                 "method": "semantic",
             }
         except ImportError:
-            logger.warning("SemanticValidator not available")
+            _logger.warning("SemanticValidator not available, falling back to heuristic")
+        except Exception as e:
+            _logger.warning(f"Semantic validation error: {type(e).__name__}")
+            # Fall through to heuristic validation
 
     # Fallback to heuristic
     try:
@@ -137,19 +183,28 @@ def validate_message(
             "method": "heuristic",
         }
     except ImportError:
-        logger.warning("No validator available - cannot verify safety")
+        _logger.warning("No validator available - cannot verify safety")
         return {
-            "is_safe": None,  # Unknown - no validator available
+            "is_safe": None,
             "gates": {},
             "reasoning": "No validator available - safety cannot be verified",
             "failed_gates": [],
             "method": "none",
         }
+    except Exception as e:
+        _logger.warning(f"Heuristic validation error: {type(e).__name__}")
+        return {
+            "is_safe": None,
+            "gates": {},
+            "reasoning": f"Validation error: {type(e).__name__}",
+            "failed_gates": [],
+            "method": "error",
+        }
 
 
 def validate_tool_call(
     tool_name: str,
-    arguments: Dict[str, Any],
+    arguments: Optional[Dict[str, Any]] = None,
     api_key: Optional[str] = None,
     provider: str = "openai",
     model: Optional[str] = None,
@@ -163,7 +218,7 @@ def validate_tool_call(
 
     Args:
         tool_name: Name of the tool being called
-        arguments: Arguments being passed to the tool
+        arguments: Arguments being passed to the tool (optional)
         api_key: API key for semantic validation
         provider: LLM provider
         model: Model for validation
@@ -171,10 +226,14 @@ def validate_tool_call(
 
     Returns:
         Dict with validation results:
-            - is_safe: bool
+            - is_safe: bool or None if validation unavailable
             - gates: Dict of gate results
             - reasoning: str explanation
             - risk_level: "low", "medium", "high"
+            - tool_name: The validated tool name
+
+    Raises:
+        ValueError: If tool_name is None/empty or provider is invalid
 
     Example:
         result = validate_tool_call(
@@ -184,6 +243,29 @@ def validate_tool_call(
         )
         # result["is_safe"] = False
     """
+    # Input validation
+    if tool_name is None:
+        raise ValueError("tool_name cannot be None")
+
+    if not isinstance(tool_name, str):
+        raise ValueError(f"tool_name must be a string, got {type(tool_name).__name__}")
+
+    if not tool_name.strip():
+        raise ValueError("tool_name cannot be empty")
+
+    # Validate provider
+    _validate_provider(provider)
+
+    # Normalize arguments
+    if arguments is None:
+        arguments = {}
+    elif not isinstance(arguments, dict):
+        # Try to convert or use as-is in string form
+        try:
+            arguments = {"value": str(arguments)}
+        except Exception:
+            arguments = {}
+
     high_risk = high_risk_tools or [
         "run_code", "web_search", "send_message",
         "delete", "modify", "execute",
@@ -191,13 +273,18 @@ def validate_tool_call(
 
     # Determine risk level
     risk_level = "low"
+    tool_name_lower = tool_name.lower()
     if tool_name in high_risk:
         risk_level = "high"
-    elif any(kw in tool_name.lower() for kw in ["write", "update", "send"]):
+    elif any(kw in tool_name_lower for kw in ["write", "update", "send", "delete", "remove"]):
         risk_level = "medium"
 
     # Build content for validation
-    content = f"Tool: {tool_name}\nArguments: {arguments}"
+    # Limit argument representation to avoid very long strings
+    args_str = str(arguments)
+    if len(args_str) > 500:
+        args_str = args_str[:500] + "..."
+    content = f"Tool: {tool_name}\nArguments: {args_str}"
 
     # Validate
     validation = validate_message(
@@ -239,6 +326,9 @@ def sentinel_approval_handler(
     Returns:
         ApprovalDecision with approve/deny decision
 
+    Raises:
+        ValueError: If approval_request is invalid
+
     Example:
         # In message handler:
         for msg in response.messages:
@@ -253,25 +343,61 @@ def sentinel_approval_handler(
                     messages=[decision.to_approval_message()]
                 )
     """
-    tool_name = approval_request.get("tool_name", "unknown")
-    arguments = approval_request.get("arguments", {})
-    tool_call_id = approval_request.get("tool_call_id", "unknown")
+    # Input validation
+    if approval_request is None:
+        raise ValueError("approval_request cannot be None")
+
+    if not isinstance(approval_request, dict):
+        raise ValueError(f"approval_request must be a dict, got {type(approval_request).__name__}")
+
+    # Extract fields with safe defaults
+    tool_name = approval_request.get("tool_name")
+    if not tool_name:
+        tool_name = "unknown"
+
+    arguments = approval_request.get("arguments")
+    if not isinstance(arguments, dict):
+        arguments = {}
+
+    tool_call_id = approval_request.get("tool_call_id")
+    if not tool_call_id:
+        tool_call_id = "unknown"
 
     # Validate the tool call
-    validation = validate_tool_call(
-        tool_name=tool_name,
-        arguments=arguments,
-        api_key=api_key,
-        provider=provider,
-        model=model,
-    )
+    try:
+        validation = validate_tool_call(
+            tool_name=tool_name,
+            arguments=arguments,
+            api_key=api_key,
+            provider=provider,
+            model=model,
+        )
+    except ValueError as e:
+        # If validation itself fails, return pending for manual review
+        return ApprovalDecision(
+            status=ApprovalStatus.PENDING,
+            approve=False,
+            tool_call_id=tool_call_id,
+            reason=f"Validation error: {str(e)}",
+            gates={},
+        )
 
-    is_safe = validation["is_safe"]
-    reasoning = validation["reasoning"]
+    is_safe = validation.get("is_safe")
+    reasoning = validation.get("reasoning", "Unknown")
     gates = validation.get("gates", {})
 
-    # Make decision
-    if is_safe and auto_approve_safe:
+    # Handle is_safe = None (validator unavailable)
+    if is_safe is None:
+        return ApprovalDecision(
+            status=ApprovalStatus.PENDING,
+            approve=False,
+            tool_call_id=tool_call_id,
+            reason=f"Manual review required - validator unavailable. {reasoning}",
+            gates=gates,
+        )
+
+    # Make decision based on validation result
+    if is_safe is True and auto_approve_safe:
         return ApprovalDecision(
             status=ApprovalStatus.APPROVED,
             approve=True,
@@ -280,13 +406,14 @@ def sentinel_approval_handler(
             gates=gates,
         )
 
-    if not is_safe and auto_deny_unsafe:
+    if is_safe is False and auto_deny_unsafe:
         failed_gates = validation.get("failed_gates", [])
+        reason_detail = ", ".join(failed_gates) if failed_gates else reasoning
         return ApprovalDecision(
             status=ApprovalStatus.DENIED,
             approve=False,
             tool_call_id=tool_call_id,
-            reason=f"Sentinel THSP blocked: {', '.join(failed_gates) if failed_gates else reasoning}",
+            reason=f"Sentinel THSP blocked: {reason_detail}",
             gates=gates,
             suggested_modification="Consider rephrasing the request to be more specific about the legitimate purpose.",
         )
@@ -318,7 +445,29 @@ async def async_validate_message(
 
     Returns:
         Dict with validation results
+
+    Raises:
+        ValueError: If content is None or provider is invalid
     """
+    # Input validation (same as sync version)
+    if content is None:
+        raise ValueError("content cannot be None")
+
+    if not isinstance(content, str):
+        raise ValueError(f"content must be a string, got {type(content).__name__}")
+
+    _validate_provider(provider)
+
+    # Handle empty content
+    if not content.strip():
+        return {
+            "is_safe": True,
+            "gates": {"truth": True, "harm": True, "scope": True, "purpose": True},
+            "reasoning": "Empty content - no validation needed",
+            "failed_gates": [],
+            "method": "validation",
+        }
+
     if api_key:
         try:
             from sentinelseed.validators.semantic import AsyncSemanticValidator
@@ -332,13 +481,16 @@ async def async_validate_message(
 
             return {
                 "is_safe": result.is_safe,
-                "gates": result.gate_results,
-                "reasoning": result.reasoning,
-                "failed_gates": result.failed_gates,
+                "gates": result.gate_results if hasattr(result, 'gate_results') else {},
+                "reasoning": result.reasoning if hasattr(result, 'reasoning') else "Async semantic validation",
+                "failed_gates": result.failed_gates if hasattr(result, 'failed_gates') else [],
                 "method": "semantic",
             }
         except ImportError:
-            logger.warning("AsyncSemanticValidator not available")
+            _logger.warning("AsyncSemanticValidator not available, using sync fallback")
+        except Exception as e:
+            _logger.warning(f"Async semantic validation error: {type(e).__name__}")
 
-    # Fallback to sync heuristic
-    return validate_message(content, api_key, provider, model)
+    # Fallback to sync heuristic (runs in thread pool in real async context)
+    # Note: This is sync but safe to call from async context
+    return validate_message(content, None, provider, model)

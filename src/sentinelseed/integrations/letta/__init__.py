@@ -65,11 +65,21 @@ References:
     - Sentinel: https://sentinelseed.dev
 """
 
+__version__ = "1.0.0"
+
+# Validation constants
+VALID_MODES = ("block", "flag", "log")
+VALID_PROVIDERS = ("openai", "anthropic")
+DEFAULT_HIGH_RISK_TOOLS = ("send_message", "run_code", "web_search")
+
 # Wrappers
 from sentinelseed.integrations.letta.wrappers import (
     SentinelLettaClient,
     SentinelAgentsAPI,
     SentinelMessagesAPI,
+    SafetyConfig,
+    BlockedResponse,
+    SafetyBlockedError,
     create_safe_agent,
 )
 
@@ -80,6 +90,7 @@ from sentinelseed.integrations.letta.tools import (
     SentinelSafetyTool,
     MemoryGuardTool,
     SENTINEL_TOOL_SOURCE,
+    MEMORY_GUARD_TOOL_SOURCE,
 )
 
 # Helpers
@@ -87,14 +98,25 @@ from sentinelseed.integrations.letta.helpers import (
     sentinel_approval_handler,
     validate_message,
     validate_tool_call,
+    async_validate_message,
     ApprovalDecision,
+    ApprovalStatus,
 )
 
 __all__ = [
+    # Version
+    "__version__",
+    # Constants
+    "VALID_MODES",
+    "VALID_PROVIDERS",
+    "DEFAULT_HIGH_RISK_TOOLS",
     # Wrappers
     "SentinelLettaClient",
     "SentinelAgentsAPI",
     "SentinelMessagesAPI",
+    "SafetyConfig",
+    "BlockedResponse",
+    "SafetyBlockedError",
     "create_safe_agent",
     # Tools
     "create_sentinel_tool",
@@ -102,9 +124,12 @@ __all__ = [
     "SentinelSafetyTool",
     "MemoryGuardTool",
     "SENTINEL_TOOL_SOURCE",
+    "MEMORY_GUARD_TOOL_SOURCE",
     # Helpers
     "sentinel_approval_handler",
     "validate_message",
     "validate_tool_call",
+    "async_validate_message",
     "ApprovalDecision",
+    "ApprovalStatus",
 ]

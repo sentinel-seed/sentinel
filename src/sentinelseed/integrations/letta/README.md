@@ -150,6 +150,11 @@ agent = client.agents.create(
 )
 ```
 
+> **Note:** The `MemoryGuardTool` is currently a placeholder implementation.
+> Full memory integrity verification requires access to Letta's memory blocks
+> through the client API, which varies by deployment. The tool structure is
+> in place for future implementation or custom extension.
+
 ## API Reference
 
 ### SentinelLettaClient
@@ -255,6 +260,19 @@ Default tools considered high-risk:
 - `run_code` - Code execution
 - `web_search` - External web access
 - `send_message` - Agent messaging
+
+## Known Limitations
+
+1. **MemoryGuardTool is a placeholder** - Full memory integrity verification
+   requires access to Letta's memory blocks through the client API.
+
+2. **Streaming output validation** - Output validation is not possible during
+   streaming. Use `create()` instead of `stream()` for full validation.
+
+3. **Semantic validation requires API key** - Without an OpenAI or Anthropic
+   API key, only heuristic validation is available.
+
+4. **Provider support** - Currently supports `openai` and `anthropic` providers only.
 
 ## Examples
 
