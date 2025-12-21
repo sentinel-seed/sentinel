@@ -19,6 +19,7 @@ References:
 
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
 
@@ -599,8 +600,25 @@ class HumanBodyModel:
 
 # Convenience functions
 
+@lru_cache(maxsize=16)
 def get_body_model(safety_factor: float = 1.0) -> HumanBodyModel:
-    """Get a human body model instance."""
+    """
+    Get a cached human body model instance.
+
+    Uses LRU cache to avoid creating new instances for the same safety factor.
+    For custom models, instantiate HumanBodyModel directly.
+
+    Args:
+        safety_factor: Safety margin multiplier (0.0-1.0)
+
+    Returns:
+        HumanBodyModel instance
+
+    Raises:
+        ValueError: If safety_factor is not in valid range
+    """
+    if not 0.0 <= safety_factor <= 1.0:
+        raise ValueError(f"safety_factor must be 0.0-1.0, got {safety_factor}")
     return HumanBodyModel(safety_factor=safety_factor)
 
 

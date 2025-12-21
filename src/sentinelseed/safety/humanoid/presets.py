@@ -14,7 +14,6 @@ Note: Where exact specifications are not public, conservative
 estimates are used based on comparable systems and industry standards.
 """
 
-from typing import Optional
 from sentinelseed.safety.humanoid.constraints import (
     HumanoidConstraints,
     HumanoidLimb,
@@ -826,7 +825,7 @@ def get_preset(
     name: str,
     environment: str = "industrial",
     **kwargs,
-) -> Optional[HumanoidConstraints]:
+) -> HumanoidConstraints:
     """
     Get a humanoid preset by name.
 
@@ -836,8 +835,17 @@ def get_preset(
         **kwargs: Additional arguments passed to preset function
 
     Returns:
-        HumanoidConstraints or None if not found
+        HumanoidConstraints for the requested robot
+
+    Raises:
+        ValueError: If preset name is not found or environment is invalid
+        TypeError: If kwargs contains invalid arguments for the preset
+
+    Example:
+        # Get Tesla Optimus with hands enabled
+        optimus = get_preset("optimus", environment="industrial", include_hands=True)
     """
+    # Define presets
     presets = {
         "optimus": tesla_optimus,
         "tesla": tesla_optimus,
@@ -850,12 +858,35 @@ def get_preset(
         "figure02": figure_02,
     }
 
+    # Validate environment
+    valid_environments = {"industrial", "personal_care", "research"}
+    if environment not in valid_environments:
+        raise ValueError(
+            f"environment must be one of {valid_environments}, got '{environment}'"
+        )
+
+    # Normalize preset name
     name_lower = name.lower().replace(" ", "_").replace("-", "_")
     preset_func = presets.get(name_lower)
 
-    if preset_func:
-        return preset_func(environment=environment, **kwargs)
-    return None
+    if not preset_func:
+        available = sorted(set(presets.keys()))
+        raise ValueError(
+            f"Preset '{name}' not found. Available presets: {available}"
+        )
+
+    # Validate kwargs based on preset function
+    # Common valid kwargs for all presets
+    valid_kwargs = {"include_hands"}
+
+    invalid_kwargs = set(kwargs.keys()) - valid_kwargs
+    if invalid_kwargs:
+        raise TypeError(
+            f"Unexpected keyword arguments: {invalid_kwargs}. "
+            f"Valid arguments: {valid_kwargs}"
+        )
+
+    return preset_func(environment=environment, **kwargs)
 
 
 def list_presets() -> list:

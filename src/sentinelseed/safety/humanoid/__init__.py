@@ -66,13 +66,27 @@ from sentinelseed.safety.humanoid.constraints import (
 
 # Balance - ZMP/CoM monitoring and fall detection
 from sentinelseed.safety.humanoid.balance import (
+    # Constants
+    DEFAULT_MAX_HISTORY,
+    DEFAULT_ZMP_MARGIN_WARNING,
+    DEFAULT_ZMP_MARGIN_CRITICAL,
+    DEFAULT_MAX_TILT_ANGLE,
+    DEFAULT_MAX_ANGULAR_RATE,
+    DEFAULT_MAX_COM_VELOCITY,
+    DEFAULT_FALL_DETECTION_THRESHOLD,
+    DEFAULT_MIN_COM_HEIGHT_RATIO,
+    DEFAULT_PREDICTION_HORIZON,
+    # Enums
     BalanceState,
     SafeState,
     FallDirection,
+    # Data classes
     ZMPState,
     CoMState,
     IMUReading,
+    BalanceMonitorConfig,
     BalanceAssessment,
+    # Classes
     BalanceMonitor,
     SafeStateManager,
 )
@@ -115,13 +129,24 @@ __all__ = [
     "SafetyZone",
     "HumanoidConstraints",
     "create_generic_humanoid",
-    # Balance
+    # Balance constants
+    "DEFAULT_MAX_HISTORY",
+    "DEFAULT_ZMP_MARGIN_WARNING",
+    "DEFAULT_ZMP_MARGIN_CRITICAL",
+    "DEFAULT_MAX_TILT_ANGLE",
+    "DEFAULT_MAX_ANGULAR_RATE",
+    "DEFAULT_MAX_COM_VELOCITY",
+    "DEFAULT_FALL_DETECTION_THRESHOLD",
+    "DEFAULT_MIN_COM_HEIGHT_RATIO",
+    "DEFAULT_PREDICTION_HORIZON",
+    # Balance enums and classes
     "BalanceState",
     "SafeState",
     "FallDirection",
     "ZMPState",
     "CoMState",
     "IMUReading",
+    "BalanceMonitorConfig",
     "BalanceAssessment",
     "BalanceMonitor",
     "SafeStateManager",

@@ -20,9 +20,24 @@ References:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
+import logging
 import math
+import threading
 import time
+
+logger = logging.getLogger("sentinelseed.humanoid.balance")
+
+# Configuration constants
+DEFAULT_MAX_HISTORY = 50
+DEFAULT_ZMP_MARGIN_WARNING = 0.03  # meters
+DEFAULT_ZMP_MARGIN_CRITICAL = 0.01  # meters
+DEFAULT_MAX_TILT_ANGLE = 0.35  # radians (~20 degrees)
+DEFAULT_MAX_ANGULAR_RATE = 2.0  # rad/s
+DEFAULT_MAX_COM_VELOCITY = 2.0  # m/s
+DEFAULT_FALL_DETECTION_THRESHOLD = 0.5  # radians (~29 degrees)
+DEFAULT_MIN_COM_HEIGHT_RATIO = 0.5  # 50% of nominal height
+DEFAULT_PREDICTION_HORIZON = 0.2  # seconds
 
 
 class BalanceState(str, Enum):
@@ -183,15 +198,40 @@ class BalanceMonitorConfig:
         fall_detection_threshold: Tilt threshold for fall detection (rad)
         min_com_height_ratio: Minimum CoM height ratio before fall (0-1)
         prediction_horizon: Time horizon for instability prediction (s)
+        max_history: Maximum number of IMU readings to keep in history
     """
-    zmp_margin_warning: float = 0.03      # 3 cm
-    zmp_margin_critical: float = 0.01     # 1 cm
-    max_tilt_angle: float = 0.35          # ~20 degrees
-    max_angular_rate: float = 2.0         # rad/s
-    max_com_velocity: float = 2.0         # m/s
-    fall_detection_threshold: float = 0.5  # ~29 degrees
-    min_com_height_ratio: float = 0.5     # 50% of nominal height
-    prediction_horizon: float = 0.2       # 200ms lookahead
+    zmp_margin_warning: float = DEFAULT_ZMP_MARGIN_WARNING
+    zmp_margin_critical: float = DEFAULT_ZMP_MARGIN_CRITICAL
+    max_tilt_angle: float = DEFAULT_MAX_TILT_ANGLE
+    max_angular_rate: float = DEFAULT_MAX_ANGULAR_RATE
+    max_com_velocity: float = DEFAULT_MAX_COM_VELOCITY
+    fall_detection_threshold: float = DEFAULT_FALL_DETECTION_THRESHOLD
+    min_com_height_ratio: float = DEFAULT_MIN_COM_HEIGHT_RATIO
+    prediction_horizon: float = DEFAULT_PREDICTION_HORIZON
+    max_history: int = DEFAULT_MAX_HISTORY
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.zmp_margin_warning < 0:
+            raise ValueError("zmp_margin_warning must be non-negative")
+        if self.zmp_margin_critical < 0:
+            raise ValueError("zmp_margin_critical must be non-negative")
+        if self.zmp_margin_critical > self.zmp_margin_warning:
+            raise ValueError("zmp_margin_critical must be <= zmp_margin_warning")
+        if self.max_tilt_angle <= 0:
+            raise ValueError("max_tilt_angle must be positive")
+        if self.max_angular_rate <= 0:
+            raise ValueError("max_angular_rate must be positive")
+        if self.max_com_velocity <= 0:
+            raise ValueError("max_com_velocity must be positive")
+        if self.fall_detection_threshold <= 0:
+            raise ValueError("fall_detection_threshold must be positive")
+        if not 0 < self.min_com_height_ratio <= 1:
+            raise ValueError("min_com_height_ratio must be in (0, 1]")
+        if self.prediction_horizon <= 0:
+            raise ValueError("prediction_horizon must be positive")
+        if self.max_history < 1:
+            raise ValueError("max_history must be >= 1")
 
 
 @dataclass
@@ -241,6 +281,10 @@ class BalanceMonitor:
     detect potential falls. It can trigger safe state transitions
     when instability is detected.
 
+    Thread Safety:
+        This class is thread-safe. All state updates and reads are protected
+        by a lock to prevent race conditions in multi-threaded applications.
+
     Example:
         monitor = BalanceMonitor()
 
@@ -262,35 +306,117 @@ class BalanceMonitor:
 
         Args:
             config: Balance monitoring configuration
+
+        Raises:
+            TypeError: If config is not a BalanceMonitorConfig instance
         """
+        if config is not None and not isinstance(config, BalanceMonitorConfig):
+            raise TypeError(
+                f"config must be BalanceMonitorConfig, got {type(config).__name__}"
+            )
+
         self.config = config or BalanceMonitorConfig()
+
+        # Thread safety lock
+        self._lock = threading.RLock()
 
         # Current state
         self._balance_state = BalanceState.STABLE
         self._zmp_state = ZMPState()
         self._com_state = CoMState()
         self._imu_reading = IMUReading()
-        self._history: List[Tuple[float, IMUReading]] = []  # (timestamp, reading)
-        self._max_history = 50
+        self._history: List[Tuple[float, IMUReading]] = []
 
         # Callbacks
         self._on_instability: Optional[Callable[[BalanceAssessment], None]] = None
         self._on_fall_detected: Optional[Callable[[FallDirection], None]] = None
 
-    def update_imu(self, reading: IMUReading):
-        """Update with new IMU reading."""
-        self._imu_reading = reading
-        self._history.append((reading.timestamp, reading))
-        if len(self._history) > self._max_history:
-            self._history.pop(0)
+    def update_imu(self, reading: IMUReading) -> None:
+        """
+        Update with new IMU reading.
 
-    def update_zmp(self, state: ZMPState):
-        """Update with new ZMP state."""
-        self._zmp_state = state
+        Args:
+            reading: IMU sensor reading
 
-    def update_com(self, state: CoMState):
-        """Update with new CoM state."""
-        self._com_state = state
+        Raises:
+            TypeError: If reading is not an IMUReading instance
+            ValueError: If reading contains invalid values (NaN/Inf)
+        """
+        if reading is None:
+            raise TypeError("reading cannot be None")
+        if not isinstance(reading, IMUReading):
+            raise TypeError(
+                f"reading must be IMUReading, got {type(reading).__name__}"
+            )
+
+        # Validate no NaN/Inf values in critical fields
+        critical_values = [
+            reading.roll, reading.pitch, reading.yaw,
+            reading.roll_rate, reading.pitch_rate, reading.yaw_rate,
+        ]
+        for val in critical_values:
+            if math.isnan(val) or math.isinf(val):
+                raise ValueError(f"IMUReading contains invalid value: {val}")
+
+        with self._lock:
+            self._imu_reading = reading
+            self._history.append((reading.timestamp, reading))
+            if len(self._history) > self.config.max_history:
+                self._history.pop(0)
+
+    def update_zmp(self, state: ZMPState) -> None:
+        """
+        Update with new ZMP state.
+
+        Args:
+            state: Zero Moment Point state
+
+        Raises:
+            TypeError: If state is not a ZMPState instance
+            ValueError: If state contains invalid values (NaN/Inf)
+        """
+        if state is None:
+            raise TypeError("state cannot be None")
+        if not isinstance(state, ZMPState):
+            raise TypeError(
+                f"state must be ZMPState, got {type(state).__name__}"
+            )
+
+        # Validate no NaN/Inf values
+        if math.isnan(state.x) or math.isinf(state.x):
+            raise ValueError(f"ZMPState.x contains invalid value: {state.x}")
+        if math.isnan(state.y) or math.isinf(state.y):
+            raise ValueError(f"ZMPState.y contains invalid value: {state.y}")
+
+        with self._lock:
+            self._zmp_state = state
+
+    def update_com(self, state: CoMState) -> None:
+        """
+        Update with new CoM state.
+
+        Args:
+            state: Center of Mass state
+
+        Raises:
+            TypeError: If state is not a CoMState instance
+            ValueError: If state contains invalid values (NaN/Inf)
+        """
+        if state is None:
+            raise TypeError("state cannot be None")
+        if not isinstance(state, CoMState):
+            raise TypeError(
+                f"state must be CoMState, got {type(state).__name__}"
+            )
+
+        # Validate no NaN/Inf values in position and velocity
+        values = [state.x, state.y, state.z, state.vx, state.vy, state.vz]
+        for val in values:
+            if math.isnan(val) or math.isinf(val):
+                raise ValueError(f"CoMState contains invalid value: {val}")
+
+        with self._lock:
+            self._com_state = state
 
     def assess_balance(self) -> BalanceAssessment:
         """
@@ -299,6 +425,11 @@ class BalanceMonitor:
         Returns:
             BalanceAssessment with current state and recommendations
         """
+        with self._lock:
+            return self._assess_balance_locked()
+
+    def _assess_balance_locked(self) -> BalanceAssessment:
+        """Internal method to assess balance (assumes lock is held)."""
         violations = []
         fall_direction = None
         time_to_fall = None
@@ -439,33 +570,65 @@ class BalanceMonitor:
 
         return max(0.1, min(1.0, confidence))
 
-    def trigger_emergency_stop(self):
+    def trigger_emergency_stop(self) -> None:
         """Trigger emergency stop state."""
-        self._balance_state = BalanceState.EMERGENCY_STOP
+        with self._lock:
+            self._balance_state = BalanceState.EMERGENCY_STOP
+            logger.warning("Emergency stop triggered")
 
-    def clear_emergency_stop(self):
+    def clear_emergency_stop(self) -> None:
         """Clear emergency stop and return to stable."""
-        if self._balance_state == BalanceState.EMERGENCY_STOP:
-            self._balance_state = BalanceState.STABLE
+        with self._lock:
+            if self._balance_state == BalanceState.EMERGENCY_STOP:
+                self._balance_state = BalanceState.STABLE
+                logger.info("Emergency stop cleared")
 
     def set_instability_callback(
         self,
-        callback: Callable[[BalanceAssessment], None],
-    ):
-        """Set callback for instability detection."""
-        self._on_instability = callback
+        callback: Optional[Callable[[BalanceAssessment], None]],
+    ) -> None:
+        """
+        Set callback for instability detection.
+
+        Args:
+            callback: Function to call when instability is detected, or None to clear
+
+        Raises:
+            TypeError: If callback is not callable
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("callback must be callable")
+        with self._lock:
+            self._on_instability = callback
 
     def set_fall_callback(
         self,
-        callback: Callable[[FallDirection], None],
-    ):
-        """Set callback for fall detection."""
-        self._on_fall_detected = callback
+        callback: Optional[Callable[[FallDirection], None]],
+    ) -> None:
+        """
+        Set callback for fall detection.
+
+        Args:
+            callback: Function to call when fall is detected, or None to clear
+
+        Raises:
+            TypeError: If callback is not callable
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("callback must be callable")
+        with self._lock:
+            self._on_fall_detected = callback
 
     @property
     def current_state(self) -> BalanceState:
         """Get current balance state."""
-        return self._balance_state
+        with self._lock:
+            return self._balance_state
+
+    def get_history(self) -> List[Tuple[float, IMUReading]]:
+        """Get copy of IMU history for analysis."""
+        with self._lock:
+            return list(self._history)
 
 
 class SafeStateManager:
@@ -475,6 +638,10 @@ class SafeStateManager:
     This class handles transitions between safe states when the robot
     needs to reduce risk (e.g., crouch when unstable, kneel for
     e-stop, brace for fall).
+
+    Thread Safety:
+        This class is thread-safe. All state transitions are protected
+        by a lock to prevent race conditions.
 
     Example:
         manager = SafeStateManager()
@@ -487,7 +654,7 @@ class SafeStateManager:
     """
 
     # Valid state transitions
-    _TRANSITIONS = {
+    _TRANSITIONS: Dict[SafeState, List[SafeState]] = {
         SafeState.STANDING: [SafeState.CROUCHING, SafeState.KNEELING, SafeState.BRACING, SafeState.FROZEN],
         SafeState.CROUCHING: [SafeState.STANDING, SafeState.KNEELING, SafeState.SITTING, SafeState.BRACING],
         SafeState.KNEELING: [SafeState.STANDING, SafeState.CROUCHING, SafeState.SITTING, SafeState.LYING_PRONE],
@@ -499,7 +666,7 @@ class SafeStateManager:
     }
 
     # Estimated transition times (seconds)
-    _TRANSITION_TIMES = {
+    _TRANSITION_TIMES: Dict[Tuple[SafeState, SafeState], float] = {
         (SafeState.STANDING, SafeState.CROUCHING): 0.5,
         (SafeState.STANDING, SafeState.KNEELING): 1.5,
         (SafeState.STANDING, SafeState.BRACING): 0.3,
@@ -510,13 +677,25 @@ class SafeStateManager:
         (SafeState.BRACING, SafeState.LYING_PRONE): 0.5,
     }
 
+    # Default transition time when not explicitly specified
+    _DEFAULT_TRANSITION_TIME: float = 1.0
+
     def __init__(self, initial_state: SafeState = SafeState.STANDING):
         """
         Initialize safe state manager.
 
         Args:
             initial_state: Starting safe state
+
+        Raises:
+            TypeError: If initial_state is not a SafeState
         """
+        if not isinstance(initial_state, SafeState):
+            raise TypeError(
+                f"initial_state must be SafeState, got {type(initial_state).__name__}"
+            )
+
+        self._lock = threading.RLock()
         self._current_state = initial_state
         self._transition_in_progress = False
         self._target_state: Optional[SafeState] = None
@@ -524,12 +703,20 @@ class SafeStateManager:
     @property
     def current_state(self) -> SafeState:
         """Get current safe state."""
-        return self._current_state
+        with self._lock:
+            return self._current_state
 
     @property
     def is_transitioning(self) -> bool:
         """Check if a transition is in progress."""
-        return self._transition_in_progress
+        with self._lock:
+            return self._transition_in_progress
+
+    @property
+    def target_state(self) -> Optional[SafeState]:
+        """Get target state of current transition, if any."""
+        with self._lock:
+            return self._target_state
 
     def can_transition(self, target: SafeState) -> bool:
         """
@@ -540,15 +727,25 @@ class SafeStateManager:
 
         Returns:
             True if transition is allowed
+
+        Raises:
+            TypeError: If target is not a SafeState
         """
-        if self._transition_in_progress:
-            return False
-        valid_targets = self._TRANSITIONS.get(self._current_state, [])
-        return target in valid_targets
+        if not isinstance(target, SafeState):
+            raise TypeError(
+                f"target must be SafeState, got {type(target).__name__}"
+            )
+
+        with self._lock:
+            if self._transition_in_progress:
+                return False
+            valid_targets = self._TRANSITIONS.get(self._current_state, [])
+            return target in valid_targets
 
     def get_valid_transitions(self) -> List[SafeState]:
         """Get list of valid target states from current state."""
-        return self._TRANSITIONS.get(self._current_state, [])
+        with self._lock:
+            return list(self._TRANSITIONS.get(self._current_state, []))
 
     def get_transition_time(self, target: SafeState) -> float:
         """
@@ -559,9 +756,18 @@ class SafeStateManager:
 
         Returns:
             Estimated time in seconds
+
+        Raises:
+            TypeError: If target is not a SafeState
         """
-        key = (self._current_state, target)
-        return self._TRANSITION_TIMES.get(key, 1.0)
+        if not isinstance(target, SafeState):
+            raise TypeError(
+                f"target must be SafeState, got {type(target).__name__}"
+            )
+
+        with self._lock:
+            key = (self._current_state, target)
+            return self._TRANSITION_TIMES.get(key, self._DEFAULT_TRANSITION_TIME)
 
     def start_transition(self, target: SafeState) -> bool:
         """
@@ -572,30 +778,62 @@ class SafeStateManager:
 
         Returns:
             True if transition started
+
+        Raises:
+            TypeError: If target is not a SafeState
         """
-        if not self.can_transition(target):
-            return False
+        if not isinstance(target, SafeState):
+            raise TypeError(
+                f"target must be SafeState, got {type(target).__name__}"
+            )
 
-        self._transition_in_progress = True
-        self._target_state = target
-        return True
+        with self._lock:
+            if self._transition_in_progress:
+                return False
+            valid_targets = self._TRANSITIONS.get(self._current_state, [])
+            if target not in valid_targets:
+                return False
 
-    def confirm_transition(self, state: SafeState):
+            self._transition_in_progress = True
+            self._target_state = target
+            logger.debug(f"Starting transition: {self._current_state} -> {target}")
+            return True
+
+    def confirm_transition(self, state: SafeState) -> bool:
         """
         Confirm that transition to state completed.
 
         Args:
             state: State that was achieved
+
+        Returns:
+            True if transition was confirmed, False if state doesn't match target
+
+        Raises:
+            TypeError: If state is not a SafeState
         """
-        if self._transition_in_progress and state == self._target_state:
-            self._current_state = state
+        if not isinstance(state, SafeState):
+            raise TypeError(
+                f"state must be SafeState, got {type(state).__name__}"
+            )
+
+        with self._lock:
+            if self._transition_in_progress and state == self._target_state:
+                old_state = self._current_state
+                self._current_state = state
+                self._transition_in_progress = False
+                self._target_state = None
+                logger.debug(f"Transition confirmed: {old_state} -> {state}")
+                return True
+            return False
+
+    def cancel_transition(self) -> None:
+        """Cancel ongoing transition."""
+        with self._lock:
+            if self._transition_in_progress:
+                logger.debug(f"Transition cancelled: {self._current_state} -> {self._target_state}")
             self._transition_in_progress = False
             self._target_state = None
-
-    def cancel_transition(self):
-        """Cancel ongoing transition."""
-        self._transition_in_progress = False
-        self._target_state = None
 
     def get_safest_state(self, fall_direction: Optional[FallDirection] = None) -> SafeState:
         """
@@ -606,28 +844,49 @@ class SafeStateManager:
 
         Returns:
             Recommended safe state
+
+        Raises:
+            TypeError: If fall_direction is not a FallDirection or None
         """
-        # If falling, brace
-        if fall_direction:
-            return SafeState.BRACING
+        if fall_direction is not None and not isinstance(fall_direction, FallDirection):
+            raise TypeError(
+                f"fall_direction must be FallDirection or None, got {type(fall_direction).__name__}"
+            )
 
-        # Otherwise, prefer lower CoM states
-        valid = self.get_valid_transitions()
-        preference = [
-            SafeState.CROUCHING,
-            SafeState.KNEELING,
-            SafeState.SITTING,
-            SafeState.FROZEN,
-        ]
+        with self._lock:
+            # If falling, brace
+            if fall_direction:
+                valid = self._TRANSITIONS.get(self._current_state, [])
+                if SafeState.BRACING in valid:
+                    return SafeState.BRACING
 
-        for state in preference:
-            if state in valid:
-                return state
+            # Otherwise, prefer lower CoM states
+            valid = self._TRANSITIONS.get(self._current_state, [])
+            preference = [
+                SafeState.CROUCHING,
+                SafeState.KNEELING,
+                SafeState.SITTING,
+                SafeState.FROZEN,
+            ]
 
-        return self._current_state
+            for state in preference:
+                if state in valid:
+                    return state
+
+            return self._current_state
 
 
 __all__ = [
+    # Constants (for custom configuration)
+    "DEFAULT_MAX_HISTORY",
+    "DEFAULT_ZMP_MARGIN_WARNING",
+    "DEFAULT_ZMP_MARGIN_CRITICAL",
+    "DEFAULT_MAX_TILT_ANGLE",
+    "DEFAULT_MAX_ANGULAR_RATE",
+    "DEFAULT_MAX_COM_VELOCITY",
+    "DEFAULT_FALL_DETECTION_THRESHOLD",
+    "DEFAULT_MIN_COM_HEIGHT_RATIO",
+    "DEFAULT_PREDICTION_HORIZON",
     # Enums
     "BalanceState",
     "SafeState",

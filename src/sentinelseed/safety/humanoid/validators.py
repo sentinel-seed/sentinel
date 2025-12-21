@@ -23,29 +23,34 @@ References:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
-import math
+from typing import Any, Dict, List, Optional, Tuple
 import logging
+import math
+import threading
 
 from sentinelseed.safety.humanoid.body_model import (
     HumanBodyModel,
     BodyRegion,
-    ContactLimits,
 )
 from sentinelseed.safety.humanoid.constraints import (
     HumanoidConstraints,
     HumanoidLimb,
-    OperationalLimits,
-    SafetyZone,
 )
 from sentinelseed.safety.humanoid.balance import (
     BalanceMonitor,
     BalanceAssessment,
     BalanceState,
-    SafeState,
 )
 
-logger = logging.getLogger("sentinelseed.humanoid")
+logger = logging.getLogger("sentinelseed.humanoid.validators")
+
+# Configuration constants
+DEFAULT_COLLABORATIVE_VELOCITY = 0.5  # m/s (ISO/TS 15066 conservative)
+DEFAULT_BODY_MODEL_SAFETY_FACTOR = 0.9  # 10% safety margin
+DANGEROUS_PURPOSE_PATTERNS = frozenset([
+    "harm", "hurt", "injure", "attack", "hit",
+    "damage", "destroy", "break", "kill", "maim",
+])
 
 
 class SafetyLevel(str, Enum):
@@ -176,6 +181,7 @@ class HumanoidSafetyValidator:
         strict_mode: bool = False,
         require_purpose: bool = False,
         log_violations: bool = True,
+        collaborative_velocity: float = DEFAULT_COLLABORATIVE_VELOCITY,
     ):
         """
         Initialize the humanoid safety validator.
@@ -187,15 +193,40 @@ class HumanoidSafetyValidator:
             strict_mode: If True, any violation blocks the action
             require_purpose: If True, require explicit purpose for actions
             log_violations: If True, log violations to console
+            collaborative_velocity: Max end effector speed for collaborative work (m/s)
+
+        Raises:
+            TypeError: If arguments are of wrong type
+            ValueError: If collaborative_velocity is not positive
         """
+        # Validate types
+        if constraints is not None and not isinstance(constraints, HumanoidConstraints):
+            raise TypeError(
+                f"constraints must be HumanoidConstraints, got {type(constraints).__name__}"
+            )
+        if body_model is not None and not isinstance(body_model, HumanBodyModel):
+            raise TypeError(
+                f"body_model must be HumanBodyModel, got {type(body_model).__name__}"
+            )
+        if balance_monitor is not None and not isinstance(balance_monitor, BalanceMonitor):
+            raise TypeError(
+                f"balance_monitor must be BalanceMonitor, got {type(balance_monitor).__name__}"
+            )
+        if collaborative_velocity <= 0:
+            raise ValueError("collaborative_velocity must be positive")
+
         self.constraints = constraints
-        self.body_model = body_model or HumanBodyModel(safety_factor=0.9)
+        self.body_model = body_model or HumanBodyModel(
+            safety_factor=DEFAULT_BODY_MODEL_SAFETY_FACTOR
+        )
         self.balance_monitor = balance_monitor
         self.strict_mode = strict_mode
         self.require_purpose = require_purpose
         self.log_violations = log_violations
+        self.collaborative_velocity = collaborative_velocity
 
-        # Statistics
+        # Thread safety for statistics
+        self._stats_lock = threading.Lock()
         self._stats = {
             "total_validated": 0,
             "total_violations": 0,
@@ -221,8 +252,21 @@ class HumanoidSafetyValidator:
 
         Returns:
             ValidationResult with validation details
+
+        Raises:
+            TypeError: If action is not a HumanoidAction
         """
-        self._stats["total_validated"] += 1
+        # Validate input
+        if action is None:
+            raise TypeError("action cannot be None")
+        if not isinstance(action, HumanoidAction):
+            raise TypeError(
+                f"action must be HumanoidAction, got {type(action).__name__}"
+            )
+
+        with self._stats_lock:
+            self._stats["total_validated"] += 1
+
         context = context or {}
 
         result = ValidationResult(is_safe=True, level=SafetyLevel.SAFE)
@@ -242,8 +286,14 @@ class HumanoidSafetyValidator:
         # Determine overall safety
         result.is_safe = all(result.gates.values())
 
-        if not result.is_safe:
-            self._stats["total_violations"] += 1
+        # Update statistics
+        with self._stats_lock:
+            if not result.is_safe:
+                self._stats["total_violations"] += 1
+            # Update gate failure counts
+            for gate, passed in result.gates.items():
+                if not passed:
+                    self._stats["gate_failures"][gate] += 1
 
         # Determine safety level
         result.level = self._determine_level(result)
@@ -262,7 +312,7 @@ class HumanoidSafetyValidator:
         action: HumanoidAction,
         result: ValidationResult,
         context: Dict[str, Any],
-    ):
+    ) -> None:
         """
         Gate 1: Truth - Validate physical possibility.
 
@@ -284,7 +334,6 @@ class HumanoidSafetyValidator:
                         v,
                         "high",
                     )
-                self._stats["gate_failures"]["truth"] += 1
 
         # Check joint velocities
         if action.joint_velocities and self.constraints:
@@ -299,9 +348,8 @@ class HumanoidSafetyValidator:
                         v,
                         "high",
                     )
-                self._stats["gate_failures"]["truth"] += 1
 
-        # Check for invalid values
+        # Check for invalid values in positions
         if action.joint_positions:
             for name, pos in action.joint_positions.items():
                 if math.isnan(pos) or math.isinf(pos):
@@ -311,8 +359,8 @@ class HumanoidSafetyValidator:
                         f"Invalid position value for {name}: {pos}",
                         "critical",
                     )
-                    self._stats["gate_failures"]["truth"] += 1
 
+        # Check for invalid values in velocities
         if action.joint_velocities:
             for name, vel in action.joint_velocities.items():
                 if math.isnan(vel) or math.isinf(vel):
@@ -322,14 +370,13 @@ class HumanoidSafetyValidator:
                         f"Invalid velocity value for {name}: {vel}",
                         "critical",
                     )
-                    self._stats["gate_failures"]["truth"] += 1
 
     def _check_harm_gate(
         self,
         action: HumanoidAction,
         result: ValidationResult,
         context: Dict[str, Any],
-    ):
+    ) -> None:
         """
         Gate 2: Harm - Validate safety for humans and robot.
 
@@ -358,7 +405,6 @@ class HumanoidSafetyValidator:
                     f"safe limit {safe_force:.1f}N for {contact_region.value}",
                     "critical",
                 )
-                self._stats["gate_failures"]["harm"] += 1
 
                 result.contact_assessment = {
                     "region": contact_region.value,
@@ -378,7 +424,7 @@ class HumanoidSafetyValidator:
 
         # Check end effector velocities for collaborative work
         if action.is_collaborative and action.end_effector_velocities:
-            max_collab_velocity = 0.5  # m/s for collaborative operation
+            max_collab_velocity = self.collaborative_velocity
             if self.constraints:
                 max_collab_velocity = min(
                     max_collab_velocity,
@@ -394,7 +440,6 @@ class HumanoidSafetyValidator:
                         f"collaborative limit {max_collab_velocity:.2f} m/s for {limb.value}",
                         "high",
                     )
-                    self._stats["gate_failures"]["harm"] += 1
 
         # Check balance if monitor is available
         if self.balance_monitor:
@@ -409,14 +454,13 @@ class HumanoidSafetyValidator:
                     f"Balance issue: {balance.state.value}. {balance.recommended_action}",
                     severity,
                 )
-                self._stats["gate_failures"]["harm"] += 1
 
     def _check_scope_gate(
         self,
         action: HumanoidAction,
         result: ValidationResult,
         context: Dict[str, Any],
-    ):
+    ) -> None:
         """
         Gate 3: Scope - Validate operational boundaries.
 
@@ -436,7 +480,6 @@ class HumanoidSafetyValidator:
                     f"Robot position ({x:.2f}, {y:.2f}, {z:.2f}) outside defined safety zones",
                     "high",
                 )
-                self._stats["gate_failures"]["scope"] += 1
 
             elif zone and zone.requires_reduced_speed:
                 # Check if velocities exceed zone limits
@@ -451,7 +494,6 @@ class HumanoidSafetyValidator:
                                 f"{max_speed:.2f} m/s in {zone.name}",
                                 "medium",
                             )
-                            self._stats["gate_failures"]["scope"] += 1
 
         # Check height limit
         if action.robot_position and self.constraints:
@@ -464,14 +506,13 @@ class HumanoidSafetyValidator:
                     f"Height {z:.2f}m exceeds limit {max_height:.2f}m",
                     "medium",
                 )
-                self._stats["gate_failures"]["scope"] += 1
 
     def _check_purpose_gate(
         self,
         action: HumanoidAction,
         result: ValidationResult,
         context: Dict[str, Any],
-    ):
+    ) -> None:
         """
         Gate 4: Purpose - Validate legitimate purpose.
 
@@ -487,17 +528,13 @@ class HumanoidSafetyValidator:
                 "Action requires explicit purpose but none provided",
                 "medium",
             )
-            self._stats["gate_failures"]["purpose"] += 1
+            return  # Early return since there's no purpose to check
 
         # Check for obviously problematic purposes
         if action.purpose:
             purpose_lower = action.purpose.lower()
-            dangerous_patterns = [
-                "harm", "hurt", "injure", "attack", "hit",
-                "damage", "destroy", "break",
-            ]
 
-            for pattern in dangerous_patterns:
+            for pattern in DANGEROUS_PURPOSE_PATTERNS:
                 if pattern in purpose_lower:
                     result.add_violation(
                         "purpose",
@@ -505,8 +542,7 @@ class HumanoidSafetyValidator:
                         f"Purpose contains concerning pattern: '{pattern}'",
                         "critical",
                     )
-                    self._stats["gate_failures"]["purpose"] += 1
-                    break
+                    break  # Only add one violation per purpose
 
     def _determine_level(self, result: ValidationResult) -> SafetyLevel:
         """Determine safety level from violations."""
@@ -555,21 +591,27 @@ class HumanoidSafetyValidator:
             return f"WARNING: {violation_count} issue(s). {first_violation}"
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get validation statistics."""
-        return self._stats.copy()
+        """Get validation statistics (thread-safe copy)."""
+        with self._stats_lock:
+            return {
+                "total_validated": self._stats["total_validated"],
+                "total_violations": self._stats["total_violations"],
+                "gate_failures": self._stats["gate_failures"].copy(),
+            }
 
-    def reset_stats(self):
-        """Reset validation statistics."""
-        self._stats = {
-            "total_validated": 0,
-            "total_violations": 0,
-            "gate_failures": {
-                "truth": 0,
-                "harm": 0,
-                "scope": 0,
-                "purpose": 0,
-            },
-        }
+    def reset_stats(self) -> None:
+        """Reset validation statistics (thread-safe)."""
+        with self._stats_lock:
+            self._stats = {
+                "total_validated": 0,
+                "total_violations": 0,
+                "gate_failures": {
+                    "truth": 0,
+                    "harm": 0,
+                    "scope": 0,
+                    "purpose": 0,
+                },
+            }
 
 
 def validate_humanoid_action(
@@ -596,6 +638,10 @@ def validate_humanoid_action(
 
 
 __all__ = [
+    # Constants
+    "DEFAULT_COLLABORATIVE_VELOCITY",
+    "DEFAULT_BODY_MODEL_SAFETY_FACTOR",
+    "DANGEROUS_PURPOSE_PATTERNS",
     # Enums
     "SafetyLevel",
     "ViolationType",

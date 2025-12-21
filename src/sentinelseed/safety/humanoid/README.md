@@ -211,11 +211,12 @@ if not assessment.is_safe:
 | State | Description |
 |-------|-------------|
 | STABLE | Normal balance, all parameters within limits |
-| MARGINAL | Near stability limits, caution advised |
+| MARGINALLY_STABLE | Near stability limits, caution advised |
 | UNSTABLE | Actively losing balance |
-| FALLING | Fall detected, intervention needed |
-| RECOVERING | Executing recovery maneuver |
-| SAFE_STATE | In protected pose (crouching, kneeling, etc.) |
+| FALLING | Fall detected, mitigation active |
+| FALLEN | Robot is on the ground |
+| RECOVERING | Getting back up |
+| EMERGENCY_STOP | Emergency stop activated |
 
 ## THSP Validation Gates
 
@@ -292,21 +293,22 @@ node.add_validator("humanoid", humanoid_validator)
 For NVIDIA Isaac Lab simulation:
 
 ```python
-from sentinelseed.integrations.isaac_lab import IsaacLabSafetyWrapper
+from sentinelseed.integrations.isaac_lab import SentinelSafetyWrapper, RobotConstraints
 from sentinelseed.safety.humanoid import (
     HumanoidSafetyValidator,
     tesla_optimus,
 )
 
-# Create validator for simulation
-validator = HumanoidSafetyValidator(
+# Create humanoid validator
+humanoid_validator = HumanoidSafetyValidator(
     constraints=tesla_optimus(environment="research"),
 )
 
-# Wrap Isaac Lab environment
-env = IsaacLabSafetyWrapper(
+# Wrap Isaac Lab environment with safety validation
+env = SentinelSafetyWrapper(
     env=isaac_lab_env,
-    validator=validator,
+    constraints=RobotConstraints.franka_default(),  # Or custom constraints
+    mode="clamp",  # Options: "block", "clamp", "warn", "monitor"
 )
 ```
 

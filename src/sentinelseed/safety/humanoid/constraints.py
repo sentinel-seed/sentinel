@@ -18,8 +18,15 @@ References:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
+import logging
 import math
+
+logger = logging.getLogger("sentinelseed.humanoid.constraints")
+
+# Configuration constants
+DEFAULT_CONTACT_TIME = 0.1  # seconds
+MIN_CONTACT_TIME = 0.01  # seconds (minimum for force calculation)
 
 
 class HumanoidLimb(str, Enum):
@@ -370,7 +377,7 @@ class HumanoidConstraints:
         self,
         limb: HumanoidLimb,
         velocity: float,
-        contact_time: float = 0.1,
+        contact_time: float = DEFAULT_CONTACT_TIME,
     ) -> float:
         """
         Estimate contact force for a limb at given velocity.
@@ -384,12 +391,33 @@ class HumanoidConstraints:
 
         Returns:
             Estimated force in Newtons
+
+        Raises:
+            TypeError: If limb is not a HumanoidLimb
+            ValueError: If limb is not found in this robot's configuration
         """
+        if not isinstance(limb, HumanoidLimb):
+            raise TypeError(
+                f"limb must be HumanoidLimb, got {type(limb).__name__}"
+            )
+
+        if velocity < 0:
+            logger.warning(f"Negative velocity {velocity} provided, using absolute value")
+            velocity = abs(velocity)
+
+        if contact_time <= 0:
+            raise ValueError(f"contact_time must be positive, got {contact_time}")
+
         limb_spec = self.get_limb(limb)
         if not limb_spec:
-            return 0.0
+            raise ValueError(
+                f"Limb {limb.value} not found in robot configuration. "
+                f"Available limbs: {list(self.limbs.keys())}"
+            )
+
         mass = limb_spec.end_effector_mass
-        return (mass * velocity) / max(contact_time, 0.01)
+        safe_contact_time = max(contact_time, MIN_CONTACT_TIME)
+        return (mass * velocity) / safe_contact_time
 
 
 def create_generic_humanoid(
@@ -500,12 +528,19 @@ def create_generic_humanoid(
 
 
 __all__ = [
+    # Constants
+    "DEFAULT_CONTACT_TIME",
+    "MIN_CONTACT_TIME",
+    # Enums
     "HumanoidLimb",
     "JointType",
+    # Data classes
     "JointSpec",
     "LimbSpec",
     "OperationalLimits",
     "SafetyZone",
+    # Classes
     "HumanoidConstraints",
+    # Functions
     "create_generic_humanoid",
 ]
