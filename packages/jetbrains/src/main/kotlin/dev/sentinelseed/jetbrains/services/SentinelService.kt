@@ -54,7 +54,7 @@ class SentinelService {
     companion object {
         private const val OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
         private const val ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-        private const val ANTHROPIC_VERSION = "2024-01-01"
+        private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val MAX_CONTENT_LENGTH = 50000
 
         fun getInstance(): SentinelService =

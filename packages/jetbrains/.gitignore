@@ -3,6 +3,9 @@
 build/
 out/
 
+# IntelliJ Platform
+.intellijPlatform/
+
 # IDE
 .idea/
 *.iml

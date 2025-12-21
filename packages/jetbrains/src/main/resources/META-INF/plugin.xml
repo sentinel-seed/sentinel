@@ -112,7 +112,7 @@
                     text="Analyze Selection"
                     description="Analyze selected text for safety issues"
                     icon="AllIcons.Actions.Checked">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt S"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt S"/>
             </action>
 
             <action id="Sentinel.AnalyzeFile"
@@ -120,7 +120,7 @@
                     text="Analyze File"
                     description="Analyze entire file for safety issues"
                     icon="AllIcons.Actions.CheckMultiple">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift S"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift alt F"/>
             </action>
 
             <separator/>

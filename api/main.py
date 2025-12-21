@@ -18,6 +18,7 @@ Run with:
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
@@ -254,12 +255,18 @@ async def run_benchmark(request: BenchmarkRequest):
 # Error handlers
 @app.exception_handler(ValueError)
 async def value_error_handler(request, exc):
-    return {"error": str(exc), "status_code": 400}
+    return JSONResponse(
+        status_code=400,
+        content={"error": str(exc)}
+    )
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
-    return {"error": str(exc), "status_code": 500}
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"}
+    )
 
 
 if __name__ == "__main__":

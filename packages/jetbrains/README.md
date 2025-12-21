@@ -35,13 +35,13 @@ AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope
 ### Analyze Text
 
 1. Select text in the editor
-2. Press `Ctrl+Alt+S` or right-click → **Sentinel → Analyze Selection**
+2. Press `Ctrl+Shift+Alt+S` or right-click → **Sentinel → Analyze Selection**
 3. View results in the Sentinel tool window
 
 ### Analyze File
 
 1. Open a file
-2. Press `Ctrl+Alt+Shift+S` or use **Tools → Sentinel → Analyze File**
+2. Press `Ctrl+Shift+Alt+F` or use **Tools → Sentinel → Analyze File**
 3. View results in the Sentinel tool window
 
 ### Insert Seeds
@@ -73,8 +73,8 @@ With an API key, semantic analysis provides ~90% accuracy.
 
 | Action | Shortcut |
 |--------|----------|
-| Analyze Selection | `Ctrl+Alt+S` |
-| Analyze File | `Ctrl+Alt+Shift+S` |
+| Analyze Selection | `Ctrl+Shift+Alt+S` |
+| Analyze File | `Ctrl+Shift+Alt+F` |
 
 ## Building from Source
 

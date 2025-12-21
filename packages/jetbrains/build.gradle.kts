@@ -22,7 +22,6 @@ dependencies {
         bundledPlugins("com.intellij.java")
         pluginVerifier()
         zipSigner()
-        instrumentationTools()
     }
 
     // HTTP client for API calls
@@ -31,9 +30,7 @@ dependencies {
     // JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // Coroutines for async operations
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.1")
+    // Note: Coroutines are already provided by IntelliJ Platform
 }
 
 kotlin {
@@ -84,6 +81,10 @@ tasks {
     }
 
     buildSearchableOptions {
+        enabled = false
+    }
+
+    instrumentCode {
         enabled = false
     }
 }

@@ -78,7 +78,7 @@ class SentinelPanel : JPanel(BorderLayout()) {
         welcomeLabel.font = welcomeLabel.font.deriveFont(Font.BOLD, 14f)
 
         val infoLabel = JBLabel("<html>" +
-                "Select text and use <b>Ctrl+Alt+S</b> to analyze,<br/>" +
+                "Select text and use <b>Ctrl+Shift+Alt+S</b> to analyze,<br/>" +
                 "or right-click and select <b>Sentinel → Analyze Selection</b>.<br/><br/>" +
                 "Configure API keys in <b>Settings → Tools → Sentinel AI Safety</b><br/>" +
                 "for semantic analysis (~90% accuracy)." +

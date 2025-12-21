@@ -358,41 +358,43 @@ class THSPValidator:
 
         Returns:
             Dict with validation results including:
-            - safe: bool
+            - is_safe: bool (also available as 'safe' for backwards compatibility)
             - gates: dict with pass/fail status for each gate
-            - issues: list of violation messages
+            - violations: list of violation messages (also available as 'issues')
         """
-        issues = []
+        violations = []
 
         # Gate 1: Truth
         truth_pass, truth_violations = self.truth_gate.check(text)
         if not truth_pass:
-            issues.extend(truth_violations)
+            violations.extend(truth_violations)
 
         # Gate 2: Harm
         harm_pass, harm_violations = self.harm_gate.check(text)
         if not harm_pass:
-            issues.extend(harm_violations)
+            violations.extend(harm_violations)
 
         # Gate 3: Scope
         scope_pass, scope_violations = self.scope_gate.check(text)
         if not scope_pass:
-            issues.extend(scope_violations)
+            violations.extend(scope_violations)
 
         # Gate 4: Purpose
         purpose_pass, purpose_violations = self.purpose_gate.check(text)
         if not purpose_pass:
-            issues.extend(purpose_violations)
+            violations.extend(purpose_violations)
 
         is_safe = truth_pass and harm_pass and scope_pass and purpose_pass
 
         return {
-            "safe": is_safe,
+            "is_safe": is_safe,
+            "safe": is_safe,  # backwards compatibility
             "gates": {
                 "truth": "pass" if truth_pass else "fail",
                 "harm": "pass" if harm_pass else "fail",
                 "scope": "pass" if scope_pass else "fail",
                 "purpose": "pass" if purpose_pass else "fail",
             },
-            "issues": issues,
+            "violations": violations,
+            "issues": violations,  # backwards compatibility
         }

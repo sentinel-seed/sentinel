@@ -129,7 +129,7 @@ class SentinelQuickFix : LocalQuickFix {
         toolWindow?.show {
             dev.sentinelseed.jetbrains.ui.SentinelToolWindowFactory.showMessage(
                 project,
-                "Select the text and use Ctrl+Alt+S for full semantic analysis",
+                "Select the text and use Ctrl+Shift+Alt+S for full semantic analysis",
                 isError = false
             )
         }

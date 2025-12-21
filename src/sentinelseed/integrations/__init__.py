@@ -28,6 +28,7 @@ Available integrations:
     from sentinelseed.integrations.ros2 import SentinelSafetyNode  # ROS2 safety node
     from sentinelseed.integrations.isaac_lab import SentinelSafetyWrapper  # Isaac Lab safety wrapper
     from sentinelseed.integrations.letta import SentinelLettaClient, create_safe_agent  # Letta/MemGPT
+    from sentinelseed.integrations.preflight import TransactionSimulator, PreflightValidator  # Pre-flight simulation
 
 External packages (npm/PyPI):
     See packages/ directory for:
@@ -68,6 +69,15 @@ Letta (formerly MemGPT):
         create_sentinel_tool,
         sentinel_approval_handler,
     )
+
+Pre-flight Transaction Simulator (Solana):
+    from sentinelseed.integrations.preflight import (
+        TransactionSimulator,
+        PreflightValidator,
+        SimulationResult,
+        SwapSimulationResult,
+        TokenSecurityResult,
+    )
 """
 
 __all__ = [
@@ -87,6 +97,7 @@ __all__ = [
     'openai_agents',
     'openai_assistant',
     'openguardrails',
+    'preflight',
     'pyrit',
     'raw_api',
     'ros2',
