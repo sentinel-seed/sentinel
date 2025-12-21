@@ -10,6 +10,7 @@ from sentinelseed.compliance import (
     RiskLevel,
     SystemType,
     OversightModel,
+    Severity,
     check_eu_ai_act_compliance,
 )
 
@@ -45,6 +46,61 @@ class TestOversightModel:
         assert OversightModel.HOTL.value == "human_on_the_loop"
         assert OversightModel.HIC.value == "human_in_command"
 
+    def test_for_risk_level_unacceptable(self):
+        """Test oversight model for unacceptable risk."""
+        model = OversightModel.for_risk_level(RiskLevel.UNACCEPTABLE)
+        assert model == OversightModel.HITL
+
+    def test_for_risk_level_high(self):
+        """Test oversight model for high risk."""
+        model = OversightModel.for_risk_level(RiskLevel.HIGH)
+        assert model == OversightModel.HITL
+
+    def test_for_risk_level_limited(self):
+        """Test oversight model for limited risk."""
+        model = OversightModel.for_risk_level(RiskLevel.LIMITED)
+        assert model == OversightModel.HOTL
+
+    def test_for_risk_level_minimal(self):
+        """Test oversight model for minimal risk."""
+        model = OversightModel.for_risk_level(RiskLevel.MINIMAL)
+        assert model == OversightModel.HIC
+
+
+class TestSeverity:
+    """Tests for Severity enum."""
+
+    def test_severity_values(self):
+        """Test all severity levels are defined."""
+        assert Severity.CRITICAL.value == "critical"
+        assert Severity.HIGH.value == "high"
+        assert Severity.MEDIUM.value == "medium"
+        assert Severity.LOW.value == "low"
+
+    def test_from_string_valid(self):
+        """Test converting valid strings to Severity."""
+        assert Severity.from_string("critical") == Severity.CRITICAL
+        assert Severity.from_string("high") == Severity.HIGH
+        assert Severity.from_string("medium") == Severity.MEDIUM
+        assert Severity.from_string("low") == Severity.LOW
+
+    def test_from_string_case_insensitive(self):
+        """Test case-insensitive conversion."""
+        assert Severity.from_string("CRITICAL") == Severity.CRITICAL
+        assert Severity.from_string("High") == Severity.HIGH
+        assert Severity.from_string("  medium  ") == Severity.MEDIUM
+
+    def test_from_string_invalid(self):
+        """Test invalid string raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            Severity.from_string("invalid")
+        assert "Invalid severity" in str(exc_info.value)
+        assert "invalid" in str(exc_info.value)
+
+    def test_from_string_already_enum(self):
+        """Test passing Severity enum returns itself."""
+        assert Severity.from_string(Severity.CRITICAL) == Severity.CRITICAL
+
 
 class TestArticle5Violation:
     """Tests for Article5Violation dataclass."""
@@ -60,7 +116,63 @@ class TestArticle5Violation:
         )
 
         assert violation.article_reference == "Article 5(1)(c)"
-        assert violation.severity == "critical"
+        assert violation.severity == Severity.CRITICAL  # Auto-converted
+
+    def test_create_violation_with_enum(self):
+        """Test creating with Severity enum directly."""
+        violation = Article5Violation(
+            article_reference="Article 5(1)(a)",
+            description="Subliminal manipulation",
+            severity=Severity.CRITICAL,
+            gate_failed="harm",
+            recommendation="Remove subliminal techniques"
+        )
+
+        assert violation.severity == Severity.CRITICAL
+
+    def test_is_blocking_critical(self):
+        """Test is_blocking returns True for critical severity."""
+        violation = Article5Violation(
+            article_reference="Article 5(1)(c)",
+            description="Test",
+            severity=Severity.CRITICAL,
+            gate_failed="harm",
+            recommendation="Fix it"
+        )
+        assert violation.is_blocking() is True
+
+    def test_is_blocking_high(self):
+        """Test is_blocking returns True for high severity."""
+        violation = Article5Violation(
+            article_reference="Article 5(1)(c)",
+            description="Test",
+            severity=Severity.HIGH,
+            gate_failed="harm",
+            recommendation="Fix it"
+        )
+        assert violation.is_blocking() is True
+
+    def test_is_blocking_medium(self):
+        """Test is_blocking returns False for medium severity."""
+        violation = Article5Violation(
+            article_reference="Article 9",
+            description="Test",
+            severity=Severity.MEDIUM,
+            gate_failed="purpose",
+            recommendation="Document purpose"
+        )
+        assert violation.is_blocking() is False
+
+    def test_is_blocking_low(self):
+        """Test is_blocking returns False for low severity."""
+        violation = Article5Violation(
+            article_reference="Article 9",
+            description="Test",
+            severity=Severity.LOW,
+            gate_failed="purpose",
+            recommendation="Consider documenting"
+        )
+        assert violation.is_blocking() is False
 
 
 class TestRiskAssessment:
@@ -103,6 +215,27 @@ class TestComplianceResult:
 
         assert result.compliant is True
         assert result.risk_level == RiskLevel.MINIMAL
+        assert result.recommended_oversight_model is None  # No oversight required
+
+    def test_create_result_with_oversight(self):
+        """Test result auto-assigns oversight model when required."""
+        result = ComplianceResult(
+            compliant=True,
+            risk_level=RiskLevel.HIGH,
+            article_5_violations=[],
+            article_9_risk_assessment=RiskAssessment(
+                context="healthcare",
+                risk_factors=[],
+                risk_score=0.3,
+                mitigation_recommended=True,
+                gates_evaluated={}
+            ),
+            article_14_oversight_required=True,
+            recommendations=[]
+        )
+
+        assert result.article_14_oversight_required is True
+        assert result.recommended_oversight_model == OversightModel.HITL
 
     def test_to_dict(self):
         """Test result to dictionary conversion."""
@@ -134,7 +267,11 @@ class TestComplianceResult:
         assert d["compliant"] is False
         assert d["risk_level"] == "high"
         assert len(d["article_5_violations"]) == 1
+        assert d["article_5_violations"][0]["severity"] == "high"
+        assert d["article_5_violations"][0]["is_blocking"] is True
         assert d["article_14_oversight_required"] is True
+        assert d["recommended_oversight_model"] == "human_in_the_loop"
+        assert d["article_9_risk_assessment"]["gates_evaluated"] == {"truth": True}
 
 
 class TestEUAIActComplianceChecker:
@@ -276,6 +413,95 @@ class TestEUAIActComplianceChecker:
         assert "system_type" in result.metadata
 
 
+class TestInputValidation:
+    """Tests for input validation in EUAIActComplianceChecker."""
+
+    def test_content_none_raises(self):
+        """Test that None content raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content=None)
+        assert "cannot be None" in str(exc_info.value)
+
+    def test_content_empty_raises(self):
+        """Test that empty content raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content="")
+        assert "cannot be empty" in str(exc_info.value)
+
+    def test_content_whitespace_only_raises(self):
+        """Test that whitespace-only content raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content="   \n\t   ")
+        assert "cannot be empty" in str(exc_info.value)
+
+    def test_content_wrong_type_raises(self):
+        """Test that non-string content raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content=123)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_content_too_large_raises(self):
+        """Test that oversized content raises ValueError."""
+        checker = EUAIActComplianceChecker(max_content_size=100)
+        large_content = "x" * 200
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content=large_content)
+        assert "exceeds maximum" in str(exc_info.value)
+
+    def test_context_wrong_type_raises(self):
+        """Test that non-string context raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content="test", context=123)
+        assert "context must be a string" in str(exc_info.value)
+
+    def test_system_type_wrong_type_raises(self):
+        """Test that invalid system_type raises ValueError."""
+        checker = EUAIActComplianceChecker()
+        with pytest.raises(ValueError) as exc_info:
+            checker.check_compliance(content="test", system_type="invalid")
+        assert "must be a SystemType enum" in str(exc_info.value)
+
+    def test_invalid_provider_raises(self):
+        """Test that invalid provider raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            EUAIActComplianceChecker(provider="invalid_provider")
+        assert "Invalid provider" in str(exc_info.value)
+
+    def test_invalid_max_content_size_raises(self):
+        """Test that invalid max_content_size raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            EUAIActComplianceChecker(max_content_size=-1)
+        assert "must be a positive integer" in str(exc_info.value)
+
+    def test_max_content_size_zero_raises(self):
+        """Test that zero max_content_size raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            EUAIActComplianceChecker(max_content_size=0)
+        assert "must be a positive integer" in str(exc_info.value)
+
+
+class TestFailClosedMode:
+    """Tests for fail_closed mode."""
+
+    def test_fail_closed_false_default(self):
+        """Test that fail_closed is False by default."""
+        checker = EUAIActComplianceChecker()
+        # Without API key and without THSPValidator, should be safe by default
+        result = checker.check_compliance(content="Test content")
+        # The check should complete without error
+        assert isinstance(result, ComplianceResult)
+
+    def test_fail_closed_can_be_enabled(self):
+        """Test that fail_closed can be enabled."""
+        checker = EUAIActComplianceChecker(fail_closed=True)
+        assert checker._fail_closed is True
+
+
 class TestConvenienceFunction:
     """Tests for check_eu_ai_act_compliance convenience function."""
 
@@ -309,6 +535,36 @@ class TestConvenienceFunction:
                 system_type=system_type
             )
             assert "risk_level" in result
+
+    def test_invalid_system_type_raises(self):
+        """Test that invalid system_type raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            check_eu_ai_act_compliance(
+                content="Test content",
+                system_type="invalid_type"
+            )
+        assert "Invalid system_type" in str(exc_info.value)
+
+    def test_content_none_raises(self):
+        """Test that None content raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            check_eu_ai_act_compliance(content=None)
+        assert "cannot be None" in str(exc_info.value)
+
+    def test_content_wrong_type_raises(self):
+        """Test that non-string content raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            check_eu_ai_act_compliance(content=123)
+        assert "must be a string" in str(exc_info.value)
+
+    def test_fail_closed_option(self):
+        """Test that fail_closed option is passed through."""
+        result = check_eu_ai_act_compliance(
+            content="Test content",
+            fail_closed=True
+        )
+        # Should complete without error
+        assert isinstance(result, dict)
 
 
 class TestIntegration:

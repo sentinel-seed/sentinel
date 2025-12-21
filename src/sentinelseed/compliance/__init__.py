@@ -15,6 +15,9 @@ Usage:
     # Or use convenience function:
     from sentinelseed.compliance import check_eu_ai_act_compliance
     result = check_eu_ai_act_compliance(content, api_key="...")
+
+    # With fail_closed mode (strict):
+    checker = EUAIActComplianceChecker(api_key="...", fail_closed=True)
 """
 
 from sentinelseed.compliance.eu_ai_act import (
@@ -25,6 +28,7 @@ from sentinelseed.compliance.eu_ai_act import (
     RiskLevel,
     SystemType,
     OversightModel,
+    Severity,
     check_eu_ai_act_compliance,
 )
 
@@ -39,6 +43,7 @@ __all__ = [
     "RiskLevel",
     "SystemType",
     "OversightModel",
+    "Severity",
     # Convenience function
     "check_eu_ai_act_compliance",
 ]

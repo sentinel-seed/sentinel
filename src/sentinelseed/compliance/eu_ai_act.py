@@ -21,7 +21,7 @@ THSP gates provide behavioral-level controls that support compliance:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
 from datetime import datetime
 import logging
@@ -46,20 +46,94 @@ class SystemType(str, Enum):
 
 
 class OversightModel(str, Enum):
-    """Human oversight models per Article 14."""
+    """
+    Human oversight models per Article 14.
+
+    - HITL: Human reviews and approves each decision before execution
+    - HOTL: Human monitors and can intervene during operation
+    - HIC: Human has ultimate control and can override at any time
+    """
     HITL = "human_in_the_loop"
     HOTL = "human_on_the_loop"
     HIC = "human_in_command"
 
+    @classmethod
+    def for_risk_level(cls, risk_level: RiskLevel) -> "OversightModel":
+        """Determine appropriate oversight model based on risk level."""
+        if risk_level == RiskLevel.UNACCEPTABLE:
+            return cls.HITL  # Strictest - but should be prohibited anyway
+        elif risk_level == RiskLevel.HIGH:
+            return cls.HITL
+        elif risk_level == RiskLevel.LIMITED:
+            return cls.HOTL
+        else:
+            return cls.HIC
+
+
+class Severity(str, Enum):
+    """Severity levels for compliance violations."""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+    @classmethod
+    def from_string(cls, value: str) -> "Severity":
+        """
+        Convert string to Severity enum.
+
+        Args:
+            value: String value (case-insensitive)
+
+        Returns:
+            Severity enum value
+
+        Raises:
+            ValueError: If value is not a valid severity
+        """
+        if isinstance(value, cls):
+            return value
+
+        normalized = value.lower().strip() if isinstance(value, str) else ""
+        for member in cls:
+            if member.value == normalized:
+                return member
+
+        valid_values = [m.value for m in cls]
+        raise ValueError(
+            f"Invalid severity '{value}'. Valid values: {valid_values}"
+        )
+
 
 @dataclass
 class Article5Violation:
-    """Represents a potential Article 5 violation."""
+    """
+    Represents a potential Article 5 violation.
+
+    Article 5 of the EU AI Act prohibits certain AI practices that pose
+    unacceptable risks to fundamental rights.
+
+    Attributes:
+        article_reference: Specific article reference (e.g., "Article 5(1)(a)")
+        description: Human-readable description of the violation
+        severity: Severity level (Severity enum or string that will be converted)
+        gate_failed: Which THSP gate detected the issue
+        recommendation: Suggested remediation action
+    """
     article_reference: str
     description: str
-    severity: str  # "critical", "high", "medium"
+    severity: Severity
     gate_failed: str
     recommendation: str
+
+    def __post_init__(self):
+        """Auto-convert severity string to Severity enum."""
+        if isinstance(self.severity, str):
+            self.severity = Severity.from_string(self.severity)
+
+    def is_blocking(self) -> bool:
+        """Check if this violation should block the operation."""
+        return self.severity in (Severity.CRITICAL, Severity.HIGH)
 
 
 @dataclass
@@ -83,6 +157,7 @@ class ComplianceResult:
         article_5_violations: List of potential Article 5 issues
         article_9_risk_assessment: Risk management assessment
         article_14_oversight_required: Whether human oversight is needed
+        recommended_oversight_model: Suggested oversight model per Article 14
         recommendations: List of compliance recommendations
         timestamp: When the check was performed
         metadata: Additional context
@@ -93,8 +168,14 @@ class ComplianceResult:
     article_9_risk_assessment: RiskAssessment
     article_14_oversight_required: bool
     recommendations: List[str]
+    recommended_oversight_model: Optional[OversightModel] = None
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Set recommended oversight model based on risk level if not provided."""
+        if self.recommended_oversight_model is None and self.article_14_oversight_required:
+            self.recommended_oversight_model = OversightModel.for_risk_level(self.risk_level)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -105,9 +186,10 @@ class ComplianceResult:
                 {
                     "article_reference": v.article_reference,
                     "description": v.description,
-                    "severity": v.severity,
+                    "severity": v.severity.value if isinstance(v.severity, Severity) else v.severity,
                     "gate_failed": v.gate_failed,
-                    "recommendation": v.recommendation
+                    "recommendation": v.recommendation,
+                    "is_blocking": v.is_blocking(),
                 }
                 for v in self.article_5_violations
             ],
@@ -116,8 +198,13 @@ class ComplianceResult:
                 "risk_factors": self.article_9_risk_assessment.risk_factors,
                 "risk_score": self.article_9_risk_assessment.risk_score,
                 "mitigation_recommended": self.article_9_risk_assessment.mitigation_recommended,
+                "gates_evaluated": self.article_9_risk_assessment.gates_evaluated,
             },
             "article_14_oversight_required": self.article_14_oversight_required,
+            "recommended_oversight_model": (
+                self.recommended_oversight_model.value
+                if self.recommended_oversight_model else None
+            ),
             "recommendations": self.recommendations,
             "timestamp": self.timestamp,
             "metadata": self.metadata
@@ -199,11 +286,16 @@ class EUAIActComplianceChecker:
         "democratic_processes", "healthcare"
     ]
 
+    # Default maximum content size (50KB)
+    DEFAULT_MAX_CONTENT_SIZE = 50 * 1024
+
     def __init__(
         self,
         api_key: Optional[str] = None,
         provider: str = "openai",
         model: Optional[str] = None,
+        fail_closed: bool = False,
+        max_content_size: int = DEFAULT_MAX_CONTENT_SIZE,
     ):
         """
         Initialize compliance checker.
@@ -212,10 +304,32 @@ class EUAIActComplianceChecker:
             api_key: API key for semantic validation (recommended for accuracy)
             provider: LLM provider ("openai" or "anthropic")
             model: Specific model to use
+            fail_closed: If True, treat validation errors as non-compliant.
+                         If False (default), log warning and assume compliant.
+            max_content_size: Maximum content size in bytes (default 50KB)
+
+        Raises:
+            ValueError: If provider is not "openai" or "anthropic"
+            ValueError: If max_content_size is not positive
         """
+        # Validate provider
+        valid_providers = ("openai", "anthropic")
+        if provider not in valid_providers:
+            raise ValueError(
+                f"Invalid provider '{provider}'. Valid providers: {valid_providers}"
+            )
+
+        # Validate max_content_size
+        if not isinstance(max_content_size, int) or max_content_size <= 0:
+            raise ValueError(
+                f"max_content_size must be a positive integer, got: {max_content_size}"
+            )
+
         self._api_key = api_key
         self._provider = provider
         self._model = model
+        self._fail_closed = fail_closed
+        self._max_content_size = max_content_size
         self._validator = None
         self._init_validator()
 
@@ -259,7 +373,37 @@ class EUAIActComplianceChecker:
 
         Returns:
             ComplianceResult with detailed assessment
+
+        Raises:
+            ValueError: If content is None, empty, or not a string
+            ValueError: If content exceeds max_content_size
+            ValueError: If context is not a string
+            ValueError: If system_type is not a valid SystemType
         """
+        # Validate content
+        if content is None:
+            raise ValueError("content cannot be None")
+        if not isinstance(content, str):
+            raise ValueError(f"content must be a string, got: {type(content).__name__}")
+        if len(content.strip()) == 0:
+            raise ValueError("content cannot be empty or whitespace only")
+        if len(content.encode("utf-8")) > self._max_content_size:
+            raise ValueError(
+                f"content size ({len(content.encode('utf-8'))} bytes) exceeds "
+                f"maximum allowed ({self._max_content_size} bytes)"
+            )
+
+        # Validate context
+        if not isinstance(context, str):
+            raise ValueError(f"context must be a string, got: {type(context).__name__}")
+
+        # Validate system_type
+        if not isinstance(system_type, SystemType):
+            raise ValueError(
+                f"system_type must be a SystemType enum, got: {type(system_type).__name__}. "
+                f"Valid values: {[st.value for st in SystemType]}"
+            )
+
         # Perform THSP validation
         gates, is_safe, failed_gates = self._validate_content(content)
 
@@ -310,11 +454,33 @@ class EUAIActComplianceChecker:
             metadata=metadata
         )
 
-    def _validate_content(self, content: str) -> tuple:
-        """Validate content through THSP gates."""
+    def _validate_content(
+        self, content: str
+    ) -> Tuple[Dict[str, bool], bool, List[str]]:
+        """
+        Validate content through THSP gates.
+
+        Args:
+            content: The content to validate
+
+        Returns:
+            Tuple of (gates_dict, is_safe, failed_gates_list)
+            - gates_dict: Mapping of gate names to pass/fail status
+            - is_safe: Overall safety determination
+            - failed_gates_list: List of gate names that failed
+
+        Note:
+            Behavior when validator is unavailable or fails depends on
+            fail_closed setting. If fail_closed=True, returns unsafe.
+            If fail_closed=False (default), returns safe with warning.
+        """
         if self._validator is None:
-            logger.warning("No validator available - returning safe by default")
-            return {}, True, []
+            if self._fail_closed:
+                logger.warning("No validator available - fail_closed mode: treating as non-compliant")
+                return {}, False, ["no_validator"]
+            else:
+                logger.warning("No validator available - returning safe by default")
+                return {}, True, []
 
         try:
             result = self._validator.validate(content)
@@ -334,7 +500,11 @@ class EUAIActComplianceChecker:
 
         except Exception as e:
             logger.error(f"Validation error: {e}")
-            return {}, True, []
+            if self._fail_closed:
+                logger.warning("Validation failed - fail_closed mode: treating as non-compliant")
+                return {}, False, ["validation_error"]
+            else:
+                return {}, True, []
 
     def _check_article_5(
         self,
@@ -460,7 +630,7 @@ class EUAIActComplianceChecker:
         """Determine EU AI Act risk level."""
 
         # Critical Article 5 violations = unacceptable
-        critical_violations = [v for v in violations if v.severity == "critical"]
+        critical_violations = [v for v in violations if v.severity == Severity.CRITICAL]
         if len(critical_violations) > 0:
             return RiskLevel.UNACCEPTABLE
 
@@ -493,7 +663,7 @@ class EUAIActComplianceChecker:
 
         # Critical: Address Article 5 violations first
         if len(violations) > 0:
-            critical = [v for v in violations if v.severity == "critical"]
+            critical = [v for v in violations if v.severity == Severity.CRITICAL]
             if critical:
                 recommendations.append(
                     "CRITICAL: Address Article 5 prohibited practice violations immediately"
@@ -546,7 +716,8 @@ def check_eu_ai_act_compliance(
     content: str,
     api_key: Optional[str] = None,
     context: str = "general",
-    system_type: str = "high_risk"
+    system_type: str = "high_risk",
+    fail_closed: bool = False,
 ) -> Dict[str, Any]:
     """
     Convenience function to check EU AI Act compliance.
@@ -555,10 +726,15 @@ def check_eu_ai_act_compliance(
         content: AI system output to validate
         api_key: Optional API key for semantic validation
         context: Usage context
-        system_type: Risk classification ("high_risk", "limited_risk", "minimal_risk")
+        system_type: Risk classification ("high_risk", "limited_risk", "minimal_risk", "gpai")
+        fail_closed: If True, treat validation errors as non-compliant
 
     Returns:
         Dict with compliance assessment
+
+    Raises:
+        ValueError: If content is None, empty, or not a string
+        ValueError: If system_type is not a valid string value
 
     Example:
         result = check_eu_ai_act_compliance(
@@ -569,6 +745,13 @@ def check_eu_ai_act_compliance(
         # result["compliant"] = False
         # result["risk_level"] = "unacceptable"
     """
+    # Validate content early for better error messages
+    if content is None:
+        raise ValueError("content cannot be None")
+    if not isinstance(content, str):
+        raise ValueError(f"content must be a string, got: {type(content).__name__}")
+
+    # Validate and convert system_type
     type_map = {
         "high_risk": SystemType.HIGH_RISK,
         "limited_risk": SystemType.LIMITED_RISK,
@@ -576,11 +759,17 @@ def check_eu_ai_act_compliance(
         "gpai": SystemType.GPAI
     }
 
-    checker = EUAIActComplianceChecker(api_key=api_key)
+    if system_type not in type_map:
+        valid_types = list(type_map.keys())
+        raise ValueError(
+            f"Invalid system_type '{system_type}'. Valid values: {valid_types}"
+        )
+
+    checker = EUAIActComplianceChecker(api_key=api_key, fail_closed=fail_closed)
     result = checker.check_compliance(
         content=content,
         context=context,
-        system_type=type_map.get(system_type, SystemType.HIGH_RISK)
+        system_type=type_map[system_type]
     )
 
     return result.to_dict()
@@ -588,12 +777,17 @@ def check_eu_ai_act_compliance(
 
 # Export for convenience
 __all__ = [
+    # Main checker
     "EUAIActComplianceChecker",
+    # Result types
     "ComplianceResult",
     "RiskAssessment",
     "Article5Violation",
+    # Enums
     "RiskLevel",
     "SystemType",
     "OversightModel",
+    "Severity",
+    # Convenience function
     "check_eu_ai_act_compliance",
 ]
