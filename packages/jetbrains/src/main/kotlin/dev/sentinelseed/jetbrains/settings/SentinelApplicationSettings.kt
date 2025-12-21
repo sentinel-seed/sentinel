@@ -8,6 +8,7 @@ import com.intellij.openapi.components.Storage
 import com.intellij.util.xmlb.XmlSerializerUtil
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
+import com.intellij.credentialStore.generateServiceName
 import com.intellij.ide.passwordSafe.PasswordSafe
 
 /**
@@ -59,13 +60,17 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
         get() = getSecureKey(ANTHROPIC_KEY_ID) ?: ""
         set(value) = setSecureKey(ANTHROPIC_KEY_ID, value)
 
+    private fun createCredentialAttributes(key: String): CredentialAttributes {
+        return CredentialAttributes(generateServiceName("SentinelAISafety", key))
+    }
+
     private fun getSecureKey(key: String): String? {
-        val attributes = CredentialAttributes(key)
+        val attributes = createCredentialAttributes(key)
         return PasswordSafe.instance.getPassword(attributes)
     }
 
     private fun setSecureKey(key: String, value: String) {
-        val attributes = CredentialAttributes(key)
+        val attributes = createCredentialAttributes(key)
         if (value.isBlank()) {
             PasswordSafe.instance.set(attributes, null)
         } else {

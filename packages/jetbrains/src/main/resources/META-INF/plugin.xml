@@ -40,6 +40,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.1.1</h3>
+        <ul>
+            <li>Fix deprecated CredentialAttributes API usage</li>
+            <li>Improved compatibility with IntelliJ 2025.x</li>
+        </ul>
+
         <h3>0.1.0</h3>
         <ul>
             <li>Initial release</li>
