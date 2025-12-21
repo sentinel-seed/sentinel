@@ -1,0 +1,164 @@
+<idea-plugin>
+    <id>dev.sentinelseed.jetbrains</id>
+    <name>Sentinel AI Safety</name>
+    <vendor email="contact@sentinelseed.dev" url="https://sentinelseed.dev">Sentinel Seed Team</vendor>
+
+    <description><![CDATA[
+        <h2>AI Safety Guardrails for LLM Prompts</h2>
+
+        <p>Sentinel AI Safety provides real-time safety analysis for LLM prompts and AI-generated content
+        using the <strong>THSP protocol</strong> (Truth, Harm, Scope, Purpose).</p>
+
+        <h3>Features</h3>
+        <ul>
+            <li><strong>Real-time Analysis</strong> - Analyze code and prompts for safety issues</li>
+            <li><strong>THSP Protocol</strong> - Four-gate validation system:
+                <ul>
+                    <li>Truth Gate: Detects deception and misinformation</li>
+                    <li>Harm Gate: Identifies potential harm</li>
+                    <li>Scope Gate: Checks boundary violations</li>
+                    <li>Purpose Gate: Validates legitimate purpose</li>
+                </ul>
+            </li>
+            <li><strong>Semantic Analysis</strong> - Optional LLM-powered deep analysis (OpenAI/Anthropic)</li>
+            <li><strong>Seed Insertion</strong> - Insert alignment seeds into your prompts</li>
+            <li><strong>Tool Window</strong> - Dedicated panel for analysis results</li>
+        </ul>
+
+        <h3>Usage</h3>
+        <ol>
+            <li>Select text or right-click in editor</li>
+            <li>Choose "Sentinel: Analyze Selection" from context menu</li>
+            <li>View results in the Sentinel tool window</li>
+        </ol>
+
+        <h3>Configuration</h3>
+        <p>Configure API keys for semantic analysis in Settings → Tools → Sentinel AI Safety</p>
+
+        <p><a href="https://sentinelseed.dev/docs">Documentation</a> |
+        <a href="https://github.com/sentinel-seed/sentinel">GitHub</a></p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>0.1.0</h3>
+        <ul>
+            <li>Initial release</li>
+            <li>THSP protocol validation</li>
+            <li>Semantic analysis with OpenAI/Anthropic</li>
+            <li>Heuristic fallback mode</li>
+            <li>Seed insertion commands</li>
+            <li>Dedicated tool window</li>
+        </ul>
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Application Service for validation logic -->
+        <applicationService
+            serviceImplementation="dev.sentinelseed.jetbrains.services.SentinelService"/>
+
+        <!-- Project-level settings state -->
+        <projectService
+            serviceImplementation="dev.sentinelseed.jetbrains.settings.SentinelProjectSettings"/>
+
+        <!-- Application-level settings state -->
+        <applicationService
+            serviceImplementation="dev.sentinelseed.jetbrains.settings.SentinelApplicationSettings"/>
+
+        <!-- Settings configurable in Preferences -->
+        <applicationConfigurable
+            id="sentinel.settings"
+            displayName="Sentinel AI Safety"
+            groupId="tools"
+            instance="dev.sentinelseed.jetbrains.settings.SentinelSettingsConfigurable"/>
+
+        <!-- Tool window for results -->
+        <toolWindow
+            id="Sentinel"
+            anchor="bottom"
+            icon="/icons/sentinel-13.svg"
+            factoryClass="dev.sentinelseed.jetbrains.ui.SentinelToolWindowFactory"/>
+
+        <!-- Status bar widget -->
+        <statusBarWidgetFactory
+            id="SentinelStatusWidget"
+            implementation="dev.sentinelseed.jetbrains.ui.SentinelStatusWidgetFactory"/>
+
+        <!-- Code inspections for real-time analysis -->
+        <localInspection
+            groupName="Sentinel AI Safety"
+            shortName="SentinelSafetyInspection"
+            displayName="THSP Safety Analysis"
+            enabledByDefault="true"
+            level="WARNING"
+            implementationClass="dev.sentinelseed.jetbrains.inspections.SentinelInspection"/>
+
+        <!-- Notification group -->
+        <notificationGroup
+            id="Sentinel Notifications"
+            displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <!-- Main action group -->
+        <group id="Sentinel.ActionGroup"
+               text="Sentinel"
+               popup="true"
+               icon="/icons/sentinel-13.svg">
+
+            <action id="Sentinel.AnalyzeSelection"
+                    class="dev.sentinelseed.jetbrains.actions.AnalyzeSelectionAction"
+                    text="Analyze Selection"
+                    description="Analyze selected text for safety issues"
+                    icon="AllIcons.Actions.Checked">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt S"/>
+            </action>
+
+            <action id="Sentinel.AnalyzeFile"
+                    class="dev.sentinelseed.jetbrains.actions.AnalyzeFileAction"
+                    text="Analyze File"
+                    description="Analyze entire file for safety issues"
+                    icon="AllIcons.Actions.CheckMultiple">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift S"/>
+            </action>
+
+            <separator/>
+
+            <action id="Sentinel.InsertSeedStandard"
+                    class="dev.sentinelseed.jetbrains.actions.InsertSeedAction"
+                    text="Insert Standard Seed"
+                    description="Insert the standard Sentinel alignment seed"
+                    icon="AllIcons.Actions.AddFile"/>
+
+            <action id="Sentinel.InsertSeedMinimal"
+                    class="dev.sentinelseed.jetbrains.actions.InsertMinimalSeedAction"
+                    text="Insert Minimal Seed"
+                    description="Insert the minimal Sentinel alignment seed"
+                    icon="AllIcons.Actions.AddFile"/>
+
+            <separator/>
+
+            <action id="Sentinel.ShowStatus"
+                    class="dev.sentinelseed.jetbrains.actions.ShowStatusAction"
+                    text="Show Status"
+                    description="Show Sentinel analysis status"
+                    icon="AllIcons.General.Information"/>
+
+            <action id="Sentinel.OpenSettings"
+                    class="dev.sentinelseed.jetbrains.actions.OpenSettingsAction"
+                    text="Settings..."
+                    description="Open Sentinel settings"
+                    icon="AllIcons.General.Settings"/>
+
+            <!-- Add to editor popup menu -->
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </group>
+
+        <!-- Add to Tools menu -->
+        <group id="Sentinel.ToolsMenu">
+            <reference ref="Sentinel.ActionGroup"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+    </actions>
+</idea-plugin>
