@@ -108,6 +108,22 @@ export async function activate(context: vscode.ExtensionContext) {
         () => checkComplianceHandler(context, 'csa_aicm')
     );
 
+    // Quick security commands
+    const scanSecretsCmd = vscode.commands.registerCommand(
+        'sentinel.scanSecrets',
+        scanForSecrets
+    );
+
+    const sanitizePromptCmd = vscode.commands.registerCommand(
+        'sentinel.sanitizePrompt',
+        sanitizePrompt
+    );
+
+    const validateOutputCmd = vscode.commands.registerCommand(
+        'sentinel.validateOutput',
+        validateOutput
+    );
+
     // Listen for configuration changes
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('sentinel')) {
@@ -154,6 +170,9 @@ export async function activate(context: vscode.ExtensionContext) {
         checkComplianceEUAIActCmd,
         checkComplianceOWASPCmd,
         checkComplianceCSACmd,
+        scanSecretsCmd,
+        sanitizePromptCmd,
+        validateOutputCmd,
         configChangeDisposable
     );
 
@@ -329,6 +348,148 @@ async function insertSeed(variant: 'minimal' | 'standard') {
     vscode.window.showInformationMessage(
         `Sentinel ${variant} seed inserted (~${tokenCount} tokens)`
     );
+}
+
+// ============================================================================
+// QUICK SECURITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Scans content for secrets (API keys, tokens, credentials).
+ * Uses OWASP LLM02 (Sensitive Information Disclosure) patterns.
+ */
+async function scanForSecrets(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('No active editor');
+        return;
+    }
+
+    const selection = editor.selection;
+    const text = selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+
+    if (!text || text.trim() === '') {
+        vscode.window.showWarningMessage('No content to scan');
+        return;
+    }
+
+    const hasSecrets = complianceChecker.hasSensitiveInfo(text);
+
+    if (hasSecrets) {
+        const result = complianceChecker.checkOWASPOutput(text);
+        const secretFindings = result.findings.filter(f =>
+            f.vulnerability === 'LLM02' && f.detected
+        );
+
+        let message = '⚠️ SECRETS DETECTED\n\n';
+        for (const finding of secretFindings) {
+            message += `• ${finding.name}\n`;
+            if (finding.patternsMatched && finding.patternsMatched.length > 0) {
+                const evidence = finding.patternsMatched.slice(0, 3).map(p => p.matchedText);
+                message += `  Found: ${evidence.join(', ')}\n`;
+            }
+        }
+        message += '\n🔒 Remove or rotate these credentials before sharing.';
+
+        vscode.window.showWarningMessage(message, { modal: true });
+    } else {
+        vscode.window.showInformationMessage(
+            '✅ No secrets detected\n\nNo API keys, tokens, or credentials found.',
+            { modal: true }
+        );
+    }
+}
+
+/**
+ * Sanitizes prompt by detecting potential injection attacks.
+ * Uses OWASP LLM01 (Prompt Injection) patterns.
+ */
+async function sanitizePrompt(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('No active editor');
+        return;
+    }
+
+    const selection = editor.selection;
+    const text = selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+
+    if (!text || text.trim() === '') {
+        vscode.window.showWarningMessage('No content to sanitize');
+        return;
+    }
+
+    const hasInjection = complianceChecker.hasPromptInjection(text);
+
+    if (hasInjection) {
+        const result = complianceChecker.checkOWASPInput(text);
+        const injectionFindings = result.findings.filter(f =>
+            f.vulnerability === 'LLM01' && f.detected
+        );
+
+        let message = '⚠️ PROMPT INJECTION DETECTED\n\n';
+        for (const finding of injectionFindings) {
+            message += `• ${finding.name}\n`;
+            if (finding.patternsMatched && finding.patternsMatched.length > 0) {
+                message += `  Pattern: "${finding.patternsMatched[0].matchedText}"\n`;
+            }
+        }
+        message += '\n🛡️ Review and sanitize this input before sending to LLM.';
+
+        vscode.window.showWarningMessage(message, { modal: true });
+    } else {
+        vscode.window.showInformationMessage(
+            '✅ Prompt looks safe\n\nNo injection patterns detected.',
+            { modal: true }
+        );
+    }
+}
+
+/**
+ * Validates LLM output for security issues.
+ * Checks for sensitive data exposure, injection payloads, and unsafe content.
+ */
+async function validateOutput(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('No active editor');
+        return;
+    }
+
+    const selection = editor.selection;
+    const text = selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+
+    if (!text || text.trim() === '') {
+        vscode.window.showWarningMessage('No content to validate');
+        return;
+    }
+
+    const result = complianceChecker.checkOWASPOutput(text);
+    const issues = result.findings.filter(f => f.detected);
+
+    if (issues.length > 0) {
+        let message = '⚠️ OUTPUT VALIDATION ISSUES\n\n';
+        for (const issue of issues) {
+            message += `• [${issue.vulnerability}] ${issue.name}\n`;
+            if (issue.severity === 'critical' || issue.severity === 'high') {
+                message += `  Severity: ${issue.severity.toUpperCase()}\n`;
+            }
+        }
+        message += '\n🔍 Review output before displaying to users.';
+
+        vscode.window.showWarningMessage(message, { modal: true });
+    } else {
+        vscode.window.showInformationMessage(
+            '✅ Output validated\n\nNo security issues detected in LLM output.',
+            { modal: true }
+        );
+    }
 }
 
 // ============================================================================

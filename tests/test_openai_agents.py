@@ -16,7 +16,7 @@ by using mocks where necessary.
 import hashlib
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # Import modules under test
@@ -297,9 +297,11 @@ class TestInjectionDetection:
         is_suspicious, reason = detect_injection_attempt(
             "Explain how HTML tags like <div> work"
         )
-        # Note: < and > in normal educational context should be fine
-        # The detection looks for specific patterns like </content>
-        # not just any angle brackets
+        # Educational content with HTML examples should pass
+        # The detection looks for specific injection patterns like </content>
+        # not just any angle brackets in normal educational context
+        assert not is_suspicious, f"Educational content was incorrectly flagged: {reason}"
+        assert reason == "", f"Expected empty reason, got: {reason}"
 
 
 class TestBoundaryGeneration:
@@ -396,7 +398,7 @@ class TestViolationsLog:
         """Test adding violations and counting."""
         log = ViolationsLog(max_size=100)
         record = ViolationRecord(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             gate_violated="harm",
             risk_level="high",
             reasoning_summary="Test violation",
@@ -414,7 +416,7 @@ class TestViolationsLog:
 
         for i in range(10):
             record = ViolationRecord(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 gate_violated="harm",
                 risk_level="high",
                 reasoning_summary=f"Violation {i}",
@@ -432,7 +434,7 @@ class TestViolationsLog:
 
         for i in range(5):
             record = ViolationRecord(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 gate_violated=f"gate{i}",
                 risk_level="low",
                 reasoning_summary=f"Reason {i}",
@@ -452,7 +454,7 @@ class TestViolationsLog:
         gates = ["harm", "harm", "scope", "purpose"]
         for i, gate in enumerate(gates):
             record = ViolationRecord(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 gate_violated=gate,
                 risk_level="low",
                 reasoning_summary=f"Reason {i}",
@@ -471,7 +473,7 @@ class TestViolationsLog:
         """Test clearing violations."""
         log = ViolationsLog(max_size=100)
         record = ViolationRecord(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             gate_violated="harm",
             risk_level="high",
             reasoning_summary="Test",
@@ -896,7 +898,7 @@ class TestThreadSafety:
             try:
                 for i in range(10):
                     record = ViolationRecord(
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         gate_violated=f"gate_{thread_id}_{i}",
                         risk_level="low",
                         reasoning_summary=f"Thread {thread_id} violation {i}",

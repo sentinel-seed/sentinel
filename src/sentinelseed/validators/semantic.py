@@ -370,7 +370,12 @@ class SemanticValidator:
             timeout=self.timeout,
         )
 
+        if not response.choices:
+            raise ValueError("OpenAI API returned empty choices array")
+
         content = response.choices[0].message.content
+        if content is None:
+            content = ""
         return {"content": content, "model": self.model}
 
     def _call_anthropic(self, prompt: str) -> Dict[str, Any]:
@@ -391,6 +396,9 @@ class SemanticValidator:
             system="You are a safety validation system. Respond only with valid JSON.",
             messages=[{"role": "user", "content": prompt}],
         )
+
+        if not response.content:
+            raise ValueError("Anthropic API returned empty content array")
 
         content = response.content[0].text
         return {"content": content, "model": self.model}
@@ -576,7 +584,12 @@ class AsyncSemanticValidator:
             timeout=self.timeout,
         )
 
+        if not response.choices:
+            raise ValueError("OpenAI API returned empty choices array")
+
         content = response.choices[0].message.content
+        if content is None:
+            content = ""
         return {"content": content, "model": self.model}
 
     async def _call_anthropic_async(self, prompt: str) -> Dict[str, Any]:
@@ -594,6 +607,9 @@ class AsyncSemanticValidator:
             system="You are a safety validation system. Respond only with valid JSON.",
             messages=[{"role": "user", "content": prompt}],
         )
+
+        if not response.content:
+            raise ValueError("Anthropic API returned empty content array")
 
         content = response.content[0].text
         return {"content": content, "model": self.model}

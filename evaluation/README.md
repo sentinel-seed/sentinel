@@ -1,6 +1,6 @@
 # Evaluation Directory
 
-### Testing Safety for AI that Acts — From Chatbots to Robots
+### Testing Safety for AI that Acts: From Chatbots to Robots
 
 This directory contains all benchmark tests and evaluation results for the Sentinel seed across both text safety (LLMs) and action safety (agents/embodied AI).
 
@@ -40,33 +40,27 @@ This directory contains all benchmark tests and evaluation results for the Senti
 
 ```
 evaluation/
-├── harmbench/          # HarmBench standard behaviors (200 prompts)
-│   ├── run_sentinel_harmbench.py
-│   ├── run_sentinel_harmbench_openrouter.py
-│   └── run_ablation_study.py
+├── analysis/                   # Analysis reports
+│   ├── VALIDATION_REPORT.md    # Scientific validation methodology
+│   └── CROSS_MODEL_ANALYSIS.md # Cross-model effectiveness
 │
-├── jailbreak-bench/    # JailbreakBench (100 behaviors)
-│   └── run_jailbreak_openrouter.py
+├── benchmarks/                 # Benchmark implementations
+│   ├── harmbench/              # HarmBench standard behaviors
+│   │   └── data/               # Benchmark data files
+│   ├── jailbreakbench/         # JailbreakBench (100 behaviors)
+│   │   └── data/               # Benchmark data files
+│   └── safeagentbench/         # SafeAgentBench (embodied AI)
+│       ├── dataset/            # Task definitions
+│       ├── evaluator/          # Evaluation logic
+│       └── methods/            # Evaluation methods
 │
-├── adversarial/        # Custom adversarial jailbreak tests (20 techniques)
-│   ├── adversarial_prompts.json
-│   └── run_adversarial_openrouter.py
+├── embodied-ai/                # BadRobot dataset scripts
 │
-├── SafeAgentBench/     # Embodied AI safety (300 unsafe tasks)
-│   ├── run_sentinel_safeagent.py
-│   ├── run_sentinel_safeagent_claude.py
-│   └── run_ablation_safeagent.py
-│
-├── embodied-ai/        # BadRobot dataset (277 malicious queries)
-│   ├── run_sentinel_test.py
-│   ├── run_sentinel_claude.py
-│   └── run_multi_model_test.py
-│
-├── utility/            # Utility preservation tests (35 tasks)
-│   └── run_utility_test.py
-│
-└── results/            # Consolidated results
-    └── RESULTS_SUMMARY.md
+└── results/                    # Evaluation results (by benchmark)
+    ├── harmbench/              # HarmBench results
+    ├── jailbreakbench/         # JailbreakBench results
+    ├── safeagentbench/         # SafeAgentBench results
+    └── badrobot/               # BadRobot results
 ```
 
 ---
@@ -77,15 +71,15 @@ evaluation/
 
 #### HarmBench (OpenAI)
 ```bash
-python evaluation/harmbench/run_sentinel_harmbench.py \
+python evaluation/benchmarks/harmbench/run_sentinel_harmbench.py \
   --api_key YOUR_KEY \
   --model gpt-4o-mini \
   --seed_type standard
 ```
 
-#### HarmBench (OpenRouter - Mistral, Llama, etc.)
+#### HarmBench (OpenRouter)
 ```bash
-python evaluation/harmbench/run_sentinel_harmbench_openrouter.py \
+python evaluation/benchmarks/harmbench/run_sentinel_harmbench_openrouter.py \
   --api_key YOUR_OPENROUTER_KEY \
   --model mistralai/mistral-7b-instruct \
   --seed_type standard
@@ -93,24 +87,24 @@ python evaluation/harmbench/run_sentinel_harmbench_openrouter.py \
 
 #### JailbreakBench
 ```bash
-python evaluation/jailbreak-bench/run_jailbreak_openrouter.py \
+python evaluation/benchmarks/jailbreakbench/run_jailbreak_openrouter.py \
   --api_key YOUR_OPENROUTER_KEY \
   --model qwen/qwen-2.5-72b-instruct
 ```
 
 ### Action Safety Tests
 
-#### SafeAgentBench (Embodied AI)
+#### SafeAgentBench (OpenAI)
 ```bash
-python evaluation/SafeAgentBench/run_sentinel_safeagent.py \
+python evaluation/benchmarks/safeagentbench/run_sentinel_safeagent.py \
   --api_key YOUR_OPENAI_KEY \
   --model gpt-4o-mini \
   --task_type unsafe_detailed
 ```
 
-#### SafeAgentBench (Claude)
+#### SafeAgentBench (Anthropic)
 ```bash
-python evaluation/SafeAgentBench/run_sentinel_safeagent_claude.py \
+python evaluation/benchmarks/safeagentbench/run_sentinel_safeagent_claude.py \
   --api_key YOUR_ANTHROPIC_KEY \
   --model claude-sonnet-4-20250514 \
   --task_type unsafe_detailed
@@ -128,13 +122,13 @@ python evaluation/embodied-ai/run_sentinel_test.py \
 
 ```bash
 # HarmBench ablation
-python evaluation/harmbench/run_ablation_study.py \
+python evaluation/benchmarks/harmbench/run_ablation_study.py \
   --api_key YOUR_KEY \
   --model gpt-4o-mini \
   --sample_size 30
 
 # SafeAgentBench ablation
-python evaluation/SafeAgentBench/run_ablation_safeagent.py \
+python evaluation/benchmarks/safeagentbench/run_ablation_safeagent.py \
   --api_key YOUR_KEY \
   --model gpt-4o-mini \
   --sample_size 30
@@ -202,10 +196,16 @@ python evaluation/SafeAgentBench/run_ablation_safeagent.py \
 
 ## Documentation
 
-- [RESULTS_SUMMARY.md](results/RESULTS_SUMMARY.md) - Complete results
-- [EMBODIED_RESULTS_ANALYSIS.md](embodied-ai/EMBODIED_RESULTS_ANALYSIS.md) - Embodied AI analysis
-- [MULTI_MODEL_RESULTS.md](embodied-ai/MULTI_MODEL_RESULTS.md) - Multi-model comparison
-- [VALIDATION_REPORT.md](VALIDATION_REPORT.md) - Scientific validation report
+- [VALIDATION_REPORT.md](analysis/VALIDATION_REPORT.md): Scientific validation report with detailed methodology
+- [CROSS_MODEL_ANALYSIS.md](analysis/CROSS_MODEL_ANALYSIS.md): Cross-model effectiveness analysis
+
+### Results by Benchmark
+
+Results are stored in `results/` subdirectories organized by benchmark:
+- `results/harmbench/`: HarmBench evaluation results
+- `results/jailbreakbench/`: JailbreakBench evaluation results
+- `results/safeagentbench/`: SafeAgentBench evaluation results
+- `results/badrobot/`: BadRobot (embodied AI) evaluation results
 
 ---
 

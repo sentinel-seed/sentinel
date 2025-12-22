@@ -34,7 +34,16 @@ import uuid
 import logging
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+
+# Semantic validators are optional (require API keys)
+SEMANTIC_AVAILABLE = False
+try:
+    from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SemanticValidator = None
+    AsyncSemanticValidator = None
+    THSPResult = None
 
 logger = logging.getLogger("sentinelseed.llamaindex")
 

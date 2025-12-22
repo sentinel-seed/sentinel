@@ -2,7 +2,7 @@
   "name": "sentinel-ai-safety",
   "displayName": "Sentinel AI Safety",
   "description": "AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose)",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "sentinelseed",
   "icon": "sentinel-logo-128.png",
   "repository": {
@@ -90,6 +90,18 @@
       {
         "command": "sentinel.checkComplianceCSA",
         "title": "Sentinel: Check CSA AI Controls Matrix"
+      },
+      {
+        "command": "sentinel.scanSecrets",
+        "title": "Sentinel: Scan for Secrets"
+      },
+      {
+        "command": "sentinel.sanitizePrompt",
+        "title": "Sentinel: Sanitize Prompt"
+      },
+      {
+        "command": "sentinel.validateOutput",
+        "title": "Sentinel: Validate Output"
       }
     ],
     "menus": {
@@ -114,6 +126,18 @@
         {
           "command": "sentinel.checkComplianceCSA",
           "group": "sentinel@5"
+        },
+        {
+          "command": "sentinel.scanSecrets",
+          "group": "sentinel@6"
+        },
+        {
+          "command": "sentinel.sanitizePrompt",
+          "group": "sentinel@7"
+        },
+        {
+          "command": "sentinel.validateOutput",
+          "group": "sentinel@8"
         }
       ]
     },

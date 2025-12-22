@@ -1,5 +1,7 @@
 # sentinel-minimal v0.1
 
+> **Note:** This is **v1 (legacy)**. For current version, see `seeds/v2/` or use `src/sentinelseed/seeds/`.
+
 Minimal version of the Sentinel Alignment Protocol.
 
 ## Specifications
@@ -48,10 +50,12 @@ response = anthropic.messages.create(
 
 | Test | Status |
 |------|--------|
-| Baseline comparison | Pending |
-| Agentic Misalignment | Pending |
-| Cross-model | Pending |
-| Ablation | Pending |
+| Baseline comparison | ✅ Completed |
+| Agentic Misalignment | ✅ Completed |
+| Cross-model | ✅ Completed |
+| Ablation | ✅ Completed |
+
+See [evaluation/analysis/VALIDATION_REPORT.md](../../../evaluation/analysis/VALIDATION_REPORT.md) for full results.
 
 ## Changelog
 

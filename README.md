@@ -1,6 +1,6 @@
 # Sentinel AI
 
-### Safety for AI that Acts — From Chatbots to Robots
+### Safety for AI that Acts: From Chatbots to Robots
 
 > **Text is risk. Action is danger.** Sentinel provides validated alignment seeds for LLMs, agents, and robots. One framework, three surfaces.
 
@@ -45,6 +45,8 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Memory Integrity:** HMAC-based protection against memory injection attacks
 - **Fiduciary AI:** Ensures AI acts in user's best interest (duty of loyalty and care)
 - **EU AI Act Compliance:** Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
+- **OWASP Agentic AI:** Coverage for 7/10 Top 10 threats (ASI01-ASI10)
+- **Database Guard:** Query validation to prevent data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
 - **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, OpenGuardrails, PyRIT
@@ -953,6 +955,25 @@ result = check_eu_ai_act_compliance(
 
 Detects 8 prohibited practices under Article 5: subliminal manipulation, exploitation of vulnerabilities, social scoring, predictive policing, facial scraping, emotion recognition (workplace/education), biometric categorization, and real-time biometric identification.
 
+### OWASP Top 10 for Agentic Applications
+
+Sentinel provides coverage for **7 of 10** OWASP Agentic AI threats:
+
+| ID | Threat | Coverage | Component |
+|----|--------|----------|-----------|
+| ASI01 | Agent Goal Hijack | ✅ Full | THSP Purpose Gate |
+| ASI02 | Tool Misuse | ✅ Full | THSP Scope Gate |
+| ASI03 | Identity Abuse | 🔶 Partial | Database Guard |
+| ASI04 | Supply Chain | 🔶 Partial | Memory Shield |
+| ASI05 | Code Execution | ❌ | Out of scope |
+| ASI06 | Memory Poisoning | ✅ Full | Memory Shield |
+| ASI07 | Inter-Agent Comm | ❌ | Future roadmap |
+| ASI08 | Cascading Failures | 🔶 Partial | THSP Truth Gate |
+| ASI09 | Trust Exploitation | ✅ Full | Fiduciary AI |
+| ASI10 | Rogue Agents | ✅ Full | THSP + Anti-Preservation |
+
+📄 Full mapping: [docs/OWASP_AGENTIC_COVERAGE.md](docs/OWASP_AGENTIC_COVERAGE.md)
+
 ---
 
 ## REST API
@@ -1015,7 +1036,9 @@ sentinel/
 │   └── vscode/               # VS Code/Cursor/Windsurf extension
 ├── docs/                      # Documentation
 │   ├── EU_AI_ACT_MAPPING.md  # EU AI Act compliance mapping
-│   └── OWASP_LLM_TOP_10_MAPPING.md
+│   ├── OWASP_LLM_TOP_10_MAPPING.md
+│   ├── OWASP_AGENTIC_COVERAGE.md  # OWASP Top 10 for Agentic AI
+│   └── CSA_AI_CONTROLS_MATRIX_MAPPING.md
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts

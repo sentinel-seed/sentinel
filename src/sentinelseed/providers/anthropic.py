@@ -81,6 +81,9 @@ class AnthropicProvider(BaseProvider):
             **{k: v for k, v in kwargs.items() if k not in ["temperature", "max_tokens"]}
         )
 
+        if not response.content:
+            raise ValueError("Anthropic API returned empty content array")
+
         return response.content[0].text
 
     def stream(

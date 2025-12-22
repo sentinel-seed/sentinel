@@ -28,7 +28,7 @@ Usage:
     tools = [your_tools..., sentinel_gate_tool]
 """
 
-from typing import Any, Dict, List, Optional, Union, Callable, TypedDict, Protocol
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable, TypedDict, Protocol
 import logging
 import asyncio
 
@@ -452,7 +452,7 @@ class SentinelGuardNode:
         self,
         messages: List[Any],
         context: str = "input"
-    ) -> tuple[bool, List[str]]:
+    ) -> Tuple[bool, List[str]]:
         """
         Validate a list of messages.
 
@@ -962,7 +962,7 @@ class SentinelAgentExecutor:
     def _validate_input(
         self,
         input_state: Dict[str, Any]
-    ) -> tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
         Validate input state.
 
@@ -1008,7 +1008,7 @@ class SentinelAgentExecutor:
     def _validate_output(
         self,
         result: Dict[str, Any]
-    ) -> tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
         Validate output state.
 

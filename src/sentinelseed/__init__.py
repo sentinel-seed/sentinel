@@ -6,6 +6,7 @@ A comprehensive AI safety toolkit providing:
 - Response validation (THSP gates: Truth, Harm, Scope, Purpose)
 - Memory integrity checking (defense against memory injection)
 - Fiduciary AI principles (duty of loyalty and care)
+- Database query validation (defense against data exfiltration)
 - Regulatory compliance (EU AI Act, OWASP LLM Top 10)
 - Provider integrations (OpenAI, Anthropic)
 - Framework integrations (LangChain, LangGraph, CrewAI, LlamaIndex, Virtuals, AutoGPT, Garak, OpenGuardrails, Letta)
@@ -40,6 +41,17 @@ Fiduciary AI (ensure AI acts in user's best interest):
     if not result.compliant:
         print(f"Fiduciary violation: {result.violations}")
 
+Database Guard (protect against data exfiltration):
+    from sentinelseed.database import DatabaseGuard
+
+    guard = DatabaseGuard(
+        max_rows_per_query=1000,
+        require_where_clause=True,
+    )
+    result = guard.validate("SELECT name FROM users WHERE id = 1")
+    if result.blocked:
+        print(f"Query blocked: {result.reason}")
+
 EU AI Act Compliance:
     from sentinelseed.compliance import EUAIActComplianceChecker
 
@@ -66,7 +78,7 @@ GitHub: https://github.com/sentinel-seed/sentinel
 """
 
 from sentinelseed.core import Sentinel, SeedLevel
-from sentinelseed.validators.gates import TruthGate, HarmGate, ScopeGate, THSValidator
+from sentinelseed.validators.gates import TruthGate, HarmGate, ScopeGate, PurposeGate, THSValidator
 from sentinelseed.memory import (
     MemoryIntegrityChecker,
     MemoryEntry,
@@ -88,8 +100,15 @@ from sentinelseed.compliance import (
     SystemType,
     check_eu_ai_act_compliance,
 )
+from sentinelseed.database import (
+    DatabaseGuard,
+    QueryBlocked,
+    QueryValidationResult,
+    validate_query,
+    is_safe_query,
+)
 
-__version__ = "2.12.0"
+__version__ = "2.13.0"
 
 
 def get_seed(level: str = "standard") -> str:
@@ -116,10 +135,11 @@ __all__ = [
     "Sentinel",
     "SeedLevel",
     "get_seed",
-    # Validators
+    # Validators (THSP Gates)
     "TruthGate",
     "HarmGate",
     "ScopeGate",
+    "PurposeGate",
     "THSValidator",
     # Memory Integrity
     "MemoryIntegrityChecker",
@@ -139,4 +159,10 @@ __all__ = [
     "RiskLevel",
     "SystemType",
     "check_eu_ai_act_compliance",
+    # Database Guard
+    "DatabaseGuard",
+    "QueryBlocked",
+    "QueryValidationResult",
+    "validate_query",
+    "is_safe_query",
 ]

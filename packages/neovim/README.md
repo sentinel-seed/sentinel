@@ -195,8 +195,8 @@ Verify your installation:
 Insert alignment seeds to configure AI behavior:
 
 ```vim
-:SentinelInsertSeed standard  " Full THSP protocol (~4K tokens)
-:SentinelInsertSeed minimal   " Compact version (~2K tokens)
+:SentinelInsertSeed standard  " Full THSP protocol (~1K tokens)
+:SentinelInsertSeed minimal   " Compact version (~360 tokens)
 ```
 
 ## Requirements

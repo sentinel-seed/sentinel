@@ -80,7 +80,7 @@ def create_backup(file_path: Path) -> Optional[Path]:
         return None
 
 
-def get_source_files() -> tuple[Path, Path]:
+def get_source_files() -> Tuple[Path, Path]:
     """Get paths to source probe and detector files."""
     package_dir = Path(__file__).parent
 

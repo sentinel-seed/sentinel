@@ -1,5 +1,11 @@
-# Sentinel - Requirements
-# Python 3.10+
+# Sentinel - Development/Evaluation Requirements
+# Python 3.9+ (see pyproject.toml for package dependencies)
+#
+# This file contains dependencies for development, testing, and running
+# evaluations. For using the sentinelseed package, install via:
+#   pip install sentinelseed
+#   pip install sentinelseed[openai]  # with OpenAI support
+#   pip install sentinelseed[all]     # with all integrations
 
 # API Clients
 openai>=1.0.0

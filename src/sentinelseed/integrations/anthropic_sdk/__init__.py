@@ -38,7 +38,7 @@ Usage:
     )
 """
 
-from typing import Any, Dict, List, Optional, Union, Iterator, AsyncIterator, Protocol
+from typing import Any, Dict, List, Optional, Tuple, Union, Iterator, AsyncIterator, Protocol
 import os
 import logging
 
@@ -397,13 +397,18 @@ class _SentinelMessages:
         self._validation_timeout = validation_timeout
         self._max_text_size = max_text_size
 
-    def _validate_content(self, content: str) -> tuple[bool, Optional[str], Optional[str]]:
+    def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Validate content using heuristic and/or semantic validation.
 
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
+        # Track if at least one validation passed
+        heuristic_passed = False
+        semantic_passed = False
+        semantic_error = False
+
         # First, validate text size
         try:
             _validate_text_size(content, self._max_text_size)
@@ -419,6 +424,7 @@ class _SentinelMessages:
                 issues = result.get("issues", [])
                 reasoning = issues[0] if issues else "Heuristic validation failed"
                 return False, gate, reasoning
+            heuristic_passed = True
 
         # Then, try semantic validation (slower, uses API) with timeout
         if self._semantic_validator:
@@ -432,18 +438,35 @@ class _SentinelMessages:
                     result = future.result(timeout=self._validation_timeout)
                     if not result.is_safe:
                         return False, result.violated_gate, result.reasoning
+                    semantic_passed = True
             except concurrent.futures.TimeoutError:
                 self._logger.error(
                     f"Semantic validation timed out after {self._validation_timeout}s"
                 )
+                semantic_error = True
                 if self._fail_closed:
                     return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
-                # Fail-open: continue if heuristic passed
+                # Fail-open: continue only if heuristic passed
             except Exception as e:
                 self._logger.error(f"Semantic validation error: {e}")
+                semantic_error = True
                 if self._fail_closed:
                     return False, "error", f"Validation error: {e}"
-                # Fail-open: continue if heuristic passed
+                # Fail-open: continue only if heuristic passed
+
+        # Determine final result based on what passed
+        if not self._heuristic_validator and not self._semantic_validator:
+            # No validators configured, pass through
+            return True, None, None
+
+        if semantic_passed or heuristic_passed:
+            # At least one validation passed
+            return True, None, None
+
+        # Semantic failed/timed out and heuristic was not configured
+        # This means no validation actually passed
+        if semantic_error and not heuristic_passed:
+            return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
 
         return True, None, None
 
@@ -596,7 +619,7 @@ class _SentinelAsyncMessages:
         self._validation_timeout = validation_timeout
         self._max_text_size = max_text_size
 
-    async def _validate_content(self, content: str) -> tuple[bool, Optional[str], Optional[str]]:
+    async def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Validate content using heuristic and/or semantic validation.
 
@@ -604,6 +627,11 @@ class _SentinelAsyncMessages:
             Tuple of (is_safe, violated_gate, reasoning)
         """
         import asyncio
+
+        # Track if at least one validation passed
+        heuristic_passed = False
+        semantic_passed = False
+        semantic_error = False
 
         # First, validate text size
         try:
@@ -620,6 +648,7 @@ class _SentinelAsyncMessages:
                 issues = result.get("issues", [])
                 reasoning = issues[0] if issues else "Heuristic validation failed"
                 return False, gate, reasoning
+            heuristic_passed = True
 
         # Then, try semantic validation (slower, uses API) with timeout
         if self._semantic_validator:
@@ -630,18 +659,35 @@ class _SentinelAsyncMessages:
                 )
                 if not result.is_safe:
                     return False, result.violated_gate, result.reasoning
+                semantic_passed = True
             except asyncio.TimeoutError:
                 self._logger.error(
                     f"Async semantic validation timed out after {self._validation_timeout}s"
                 )
+                semantic_error = True
                 if self._fail_closed:
                     return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
-                # Fail-open: continue if heuristic passed
+                # Fail-open: continue only if heuristic passed
             except Exception as e:
                 self._logger.error(f"Async semantic validation error: {e}")
+                semantic_error = True
                 if self._fail_closed:
                     return False, "error", f"Validation error: {e}"
-                # Fail-open: continue if heuristic passed
+                # Fail-open: continue only if heuristic passed
+
+        # Determine final result based on what passed
+        if not self._heuristic_validator and not self._semantic_validator:
+            # No validators configured, pass through
+            return True, None, None
+
+        if semantic_passed or heuristic_passed:
+            # At least one validation passed
+            return True, None, None
+
+        # Semantic failed/timed out and heuristic was not configured
+        # This means no validation actually passed
+        if semantic_error and not heuristic_passed:
+            return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
 
         return True, None, None
 

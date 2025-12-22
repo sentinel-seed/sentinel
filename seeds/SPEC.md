@@ -1,4 +1,4 @@
-# SEED_SPEC.md — Sentinel Seed Specification
+# SEED_SPEC.md: Sentinel Seed Specification
 
 > **Spec Version:** 2.0
 > **Status:** v1 Legacy | v2 Production
@@ -84,7 +84,7 @@ seeds/
 
 ### The Teleological Core
 
-The key innovation of v2 is the **Teleological Core** — the principle that actions must serve legitimate purposes.
+The key innovation of v2 is the **Teleological Core**: the principle that actions must serve legitimate purposes.
 
 ```
 ╔═══════════════════════════════════════════════════════════════╗

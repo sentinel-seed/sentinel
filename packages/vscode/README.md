@@ -43,8 +43,8 @@ The extension automatically detects potentially unsafe patterns in your prompts:
 |---------|-------------|
 | `Sentinel: Analyze Selection for Safety` | Analyze selected text using THSP protocol |
 | `Sentinel: Analyze File for Safety` | Analyze entire file |
-| `Sentinel: Insert Alignment Seed` | Insert standard seed (~1,400 tokens) |
-| `Sentinel: Insert Minimal Alignment Seed` | Insert minimal seed (~450 tokens) |
+| `Sentinel: Insert Alignment Seed` | Insert standard seed (~1,000 tokens) |
+| `Sentinel: Insert Minimal Alignment Seed` | Insert minimal seed (~360 tokens) |
 | `Sentinel: Set OpenAI API Key (Secure)` | Store API key securely |
 | `Sentinel: Set Anthropic API Key (Secure)` | Store API key securely |
 | `Sentinel: Show Status` | Show current analysis mode and provider |

@@ -72,7 +72,13 @@ class OpenAIProvider(BaseProvider):
             **{k: v for k, v in kwargs.items() if k not in ["temperature", "max_tokens"]}
         )
 
-        return response.choices[0].message.content
+        if not response.choices:
+            raise ValueError("OpenAI API returned empty choices array")
+
+        content = response.choices[0].message.content
+        if content is None:
+            return ""
+        return content
 
     def stream(
         self,
@@ -113,5 +119,5 @@ class OpenAIProvider(BaseProvider):
         )
 
         for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content

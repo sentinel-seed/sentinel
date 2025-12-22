@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional, TYPE_CHECKING, Union
 
 
@@ -190,7 +190,7 @@ def _log_violation(
     # Record to violations log
     violations_log = get_violations_log(config.max_violations_log)
     record = ViolationRecord(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         gate_violated=getattr(validation, "violated_gate", None),
         risk_level=risk,
         reasoning_summary=reasoning_summary,
