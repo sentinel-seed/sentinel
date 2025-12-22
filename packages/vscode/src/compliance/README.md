@@ -2,7 +2,7 @@
 
 > **100% Privacy-First Compliance Checking for AI Systems**
 
-The Compliance Checker validates AI content against major regulatory and security frameworks. All checks run **locally** by default — no data ever leaves your machine.
+The Compliance Checker validates AI content against major regulatory and security frameworks. All checks run **locally** by default; no data ever leaves your machine.
 
 ## Supported Frameworks
 
@@ -69,24 +69,24 @@ if (euResult.riskLevel === 'unacceptable') {
 
 Detects content related to:
 
-### Article 5 — Prohibited Practices (Unacceptable Risk)
+### Article 5: Prohibited Practices (Unacceptable Risk)
 - Social scoring systems
 - Real-time biometric identification in public spaces
 - Emotion recognition in workplace/education
 - Subliminal manipulation techniques
 - Exploitation of vulnerabilities
 
-### Annex III — High-Risk Systems
+### Annex III: High-Risk Systems
 - Biometrics and critical infrastructure
 - Education and employment decisions
 - Law enforcement and border control
 - Healthcare and credit scoring
 
-### Article 14 — Human Oversight
+### Article 14: Human Oversight
 - Systems requiring human-in-the-loop
 - Override and intervention capabilities
 
-### Article 52 — Transparency
+### Article 52: Transparency
 - AI system disclosure requirements
 - Chatbot and deepfake identification
 
@@ -116,7 +116,7 @@ Detects vulnerabilities in LLM systems:
 | **LLM07** | System Prompt Leakage | Extraction attempts, prompt exposure |
 | **LLM09** | Misinformation | Unverified claims, hallucination indicators |
 
-**Example — Input Validation (pre-inference):**
+**Example: Input Validation (pre-inference)**
 ```typescript
 // Check user input before sending to LLM
 const inputResult = checker.checkOWASPInput(userMessage);
@@ -127,7 +127,7 @@ if (!inputResult.secure) {
 }
 ```
 
-**Example — Output Validation (post-inference):**
+**Example: Output Validation (post-inference)**
 ```typescript
 // Check LLM output before displaying to user
 const outputResult = checker.checkOWASPOutput(llmResponse);
@@ -138,7 +138,7 @@ if (outputResult.findings.some(f => f.vulnerability === 'LLM02' && f.detected)) 
 }
 ```
 
-**Example — Pipeline Validation:**
+**Example: Pipeline Validation**
 ```typescript
 // Full pipeline check (recommended)
 const pipelineResult = checker.checkOWASPPipeline(userInput, llmOutput);
@@ -322,4 +322,4 @@ compliance/
 
 ---
 
-**Sentinel Team** — Practical AI Alignment for Developers
+**Sentinel Team**: Practical AI Alignment for Developers
