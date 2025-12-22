@@ -48,6 +48,10 @@ The extension automatically detects potentially unsafe patterns in your prompts:
 | `Sentinel: Set OpenAI API Key (Secure)` | Store API key securely |
 | `Sentinel: Set Anthropic API Key (Secure)` | Store API key securely |
 | `Sentinel: Show Status` | Show current analysis mode and provider |
+| `Sentinel: Check Compliance (All Frameworks)` | Run EU AI Act, OWASP, and CSA checks |
+| `Sentinel: Check EU AI Act Compliance` | EU AI Act (2024/1689) assessment |
+| `Sentinel: Check OWASP LLM Top 10` | OWASP LLM vulnerability scan |
+| `Sentinel: Check CSA AI Controls Matrix` | CSA AICM domain assessment |
 
 ## The THSP Protocol
 
@@ -141,6 +145,40 @@ Uses pattern matching for basic detection:
 - ⚠️ May miss paraphrased threats (false negatives)
 - ⚠️ No contextual understanding
 - ⚠️ ~50% confidence
+
+## Compliance Checking
+
+The extension includes regulatory compliance checking against three major frameworks:
+
+### Supported Frameworks
+
+| Framework | Coverage | Description |
+|-----------|----------|-------------|
+| **EU AI Act** | Article 5 prohibited practices, Annex III high-risk contexts | Risk classification (unacceptable/high/limited/minimal) |
+| **OWASP LLM Top 10** | 6/10 vulnerabilities with strong THSP coverage | Input and output validation against LLM security risks |
+| **CSA AI Controls Matrix** | 10/18 domains with THSP support | Security domains and threat category assessment |
+
+### OWASP LLM Top 10 Coverage
+
+| Vulnerability | THSP Gates | Coverage |
+|---------------|------------|----------|
+| LLM01: Prompt Injection | Scope | Strong |
+| LLM02: Sensitive Info Disclosure | Truth, Harm | Strong |
+| LLM05: Improper Output Handling | Truth, Harm | Strong |
+| LLM06: Excessive Agency | Scope, Purpose | Strong |
+| LLM07: System Prompt Leakage | Scope | Moderate |
+| LLM09: Misinformation | Truth | Strong* |
+
+> **\*Note on LLM09 (Misinformation):** Heuristic detection of misinformation is inherently limited. Pattern matching can identify obvious indicators (overconfident claims, dangerous medical advice, uncited sources), but accurate misinformation detection requires semantic analysis with an LLM. For best results with LLM09, configure an API key for semantic mode.
+
+### Infrastructure-Level Vulnerabilities
+
+The following vulnerabilities require infrastructure-level controls and are outside THSP's behavioral scope:
+
+- **LLM03: Supply Chain** - Use verified dependencies and model provenance
+- **LLM04: Data/Model Poisoning** - Requires training pipeline controls
+- **LLM08: Vector/Embedding Weaknesses** - RAG pipeline security
+- **LLM10: Unbounded Consumption** - Rate limiting and quotas
 
 ## Supported Languages
 

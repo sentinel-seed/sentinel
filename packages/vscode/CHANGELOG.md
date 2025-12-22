@@ -2,6 +2,47 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
+## [0.4.0] - 2025-12-22
+
+### Added
+
+- **Compliance Checking Module**: Comprehensive regulatory compliance analysis
+  - **EU AI Act (2024/1689)**: Full Article 5 prohibited practices detection, Annex III high-risk context identification, risk level classification (unacceptable/high/limited/minimal)
+  - **OWASP LLM Top 10 (2025)**: Input and output validation against all 10 vulnerability categories with 37+ detection patterns
+  - **CSA AI Controls Matrix (v1.0)**: Assessment across 18 security domains with threat category mapping
+
+- **New Commands**:
+  - `Sentinel: Check Compliance (All Frameworks)` - Run all compliance checks at once
+  - `Sentinel: Check EU AI Act Compliance` - EU AI Act specific analysis
+  - `Sentinel: Check OWASP LLM Top 10` - OWASP vulnerability scanning
+  - `Sentinel: Check CSA AI Controls Matrix` - CSA AICM domain assessment
+
+- **WebView Result Panel**: Rich visual presentation of compliance results
+  - Framework-specific result visualization
+  - Risk level indicators with color coding
+  - Threat assessment summaries
+  - Actionable recommendations
+
+- **Context Menu Integration**: Quick access to compliance checks via right-click
+  - All four compliance commands available in editor context menu
+  - Organized in dedicated "sentinel" menu group
+
+- **Unified Compliance Checker**: Single API for multi-framework analysis
+  - Combined recommendations (deduplicated)
+  - Summary view across all frameworks
+  - Individual framework drill-down
+
+### Technical Details
+
+- **Privacy-First Design**: All heuristic checks run 100% locally
+- **THSP Gate Mapping**: Each vulnerability/domain mapped to relevant THSP gates
+- **Coverage Levels**: Strong/Moderate/Indirect/Not Applicable for transparency
+- **Pattern Detection**:
+  - 23 prompt injection patterns (LLM01)
+  - 15 sensitive information patterns (LLM02)
+  - Advanced techniques: token smuggling, grandma exploit, continuation attack
+- **Comprehensive Type System**: Full TypeScript definitions for all compliance types
+
 ## [0.3.3] - 2025-12-20
 
 ### Security

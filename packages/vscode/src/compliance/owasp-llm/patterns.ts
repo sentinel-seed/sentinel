@@ -43,7 +43,7 @@ export const PROMPT_INJECTION_PATTERNS: CompliancePattern[] = [
     },
     {
         id: 'owasp_llm01_new_instructions',
-        pattern: /\b(new\s+instructions?|from\s+now\s+on|starting\s+now|begin(ning)?\s+now)\s*[:\-]?\s*(you\s+(are|will|must|should)|ignore|forget)/gi,
+        pattern: /\b(new\s+instructions?|from\s+now\s+on|starting\s+now|begin(ning)?\s+now)\s*[:-]?\s*(you\s+(are|will|must|should)|ignore|forget)/gi,
         description: 'Attempts to set new instructions',
         severity: 'high',
         gates: ['scope'],
@@ -103,7 +103,7 @@ export const PROMPT_INJECTION_PATTERNS: CompliancePattern[] = [
     },
     {
         id: 'owasp_llm01_fake_context',
-        pattern: /\b(the\s+user\s+(wants|asked|said)|user\s+instruction|human\s+says?|end\s+of\s+system\s+prompt)\s*[:\-]/gi,
+        pattern: /\b(the\s+user\s+(wants|asked|said)|user\s+instruction|human\s+says?|end\s+of\s+system\s+prompt)\s*[:-]/gi,
         description: 'Fake context injection',
         severity: 'high',
         gates: ['scope', 'truth'],
@@ -143,7 +143,7 @@ export const PROMPT_INJECTION_PATTERNS: CompliancePattern[] = [
     },
     {
         id: 'owasp_llm01_base64_obfuscation',
-        pattern: /\b(base64|decode|decrypt|deobfuscate)\s*[:\(]/gi,
+        pattern: /\b(base64|decode|decrypt|deobfuscate)\s*[:(]/gi,
         description: 'Obfuscation technique for hidden instructions',
         severity: 'medium',
         gates: ['scope'],
@@ -236,7 +236,7 @@ export const SENSITIVE_INFO_PATTERNS: CompliancePattern[] = [
     // -------------------------------------------------------------------------
     {
         id: 'owasp_llm02_api_key',
-        pattern: /\b(api[_\-\s]?key|secret[_\-\s]?key|access[_\-\s]?token|auth[_\-\s]?token|bearer\s+token)\s*[=:]\s*['"]?[a-zA-Z0-9_\-]{20,}/gi,
+        pattern: /\b(api[_\s-]?key|secret[_\s-]?key|access[_\s-]?token|auth[_\s-]?token|bearer\s+token)\s*[=:]\s*['"]?[a-zA-Z0-9_-]{20,}/gi,
         description: 'Potential API key or secret exposure',
         severity: 'critical',
         gates: ['harm', 'truth'],
@@ -256,7 +256,7 @@ export const SENSITIVE_INFO_PATTERNS: CompliancePattern[] = [
     // -------------------------------------------------------------------------
     {
         id: 'owasp_llm02_ssn',
-        pattern: /\b\d{3}[\s\-]?\d{2}[\s\-]?\d{4}\b/g,
+        pattern: /\b\d{3}[\s-]?\d{2}[\s-]?\d{4}\b/g,
         description: 'Potential SSN pattern',
         severity: 'high',
         gates: ['harm', 'truth'],
@@ -562,6 +562,65 @@ export const MISINFORMATION_PATTERNS: CompliancePattern[] = [
 ];
 
 // ============================================================================
+// INFORMATIONAL PATTERNS
+// ============================================================================
+
+/**
+ * Informational patterns that indicate good practices or observations.
+ * These are not vulnerabilities but may be useful for awareness.
+ * Severity 'info' - does not affect security status.
+ */
+export const INFORMATIONAL_PATTERNS: CompliancePattern[] = [
+    // -------------------------------------------------------------------------
+    // Good Practices Detected
+    // -------------------------------------------------------------------------
+    {
+        id: 'owasp_info_uncertainty_expressed',
+        pattern: /\b(i'?m\s+not\s+(sure|certain)|i\s+don'?t\s+know|may\s+not\s+be\s+accurate|please\s+verify|consult\s+a\s+professional)\b/gi,
+        description: 'Epistemic humility expressed (good practice)',
+        severity: 'info',
+        gates: ['truth'],
+        category: 'LLM09',
+    },
+    {
+        id: 'owasp_info_source_cited',
+        pattern: /\b(source:|reference:|according\s+to\s+.{0,50}(https?:\/\/|doi:|pmid:)|cited\s+from)\b/gi,
+        description: 'Source citation present (good practice)',
+        severity: 'info',
+        gates: ['truth'],
+        category: 'LLM09',
+    },
+    {
+        id: 'owasp_info_disclaimer',
+        pattern: /\b(disclaimer|this\s+is\s+not\s+(medical|legal|financial)\s+advice|for\s+(informational|educational)\s+purposes\s+only)\b/gi,
+        description: 'Appropriate disclaimer present',
+        severity: 'info',
+        gates: ['harm'],
+        category: 'LLM09',
+    },
+
+    // -------------------------------------------------------------------------
+    // Security Awareness
+    // -------------------------------------------------------------------------
+    {
+        id: 'owasp_info_input_validation_mention',
+        pattern: /\b(validate\s+(user\s+)?input|sanitize\s+input|input\s+validation|never\s+trust\s+user\s+input)\b/gi,
+        description: 'Input validation awareness mentioned',
+        severity: 'info',
+        gates: ['scope'],
+        category: 'LLM05',
+    },
+    {
+        id: 'owasp_info_rate_limiting',
+        pattern: /\b(rate\s+limit(ing)?|throttl(e|ing)|request\s+quota|api\s+quota)\b/gi,
+        description: 'Rate limiting discussed (mitigates LLM10)',
+        severity: 'info',
+        gates: [],
+        category: 'LLM10',
+    },
+];
+
+// ============================================================================
 // VULNERABILITY TO THSP GATE MAPPING
 // ============================================================================
 
@@ -660,9 +719,10 @@ export const OUTPUT_VALIDATION_PATTERNS: CompliancePattern[] = [
 ];
 
 /**
- * All OWASP LLM patterns combined.
+ * All vulnerability detection patterns (excludes informational).
+ * Use this for security-focused checks where 'info' findings are not needed.
  */
-export const ALL_OWASP_LLM_PATTERNS: CompliancePattern[] = [
+export const VULNERABILITY_PATTERNS: CompliancePattern[] = [
     ...PROMPT_INJECTION_PATTERNS,
     ...SENSITIVE_INFO_PATTERNS,
     ...IMPROPER_OUTPUT_PATTERNS,
@@ -672,8 +732,23 @@ export const ALL_OWASP_LLM_PATTERNS: CompliancePattern[] = [
 ];
 
 /**
- * Gets patterns for a specific vulnerability.
+ * All OWASP LLM patterns combined (including informational).
+ * Use this for comprehensive analysis including good practice detection.
  */
-export function getPatternsForVulnerability(vuln: OWASPVulnerability): CompliancePattern[] {
-    return ALL_OWASP_LLM_PATTERNS.filter(p => p.category === vuln);
+export const ALL_OWASP_LLM_PATTERNS: CompliancePattern[] = [
+    ...VULNERABILITY_PATTERNS,
+    ...INFORMATIONAL_PATTERNS,
+];
+
+/**
+ * Gets patterns for a specific vulnerability.
+ * @param vuln - Vulnerability category
+ * @param includeInfo - Whether to include informational patterns (default: false)
+ */
+export function getPatternsForVulnerability(
+    vuln: OWASPVulnerability,
+    includeInfo: boolean = false
+): CompliancePattern[] {
+    const patterns = includeInfo ? ALL_OWASP_LLM_PATTERNS : VULNERABILITY_PATTERNS;
+    return patterns.filter(p => p.category === vuln);
 }

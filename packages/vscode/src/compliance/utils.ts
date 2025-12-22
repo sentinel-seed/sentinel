@@ -93,6 +93,9 @@ export function getLineColumn(content: string, position: number): { line: number
  * Runs a set of patterns against content and returns all matches.
  * Properly handles regex flags and tracks positions.
  *
+ * Note: All patterns use 'gi' flags (global + case-insensitive).
+ * Matching is done directly on original content to preserve case in results.
+ *
  * @param content - Content to analyze
  * @param patterns - Array of patterns to check
  * @returns Array of pattern matches with positions
@@ -102,26 +105,23 @@ export function runPatterns(
     patterns: CompliancePattern[]
 ): PatternMatch[] {
     const matches: PatternMatch[] = [];
-    const contentLower = content.toLowerCase();
 
     for (const pattern of patterns) {
         // Reset regex state for global patterns
         pattern.pattern.lastIndex = 0;
 
-        // Use global matching to find all occurrences
+        // Create regex with global + case-insensitive flags
+        // Case-insensitive flag handles matching regardless of case
         const regex = new RegExp(pattern.pattern.source, 'gi');
         let match: RegExpExecArray | null;
 
-        while ((match = regex.exec(contentLower)) !== null) {
+        while ((match = regex.exec(content)) !== null) {
             const position = match.index;
             const { line, column } = getLineColumn(content, position);
 
-            // Extract matched text from original content (preserve case)
-            const matchedText = content.substring(position, position + match[0].length);
-
             matches.push({
                 patternId: pattern.id,
-                matchedText: truncateText(matchedText, 100),
+                matchedText: truncateText(match[0], 100),
                 position,
                 line,
                 column,
@@ -353,8 +353,12 @@ export function deduplicateRecommendations(recommendations: string[]): string[] 
 
         if (aIndex !== bIndex) {
             // Items with severity prefix come first
-            if (aIndex === -1) return 1;
-            if (bIndex === -1) return -1;
+            if (aIndex === -1) {
+                return 1;
+            }
+            if (bIndex === -1) {
+                return -1;
+            }
             return aIndex - bIndex;
         }
 

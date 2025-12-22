@@ -397,9 +397,13 @@ export class ComplianceResultPanel {
                 <ul>
                     ${recommendations.map(r => {
                         let className = '';
-                        if (r.startsWith('CRITICAL:')) className = 'critical';
-                        else if (r.startsWith('HIGH:')) className = 'high';
-                        else if (r.startsWith('MEDIUM:')) className = 'medium';
+                        if (r.startsWith('CRITICAL:')) {
+                            className = 'critical';
+                        } else if (r.startsWith('HIGH:')) {
+                            className = 'high';
+                        } else if (r.startsWith('MEDIUM:')) {
+                            className = 'medium';
+                        }
                         return `<li class="${className}">${r}</li>`;
                     }).join('')}
                 </ul>
