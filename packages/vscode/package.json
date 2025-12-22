@@ -2,7 +2,7 @@
   "name": "sentinel-ai-safety",
   "displayName": "Sentinel AI Safety",
   "description": "AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose)",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "sentinelseed",
   "icon": "sentinel-logo-128.png",
   "repository": {
@@ -49,59 +49,63 @@
     "commands": [
       {
         "command": "sentinel.analyzeSelection",
-        "title": "Sentinel: Analyze Selection for Safety"
+        "title": "Sentinel: Analyze"
       },
       {
         "command": "sentinel.analyzeFile",
-        "title": "Sentinel: Analyze File for Safety"
+        "title": "Sentinel: Analyze File"
       },
       {
         "command": "sentinel.insertSeed",
-        "title": "Sentinel: Insert Alignment Seed"
+        "title": "Sentinel: Insert Seed"
       },
       {
         "command": "sentinel.insertSeedMinimal",
-        "title": "Sentinel: Insert Minimal Alignment Seed"
+        "title": "Sentinel: Insert Seed (Minimal)"
       },
       {
         "command": "sentinel.showStatus",
-        "title": "Sentinel: Show Status"
+        "title": "Sentinel: Status"
       },
       {
         "command": "sentinel.setOpenAIKey",
-        "title": "Sentinel: Set OpenAI API Key (Secure)"
+        "title": "Sentinel: Set OpenAI Key"
       },
       {
         "command": "sentinel.setAnthropicKey",
-        "title": "Sentinel: Set Anthropic API Key (Secure)"
+        "title": "Sentinel: Set Anthropic Key"
+      },
+      {
+        "command": "sentinel.setCompatibleKey",
+        "title": "Sentinel: Set Custom API Key"
       },
       {
         "command": "sentinel.checkComplianceAll",
-        "title": "Sentinel: Check Compliance (All Frameworks)"
+        "title": "Sentinel: Compliance"
       },
       {
         "command": "sentinel.checkComplianceEUAIAct",
-        "title": "Sentinel: Check EU AI Act Compliance"
+        "title": "Sentinel: EU AI Act"
       },
       {
         "command": "sentinel.checkComplianceOWASP",
-        "title": "Sentinel: Check OWASP LLM Top 10"
+        "title": "Sentinel: OWASP"
       },
       {
         "command": "sentinel.checkComplianceCSA",
-        "title": "Sentinel: Check CSA AI Controls Matrix"
+        "title": "Sentinel: CSA"
       },
       {
         "command": "sentinel.scanSecrets",
-        "title": "Sentinel: Scan for Secrets"
+        "title": "Sentinel: Scan Secrets"
       },
       {
         "command": "sentinel.sanitizePrompt",
-        "title": "Sentinel: Sanitize Prompt"
+        "title": "Sentinel: Sanitize"
       },
       {
         "command": "sentinel.validateOutput",
-        "title": "Sentinel: Validate Output"
+        "title": "Sentinel: Validate"
       }
     ],
     "menus": {
@@ -179,7 +183,13 @@
         "sentinel.llmProvider": {
           "type": "string",
           "default": "openai",
-          "enum": ["openai", "anthropic"],
+          "enum": ["openai", "anthropic", "ollama", "openai-compatible"],
+          "enumDescriptions": [
+            "OpenAI API (requires API key)",
+            "Anthropic API (requires API key)",
+            "Ollama local server (free, no API key)",
+            "OpenAI-compatible endpoint (Groq, Together AI, etc.)"
+          ],
           "description": "LLM provider for semantic analysis"
         },
         "sentinel.openaiApiKey": {
@@ -201,6 +211,31 @@
           "type": "string",
           "default": "claude-3-haiku-20240307",
           "description": "Anthropic model for semantic analysis"
+        },
+        "sentinel.ollamaEndpoint": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server endpoint (default: http://localhost:11434)"
+        },
+        "sentinel.ollamaModel": {
+          "type": "string",
+          "default": "llama3.2",
+          "description": "Ollama model to use (e.g., llama3.2, mistral, qwen2.5)"
+        },
+        "sentinel.openaiCompatibleEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI-compatible API endpoint (e.g., https://api.groq.com, https://api.together.xyz)"
+        },
+        "sentinel.openaiCompatibleApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for OpenAI-compatible endpoint"
+        },
+        "sentinel.openaiCompatibleModel": {
+          "type": "string",
+          "default": "llama-3.3-70b-versatile",
+          "description": "Model for OpenAI-compatible endpoint (e.g., llama-3.3-70b-versatile for Groq)"
         }
       }
     }

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 const OPENAI_KEY = 'sentinel.openaiApiKey';
 const ANTHROPIC_KEY = 'sentinel.anthropicApiKey';
+const COMPATIBLE_KEY = 'sentinel.openaiCompatibleApiKey';
 
 // Common API key prefixes (for validation hints, not strict enforcement)
 const OPENAI_PREFIXES = ['sk-', 'sk-proj-'];
@@ -54,22 +55,53 @@ export class SecretManager {
     }
 
     /**
+     * Get OpenAI-compatible API key from secure storage
+     */
+    async getCompatibleKey(): Promise<string | undefined> {
+        return await this.secretStorage.get(COMPATIBLE_KEY);
+    }
+
+    /**
+     * Store OpenAI-compatible API key in secure storage
+     * Validates that key is not empty
+     */
+    async setCompatibleKey(key: string): Promise<void> {
+        if (!key || key.trim() === '') {
+            throw new Error('API key cannot be empty');
+        }
+        await this.secretStorage.store(COMPATIBLE_KEY, key.trim());
+    }
+
+    /**
      * Delete a stored key
      */
-    async deleteKey(provider: 'openai' | 'anthropic'): Promise<void> {
-        const key = provider === 'openai' ? OPENAI_KEY : ANTHROPIC_KEY;
+    async deleteKey(provider: 'openai' | 'anthropic' | 'openai-compatible'): Promise<void> {
+        let key: string;
+        switch (provider) {
+            case 'openai':
+                key = OPENAI_KEY;
+                break;
+            case 'anthropic':
+                key = ANTHROPIC_KEY;
+                break;
+            case 'openai-compatible':
+                key = COMPATIBLE_KEY;
+                break;
+        }
         await this.secretStorage.delete(key);
     }
 
     /**
      * Check if keys are stored in secure storage
      */
-    async hasStoredKeys(): Promise<{ openai: boolean; anthropic: boolean }> {
+    async hasStoredKeys(): Promise<{ openai: boolean; anthropic: boolean; compatible: boolean }> {
         const openai = await this.getOpenAIKey();
         const anthropic = await this.getAnthropicKey();
+        const compatible = await this.getCompatibleKey();
         return {
             openai: !!openai && openai.trim() !== '',
-            anthropic: !!anthropic && anthropic.trim() !== ''
+            anthropic: !!anthropic && anthropic.trim() !== '',
+            compatible: !!compatible && compatible.trim() !== ''
         };
     }
 
@@ -138,31 +170,50 @@ export class SecretManager {
  */
 export async function promptForApiKey(
     secretManager: SecretManager,
-    provider: 'openai' | 'anthropic'
+    provider: 'openai' | 'anthropic' | 'openai-compatible'
 ): Promise<boolean> {
-    const providerName = provider === 'openai' ? 'OpenAI' : 'Anthropic';
-    const expectedPrefixes = provider === 'openai' ? OPENAI_PREFIXES : ANTHROPIC_PREFIXES;
-    const placeholderPrefix = expectedPrefixes[0];
+    let providerName: string;
+    let expectedPrefixes: string[];
+    let placeholderPrefix: string;
+
+    switch (provider) {
+        case 'openai':
+            providerName = 'OpenAI';
+            expectedPrefixes = OPENAI_PREFIXES;
+            placeholderPrefix = 'sk-...';
+            break;
+        case 'anthropic':
+            providerName = 'Anthropic';
+            expectedPrefixes = ANTHROPIC_PREFIXES;
+            placeholderPrefix = 'sk-ant-...';
+            break;
+        case 'openai-compatible':
+            providerName = 'Custom API';
+            expectedPrefixes = []; // No specific prefix for custom endpoints
+            placeholderPrefix = 'your-api-key';
+            break;
+    }
 
     const key = await vscode.window.showInputBox({
         prompt: `Enter your ${providerName} API key`,
         password: true,
-        placeHolder: `${placeholderPrefix}...`,
+        placeHolder: placeholderPrefix,
         validateInput: (value) => {
             if (!value || value.trim() === '') {
                 return 'API key is required';
             }
 
             // Minimum length check
-            if (value.length < 20) {
+            if (value.length < 10) {
                 return 'API key seems too short. Please check and try again.';
             }
 
-            // Warn about unexpected prefix but don't block
-            const hasExpectedPrefix = expectedPrefixes.some(prefix => value.startsWith(prefix));
-            if (!hasExpectedPrefix) {
-                // Return warning as hint, not error (null allows submission)
-                return undefined; // Allow non-standard keys
+            // For standard providers, warn about unexpected prefix but don't block
+            if (expectedPrefixes.length > 0) {
+                const hasExpectedPrefix = expectedPrefixes.some(prefix => value.startsWith(prefix));
+                if (!hasExpectedPrefix) {
+                    return undefined; // Allow non-standard keys
+                }
             }
 
             return undefined;
@@ -171,10 +222,16 @@ export async function promptForApiKey(
 
     if (key && key.trim() !== '') {
         try {
-            if (provider === 'openai') {
-                await secretManager.setOpenAIKey(key);
-            } else {
-                await secretManager.setAnthropicKey(key);
+            switch (provider) {
+                case 'openai':
+                    await secretManager.setOpenAIKey(key);
+                    break;
+                case 'anthropic':
+                    await secretManager.setAnthropicKey(key);
+                    break;
+                case 'openai-compatible':
+                    await secretManager.setCompatibleKey(key);
+                    break;
             }
             vscode.window.showInformationMessage(`${providerName} API key saved securely.`);
             return true;

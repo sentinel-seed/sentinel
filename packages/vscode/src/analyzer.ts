@@ -37,6 +37,7 @@ export interface AnalyzerStatus {
 export interface AnalyzerConfig {
     openaiKey?: string;
     anthropicKey?: string;
+    openaiCompatibleKey?: string;
 }
 
 // Type for API response validation
@@ -87,11 +88,16 @@ export class SentinelAnalyzer {
         const provider = config.get<string>('llmProvider') || 'openai';
         const openaiKey = this.externalKeys.openaiKey || config.get<string>('openaiApiKey') || '';
         const anthropicKey = this.externalKeys.anthropicKey || config.get<string>('anthropicApiKey') || '';
+        const openaiCompatibleKey = this.externalKeys.openaiCompatibleKey || config.get<string>('openaiCompatibleApiKey') || '';
         const openaiModel = config.get<string>('openaiModel') || '';
         const anthropicModel = config.get<string>('anthropicModel') || '';
+        const ollamaEndpoint = config.get<string>('ollamaEndpoint') || '';
+        const ollamaModel = config.get<string>('ollamaModel') || '';
+        const openaiCompatibleEndpoint = config.get<string>('openaiCompatibleEndpoint') || '';
+        const openaiCompatibleModel = config.get<string>('openaiCompatibleModel') || '';
 
         // Simple hash - just concatenate relevant values
-        return `${provider}:${openaiKey.substring(0, 8)}:${anthropicKey.substring(0, 8)}:${openaiModel}:${anthropicModel}`;
+        return `${provider}:${openaiKey.substring(0, 8)}:${anthropicKey.substring(0, 8)}:${openaiCompatibleKey.substring(0, 8)}:${openaiModel}:${anthropicModel}:${ollamaEndpoint}:${ollamaModel}:${openaiCompatibleEndpoint}:${openaiCompatibleModel}`;
     }
 
     /**
@@ -105,6 +111,7 @@ export class SentinelAnalyzer {
         // Check external keys first (from SecretStorage), then settings
         const openaiKey = this.externalKeys.openaiKey || config.get<string>('openaiApiKey');
         const anthropicKey = this.externalKeys.anthropicKey || config.get<string>('anthropicApiKey');
+        const openaiCompatibleKey = this.externalKeys.openaiCompatibleKey || config.get<string>('openaiCompatibleApiKey');
 
         // Reset state
         this.semanticValidator = null;
@@ -120,7 +127,7 @@ export class SentinelAnalyzer {
                     model: model,
                     timeoutMs: API_TIMEOUT_MS
                 });
-                this.currentProvider = 'openai';
+                this.currentProvider = 'OpenAI';
                 this.currentModel = model;
             } else if (provider === 'anthropic' && anthropicKey) {
                 const model = config.get<string>('anthropicModel') || 'claude-3-haiku-20240307';
@@ -130,8 +137,33 @@ export class SentinelAnalyzer {
                     model: model,
                     timeoutMs: API_TIMEOUT_MS
                 });
-                this.currentProvider = 'anthropic';
+                this.currentProvider = 'Anthropic';
                 this.currentModel = model;
+            } else if (provider === 'ollama') {
+                const model = config.get<string>('ollamaModel') || 'llama3.2';
+                const endpoint = config.get<string>('ollamaEndpoint') || 'http://localhost:11434';
+                this.semanticValidator = new SemanticValidator({
+                    provider: 'ollama',
+                    model: model,
+                    endpoint: endpoint,
+                    timeoutMs: API_TIMEOUT_MS
+                });
+                this.currentProvider = 'Ollama';
+                this.currentModel = model;
+            } else if (provider === 'openai-compatible' && openaiCompatibleKey) {
+                const model = config.get<string>('openaiCompatibleModel') || 'llama-3.3-70b-versatile';
+                const endpoint = config.get<string>('openaiCompatibleEndpoint');
+                if (endpoint) {
+                    this.semanticValidator = new SemanticValidator({
+                        apiKey: openaiCompatibleKey,
+                        provider: 'openai-compatible',
+                        model: model,
+                        endpoint: endpoint,
+                        timeoutMs: API_TIMEOUT_MS
+                    });
+                    this.currentProvider = 'Custom';
+                    this.currentModel = model;
+                }
             }
         } catch (error) {
             console.warn('Failed to initialize semantic validator:', error);

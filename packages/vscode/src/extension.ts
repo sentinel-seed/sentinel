@@ -87,6 +87,17 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    const setCompatibleKeyCmd = vscode.commands.registerCommand(
+        'sentinel.setCompatibleKey',
+        async () => {
+            const success = await promptForApiKey(secretManager, 'openai-compatible');
+            if (success) {
+                await loadSecretKeys();
+                updateStatusBar();
+            }
+        }
+    );
+
     // Compliance check commands
     const checkComplianceAllCmd = vscode.commands.registerCommand(
         'sentinel.checkComplianceAll',
@@ -166,6 +177,7 @@ export async function activate(context: vscode.ExtensionContext) {
         showStatusCmd,
         setOpenAIKeyCmd,
         setAnthropicKeyCmd,
+        setCompatibleKeyCmd,
         checkComplianceAllCmd,
         checkComplianceEUAIActCmd,
         checkComplianceOWASPCmd,
@@ -208,7 +220,7 @@ function showStatus(): void {
     if (status.semanticAvailable) {
         message = `Sentinel is using semantic analysis.\n\nProvider: ${status.provider}\nModel: ${status.model}\nAccuracy: ~90%`;
     } else {
-        message = `Sentinel is using heuristic analysis (pattern matching).\n\nAccuracy: ~50%\n\nTo enable semantic analysis:\n• Run "Sentinel: Set OpenAI API Key" or\n• Run "Sentinel: Set Anthropic API Key"`;
+        message = `Sentinel is using heuristic analysis (pattern matching).\n\nAccuracy: ~50%\n\nTo enable semantic analysis:\n• Run "Sentinel: Set OpenAI Key" or\n• Run "Sentinel: Set Anthropic Key"`;
     }
 
     vscode.window.showInformationMessage(message, { modal: true });
@@ -218,10 +230,12 @@ async function loadSecretKeys(): Promise<void> {
     try {
         const openaiKey = await secretManager.getOpenAIKey();
         const anthropicKey = await secretManager.getAnthropicKey();
+        const openaiCompatibleKey = await secretManager.getCompatibleKey();
 
         analyzer.setExternalKeys({
             openaiKey,
-            anthropicKey
+            anthropicKey,
+            openaiCompatibleKey
         });
     } catch (error) {
         console.warn('Failed to load API keys from secure storage:', error);

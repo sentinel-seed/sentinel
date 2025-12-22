@@ -41,17 +41,21 @@ The extension automatically detects potentially unsafe patterns in your prompts:
 
 | Command | Description |
 |---------|-------------|
-| `Sentinel: Analyze Selection for Safety` | Analyze selected text using THSP protocol |
-| `Sentinel: Analyze File for Safety` | Analyze entire file |
-| `Sentinel: Insert Alignment Seed` | Insert standard seed (~1,000 tokens) |
-| `Sentinel: Insert Minimal Alignment Seed` | Insert minimal seed (~360 tokens) |
-| `Sentinel: Set OpenAI API Key (Secure)` | Store API key securely |
-| `Sentinel: Set Anthropic API Key (Secure)` | Store API key securely |
-| `Sentinel: Show Status` | Show current analysis mode and provider |
-| `Sentinel: Check Compliance (All Frameworks)` | Run EU AI Act, OWASP, and CSA checks |
-| `Sentinel: Check EU AI Act Compliance` | EU AI Act (2024/1689) assessment |
-| `Sentinel: Check OWASP LLM Top 10` | OWASP LLM vulnerability scan |
-| `Sentinel: Check CSA AI Controls Matrix` | CSA AICM domain assessment |
+| `Sentinel: Analyze` | Analyze selected text using THSP protocol |
+| `Sentinel: Analyze File` | Analyze entire file |
+| `Sentinel: Insert Seed` | Insert standard seed (~1,000 tokens) |
+| `Sentinel: Insert Seed (Minimal)` | Insert minimal seed (~360 tokens) |
+| `Sentinel: Set OpenAI Key` | Store OpenAI API key securely |
+| `Sentinel: Set Anthropic Key` | Store Anthropic API key securely |
+| `Sentinel: Set Custom API Key` | Store key for OpenAI-compatible endpoints |
+| `Sentinel: Status` | Show current analysis mode and provider |
+| `Sentinel: Compliance` | Run all compliance checks (EU AI Act, OWASP, CSA) |
+| `Sentinel: EU AI Act` | EU AI Act (2024/1689) assessment |
+| `Sentinel: OWASP` | OWASP LLM Top 10 vulnerability scan |
+| `Sentinel: CSA` | CSA AI Controls Matrix assessment |
+| `Sentinel: Scan Secrets` | Scan for API keys and credentials |
+| `Sentinel: Sanitize` | Check for prompt injection patterns |
+| `Sentinel: Validate` | Validate LLM output for security issues |
 
 ## The THSP Protocol
 
@@ -73,21 +77,47 @@ All four gates must pass for content to be considered safe.
 For accurate analysis, configure an LLM API key using the secure method:
 
 1. Open Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
-2. Run `Sentinel: Set OpenAI API Key (Secure)` or `Sentinel: Set Anthropic API Key (Secure)`
+2. Run `Sentinel: Set OpenAI Key` or `Sentinel: Set Anthropic Key`
 3. Enter your API key (stored encrypted in VS Code's SecretStorage)
 
 Alternatively, you can set keys in VS Code Settings (less secure - stored in plaintext).
 
 ### Supported Providers
 
-Currently supported:
-- **OpenAI** (GPT-4o, GPT-4o-mini, etc.)
-- **Anthropic** (Claude 3 Haiku, Sonnet, Opus)
+| Provider | API Key Required | Description |
+|----------|------------------|-------------|
+| **OpenAI** | Yes | GPT-4o, GPT-4o-mini, etc. |
+| **Anthropic** | Yes | Claude 3 Haiku, Sonnet, Opus |
+| **Ollama** | No | Local models (llama3.2, mistral, qwen2.5) |
+| **OpenAI-compatible** | Yes | Groq, Together AI, or any OpenAI-compatible API |
 
-**Planned for future versions:**
-- Azure OpenAI (enterprise)
-- Ollama (local/free)
-- OpenAI-compatible endpoints (Groq, Together AI, etc.)
+#### Ollama (Local, Free)
+
+Run models locally with no API key:
+
+1. [Install Ollama](https://ollama.ai)
+2. Pull a model: `ollama pull llama3.2`
+3. Start the server: `ollama serve`
+4. In VS Code Settings (`Ctrl+,`), search for "sentinel" and set:
+   - `sentinel.llmProvider`: `ollama`
+   - `sentinel.ollamaModel`: `llama3.2` (or your preferred model)
+
+#### OpenAI-Compatible Endpoints (Groq, Together AI)
+
+Use any OpenAI-compatible API:
+
+1. Get API key from your provider (e.g., Groq, Together AI)
+2. Run `Sentinel: Set Custom API Key` command
+3. Configure in settings:
+   - `sentinel.llmProvider`: `openai-compatible`
+   - `sentinel.openaiCompatibleEndpoint`: Your API URL
+   - `sentinel.openaiCompatibleModel`: Model name
+
+**Popular endpoints:**
+| Provider | Endpoint | Example Model |
+|----------|----------|---------------|
+| Groq | `https://api.groq.com` | `llama-3.3-70b-versatile` |
+| Together AI | `https://api.together.xyz` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
 
 ### All Settings
 
@@ -96,13 +126,16 @@ Currently supported:
 | `sentinel.enableRealTimeLinting` | `true` | Enable real-time safety linting |
 | `sentinel.seedVariant` | `standard` | Default seed variant (minimal/standard) |
 | `sentinel.highlightUnsafePatterns` | `true` | Highlight unsafe patterns |
-| `sentinel.llmProvider` | `openai` | LLM provider (openai/anthropic) |
-| `sentinel.openaiApiKey` | `""` | OpenAI API key (use secure command instead) |
-| `sentinel.openaiModel` | `gpt-4o-mini` | OpenAI model to use |
-| `sentinel.anthropicApiKey` | `""` | Anthropic API key (use secure command instead) |
-| `sentinel.anthropicModel` | `claude-3-haiku-20240307` | Anthropic model to use |
-| `sentinel.useSentinelApi` | `false` | Use Sentinel API for analysis |
-| `sentinel.apiEndpoint` | `https://api.sentinelseed.dev/api/v1/guard` | Sentinel API endpoint |
+| `sentinel.llmProvider` | `openai` | LLM provider (openai/anthropic/ollama/openai-compatible) |
+| `sentinel.openaiApiKey` | `""` | OpenAI API key |
+| `sentinel.openaiModel` | `gpt-4o-mini` | OpenAI model |
+| `sentinel.anthropicApiKey` | `""` | Anthropic API key |
+| `sentinel.anthropicModel` | `claude-3-haiku-20240307` | Anthropic model |
+| `sentinel.ollamaEndpoint` | `http://localhost:11434` | Ollama server endpoint |
+| `sentinel.ollamaModel` | `llama3.2` | Ollama model |
+| `sentinel.openaiCompatibleEndpoint` | `""` | Custom API endpoint (Groq, Together AI) |
+| `sentinel.openaiCompatibleApiKey` | `""` | Custom API key |
+| `sentinel.openaiCompatibleModel` | `llama-3.3-70b-versatile` | Custom API model |
 
 ## Usage Examples
 
