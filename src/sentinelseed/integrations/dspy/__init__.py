@@ -15,6 +15,11 @@ Modules:
     - SentinelPredict: Predict with built-in THSP validation
     - SentinelChainOfThought: ChainOfThought with THSP validation
 
+Agent Modules:
+    - SentinelToolValidator: Validate tool/function calls before execution
+    - SentinelAgentGuard: Validate each step of agent execution
+    - SentinelMemoryGuard: Validate data before writing to agent memory
+
 Signatures:
     - THSPCheckSignature: Full THSP validation signature
     - SafetyFilterSignature: Content filtering signature
@@ -124,6 +129,14 @@ if DSPY_AVAILABLE:
         SentinelChainOfThought,
     )
 
+    # Agent Modules
+    from sentinelseed.integrations.dspy.agents import (
+        SentinelToolValidator,
+        SentinelAgentGuard,
+        SentinelMemoryGuard,
+        SafeMemoryWrapper,
+    )
+
     # Signatures
     from sentinelseed.integrations.dspy.signatures import (
         THSPCheckSignature,
@@ -191,6 +204,11 @@ if DSPY_AVAILABLE:
         "SentinelGuard",
         "SentinelPredict",
         "SentinelChainOfThought",
+        # Agent Modules
+        "SentinelToolValidator",
+        "SentinelAgentGuard",
+        "SentinelMemoryGuard",
+        "SafeMemoryWrapper",
         # Signatures
         "THSPCheckSignature",
         "SafetyFilterSignature",

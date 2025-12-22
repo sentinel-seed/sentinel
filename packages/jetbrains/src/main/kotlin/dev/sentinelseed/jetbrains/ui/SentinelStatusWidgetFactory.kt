@@ -59,7 +59,7 @@ class SentinelStatusWidget(private val project: Project) : StatusBarWidget, Stat
     override fun getTooltipText(): String {
         val service = SentinelService.getInstance()
         return if (service.isSemanticAvailable()) {
-            val (provider, model) = service.getProviderInfo()
+            val (_, model) = service.getProviderInfo()
             "Semantic analysis enabled ($model)"
         } else {
             "Heuristic mode (configure API key for semantic analysis)"

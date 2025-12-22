@@ -452,21 +452,119 @@ When `allow_heuristic_fallback=True`:
 - **Semantic mode**: Requires API key and incurs API costs.
 - **Fail-open default**: Validation errors allow content through by default. Use `fail_closed=True` for stricter security.
 
+## Agent Modules
+
+### SentinelToolValidator
+
+Validates tool/function calls before execution.
+
+```python
+from sentinelseed.integrations.dspy import SentinelToolValidator
+
+validator = SentinelToolValidator(
+    api_key="sk-...",
+    validate_args=True,    # Validate tool arguments
+    validate_output=False, # Optionally validate outputs
+)
+
+# Wrap any tool function
+@validator.wrap
+def search_web(query: str) -> str:
+    return web_search(query)
+
+# Tool calls are validated before execution
+result = search_web(query="how to make cookies")
+
+# Or validate without executing
+validation = validator.validate_call(
+    tool_name="search_web",
+    args=(),
+    kwargs={"query": "suspicious query"}
+)
+```
+
+### SentinelAgentGuard
+
+Validates each step of agent execution.
+
+```python
+from sentinelseed.integrations.dspy import SentinelAgentGuard
+
+agent = dspy.ReAct("task -> result", tools=[...])
+
+# Wrap agent with step-by-step validation
+safe_agent = SentinelAgentGuard(
+    agent,
+    api_key="sk-...",
+    validate_input=True,   # Validate agent input
+    validate_steps=True,   # Validate intermediate steps
+    validate_output=True,  # Validate final output
+    step_callback=lambda n, content, result: print(f"Step {n}: {'SAFE' if result['is_safe'] else 'UNSAFE'}")
+)
+
+result = safe_agent(task="Research topic X")
+
+# Access validation details
+print(result.safety_step_validations)  # All step validations
+print(result.safety_steps_validated)   # Number of steps validated
+```
+
+### SentinelMemoryGuard
+
+Validates data before writing to agent memory.
+
+```python
+from sentinelseed.integrations.dspy import SentinelMemoryGuard
+
+memory_guard = SentinelMemoryGuard(api_key="sk-...")
+
+# Validate before writing
+validation = memory_guard.validate_write(
+    key="user_preferences",
+    value={"theme": "dark", "notifications": True}
+)
+
+if validation["is_safe"]:
+    memory.write(key, value)
+
+# Or wrap entire memory object
+safe_memory = memory_guard.wrap_memory(memory)
+safe_memory.set("key", "value")  # Automatically validated
+
+# Check blocked writes
+print(safe_memory.blocked_writes)
+```
+
+### Context-Aware Validation
+
+All modules support context for better understanding:
+
+```python
+# Static context (set once)
+guard = SentinelGuard(
+    module,
+    api_key="sk-...",
+    context="User is a cybersecurity professional doing authorized testing"
+)
+
+# Dynamic context (per-call)
+result = guard(
+    question="How do I test for SQL injection?",
+    _context="Authorized penetration testing engagement"
+)
+```
+
 ## Roadmap
-
-The following features are planned for future versions:
-
-### Planned Features
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| **Context-aware validation** | Pass prompt history, agent context | Planned |
-| **Tool call validation** | Validate agent tool/function calls | Planned |
+| **Context-aware validation** | Pass prompt history, agent context | ✅ Implemented |
+| **Tool call validation** | Validate agent tool/function calls | ✅ Implemented |
+| **Step-by-step agent validation** | Validate each agent step | ✅ Implemented |
+| **Memory write validation** | Validate agent memory updates | ✅ Implemented |
 | **THSP as DSPy metric** | Use safety as optimization objective | Research |
 | **Adversarial validation** | Test against adversarial variations | Research |
 | **Behavioral drift detection** | Track safety changes over time | Research |
-| **Step-by-step agent validation** | Validate each agent step | Planned |
-| **Memory write validation** | Validate agent memory updates | Planned |
 
 ### Contributing
 

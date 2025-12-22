@@ -40,6 +40,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.0</h3>
+        <ul>
+            <li>Add Ollama support for local, free semantic analysis</li>
+            <li>Add OpenAI-compatible endpoints (Groq, Together AI)</li>
+            <li>Four LLM providers now available: OpenAI, Anthropic, Ollama, Custom</li>
+            <li>Updated settings UI with provider-specific configuration</li>
+        </ul>
+
         <h3>0.1.2</h3>
         <ul>
             <li>Use non-deprecated CredentialAttributes constructor with userName parameter</li>

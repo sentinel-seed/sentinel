@@ -53,21 +53,49 @@ AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope
 
 Go to **Settings → Tools → Sentinel AI Safety**
 
-### LLM Provider
+### Supported Providers
 
-Choose between OpenAI or Anthropic for semantic analysis.
+| Provider | API Key Required | Description |
+|----------|------------------|-------------|
+| **OpenAI** | Yes | GPT-4o, GPT-4o-mini |
+| **Anthropic** | Yes | Claude 3 Haiku, Sonnet, Opus |
+| **Ollama** | No | Local models (llama3.2, mistral, qwen2.5) |
+| **OpenAI-compatible** | Yes | Groq, Together AI, or any OpenAI-compatible API |
 
-| Provider | Models |
-|----------|--------|
-| OpenAI | gpt-4o-mini, gpt-4o, gpt-4-turbo |
-| Anthropic | claude-3-haiku, claude-3-sonnet, claude-3-opus |
+### Ollama (Local, Free)
+
+Run models locally with no API key:
+
+1. [Install Ollama](https://ollama.ai)
+2. Pull a model: `ollama pull llama3.2`
+3. Start the server: `ollama serve`
+4. In Settings, set:
+   - Provider: `ollama`
+   - Endpoint: `http://localhost:11434`
+   - Model: `llama3.2`
+
+### OpenAI-Compatible Endpoints
+
+Use any OpenAI-compatible API (Groq, Together AI):
+
+1. Get API key from your provider
+2. In Settings, set:
+   - Provider: `openai-compatible`
+   - Endpoint: Your API URL
+   - Model: Model name
+
+**Popular endpoints:**
+| Provider | Endpoint | Example Model |
+|----------|----------|---------------|
+| Groq | `https://api.groq.com` | `llama-3.3-70b-versatile` |
+| Together AI | `https://api.together.xyz` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
 
 ### API Keys
 
-API keys are stored securely using the IDE's built-in credential storage.
+API keys are stored securely using the IDE's built-in credential storage (PasswordSafe).
 
 Without an API key, the plugin uses heuristic analysis (~50% accuracy).
-With an API key, semantic analysis provides ~90% accuracy.
+With an API key (or Ollama), semantic analysis provides ~90% accuracy.
 
 ## Keyboard Shortcuts
 

@@ -97,6 +97,9 @@ class SentinelService {
         return when (settings.llmProvider) {
             "openai" -> settings.openaiApiKey.isNotBlank()
             "anthropic" -> settings.anthropicApiKey.isNotBlank()
+            "ollama" -> true // Ollama doesn't require API key
+            "openai-compatible" -> settings.openaiCompatibleApiKey.isNotBlank() &&
+                    settings.openaiCompatibleEndpoint.isNotBlank()
             else -> false
         }
     }
@@ -109,6 +112,8 @@ class SentinelService {
             when (settings.llmProvider) {
                 "openai" -> Pair("OpenAI", settings.openaiModel)
                 "anthropic" -> Pair("Anthropic", settings.anthropicModel)
+                "ollama" -> Pair("Ollama", settings.ollamaModel)
+                "openai-compatible" -> Pair("Custom", settings.openaiCompatibleModel)
                 else -> Pair(null, null)
             }
         } else {
@@ -142,7 +147,7 @@ class SentinelService {
     }
 
     /**
-     * Analyze using LLM (OpenAI or Anthropic)
+     * Analyze using LLM (OpenAI, Anthropic, Ollama, or OpenAI-compatible)
      */
     private suspend fun analyzeWithLLM(content: String): AnalysisResult = withContext(Dispatchers.IO) {
         val sanitizedContent = """
@@ -156,6 +161,8 @@ class SentinelService {
         val response = when (settings.llmProvider) {
             "openai" -> callOpenAI(sanitizedContent)
             "anthropic" -> callAnthropic(sanitizedContent)
+            "ollama" -> callOllama(sanitizedContent)
+            "openai-compatible" -> callOpenAICompatible(sanitizedContent)
             else -> throw IllegalStateException("Unknown LLM provider: ${settings.llmProvider}")
         }
 
@@ -226,6 +233,91 @@ class SentinelService {
             return json.getAsJsonArray("content")
                 .get(0).asJsonObject
                 .get("text").asString
+        }
+    }
+
+    /**
+     * Call Ollama local server (uses OpenAI-compatible endpoint)
+     */
+    private fun callOllama(content: String): String {
+        val endpoint = "${settings.ollamaEndpoint.trimEnd('/')}/v1/chat/completions"
+
+        val requestBody = JsonObject().apply {
+            addProperty("model", settings.ollamaModel)
+            add("messages", gson.toJsonTree(listOf(
+                mapOf("role" to "system", "content" to THSP_SYSTEM_PROMPT),
+                mapOf("role" to "user", "content" to content)
+            )))
+            addProperty("temperature", 0.1)
+            addProperty("stream", false)
+        }
+
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("Content-Type", "application/json")
+            .post(gson.toJson(requestBody).toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: ""
+                if (response.code == 404 || errorBody.contains("not found")) {
+                    throw IOException("Model '${settings.ollamaModel}' not found. Run: ollama pull ${settings.ollamaModel}")
+                }
+                throw IOException("Ollama API error: ${response.code} - $errorBody")
+            }
+
+            val body = response.body?.string() ?: throw IOException("Empty response from Ollama")
+            val json = gson.fromJson(body, JsonObject::class.java)
+
+            return json.getAsJsonArray("choices")
+                .get(0).asJsonObject
+                .getAsJsonObject("message")
+                .get("content").asString
+        }
+    }
+
+    /**
+     * Call OpenAI-compatible endpoint (Groq, Together AI, etc.)
+     */
+    private fun callOpenAICompatible(content: String): String {
+        val baseEndpoint = settings.openaiCompatibleEndpoint.trimEnd('/')
+        val endpoint = if (baseEndpoint.endsWith("/chat/completions")) {
+            baseEndpoint
+        } else if (baseEndpoint.endsWith("/v1")) {
+            "$baseEndpoint/chat/completions"
+        } else {
+            "$baseEndpoint/v1/chat/completions"
+        }
+
+        val requestBody = JsonObject().apply {
+            addProperty("model", settings.openaiCompatibleModel)
+            add("messages", gson.toJsonTree(listOf(
+                mapOf("role" to "system", "content" to THSP_SYSTEM_PROMPT),
+                mapOf("role" to "user", "content" to content)
+            )))
+            addProperty("temperature", 0.1)
+        }
+
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer ${settings.openaiCompatibleApiKey}")
+            .post(gson.toJson(requestBody).toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("API error: ${response.code} - ${response.body?.string()}")
+            }
+
+            val body = response.body?.string() ?: throw IOException("Empty response")
+            val json = gson.fromJson(body, JsonObject::class.java)
+
+            return json.getAsJsonArray("choices")
+                .get(0).asJsonObject
+                .getAsJsonObject("message")
+                .get("content").asString
         }
     }
 

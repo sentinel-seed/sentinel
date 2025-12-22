@@ -27,6 +27,14 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
     var openaiModel: String = "gpt-4o-mini"
     var anthropicModel: String = "claude-3-haiku-20240307"
 
+    // Ollama settings (local, free)
+    var ollamaEndpoint: String = "http://localhost:11434"
+    var ollamaModel: String = "llama3.2"
+
+    // OpenAI-compatible settings (Groq, Together AI, etc.)
+    var openaiCompatibleEndpoint: String = ""
+    var openaiCompatibleModel: String = "llama-3.3-70b-versatile"
+
     // Behavior settings
     var enableRealTimeLinting: Boolean = true
     var highlightUnsafePatterns: Boolean = true
@@ -40,6 +48,7 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
     companion object {
         private const val OPENAI_KEY_ID = "sentinel.openai.apikey"
         private const val ANTHROPIC_KEY_ID = "sentinel.anthropic.apikey"
+        private const val COMPATIBLE_KEY_ID = "sentinel.compatible.apikey"
 
         fun getInstance(): SentinelApplicationSettings =
             ApplicationManager.getApplication().getService(SentinelApplicationSettings::class.java)
@@ -60,11 +69,12 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
         get() = getSecureKey(ANTHROPIC_KEY_ID) ?: ""
         set(value) = setSecureKey(ANTHROPIC_KEY_ID, value)
 
+    var openaiCompatibleApiKey: String
+        get() = getSecureKey(COMPATIBLE_KEY_ID) ?: ""
+        set(value) = setSecureKey(COMPATIBLE_KEY_ID, value)
+
     private fun createCredentialAttributes(key: String): CredentialAttributes {
-        return CredentialAttributes(
-            generateServiceName("SentinelAISafety", key),
-            key  // userName parameter required for non-deprecated constructor
-        )
+        return CredentialAttributes(generateServiceName("SentinelAISafety", key))
     }
 
     private fun getSecureKey(key: String): String? {

@@ -19,11 +19,16 @@ class SentinelSettingsConfigurable : Configurable {
     private var panel: JPanel? = null
 
     // UI components
-    private val llmProviderCombo = ComboBox(arrayOf("openai", "anthropic"))
+    private val llmProviderCombo = ComboBox(arrayOf("openai", "anthropic", "ollama", "openai-compatible"))
     private val openaiKeyField = JBPasswordField()
     private val openaiModelField = JBTextField()
     private val anthropicKeyField = JBPasswordField()
     private val anthropicModelField = JBTextField()
+    private val ollamaEndpointField = JBTextField()
+    private val ollamaModelField = JBTextField()
+    private val compatibleEndpointField = JBTextField()
+    private val compatibleKeyField = JBPasswordField()
+    private val compatibleModelField = JBTextField()
     private val enableLintingCheckbox = JBCheckBox("Enable real-time linting")
     private val highlightPatternsCheckbox = JBCheckBox("Highlight unsafe patterns")
     private val seedVariantCombo = ComboBox(arrayOf("standard", "minimal"))
@@ -34,8 +39,6 @@ class SentinelSettingsConfigurable : Configurable {
     override fun getDisplayName(): String = "Sentinel AI Safety"
 
     override fun createComponent(): JComponent {
-        val settings = SentinelApplicationSettings.getInstance()
-
         panel = panel {
             group("LLM Provider") {
                 row("Provider:") {
@@ -67,6 +70,37 @@ class SentinelSettingsConfigurable : Configurable {
                     cell(anthropicModelField)
                         .columns(COLUMNS_MEDIUM)
                         .comment("e.g., claude-3-haiku-20240307")
+                }
+            }
+
+            group("Ollama Configuration (Local, Free)") {
+                row("Endpoint:") {
+                    cell(ollamaEndpointField)
+                        .columns(COLUMNS_LARGE)
+                        .comment("Default: http://localhost:11434")
+                }
+                row("Model:") {
+                    cell(ollamaModelField)
+                        .columns(COLUMNS_MEDIUM)
+                        .comment("e.g., llama3.2, mistral, qwen2.5")
+                }
+            }
+
+            group("OpenAI-Compatible (Groq, Together AI)") {
+                row("Endpoint:") {
+                    cell(compatibleEndpointField)
+                        .columns(COLUMNS_LARGE)
+                        .comment("e.g., https://api.groq.com, https://api.together.xyz")
+                }
+                row("API Key:") {
+                    cell(compatibleKeyField)
+                        .columns(COLUMNS_LARGE)
+                        .comment("API key for the compatible endpoint")
+                }
+                row("Model:") {
+                    cell(compatibleModelField)
+                        .columns(COLUMNS_MEDIUM)
+                        .comment("e.g., llama-3.3-70b-versatile")
                 }
             }
 
@@ -120,6 +154,11 @@ class SentinelSettingsConfigurable : Configurable {
                 openaiModelField.text != settings.openaiModel ||
                 String(anthropicKeyField.password) != settings.anthropicApiKey ||
                 anthropicModelField.text != settings.anthropicModel ||
+                ollamaEndpointField.text != settings.ollamaEndpoint ||
+                ollamaModelField.text != settings.ollamaModel ||
+                compatibleEndpointField.text != settings.openaiCompatibleEndpoint ||
+                String(compatibleKeyField.password) != settings.openaiCompatibleApiKey ||
+                compatibleModelField.text != settings.openaiCompatibleModel ||
                 enableLintingCheckbox.isSelected != settings.enableRealTimeLinting ||
                 highlightPatternsCheckbox.isSelected != settings.highlightUnsafePatterns ||
                 seedVariantCombo.selectedItem != settings.defaultSeedVariant ||
@@ -136,6 +175,11 @@ class SentinelSettingsConfigurable : Configurable {
         settings.openaiModel = openaiModelField.text
         settings.anthropicApiKey = String(anthropicKeyField.password)
         settings.anthropicModel = anthropicModelField.text
+        settings.ollamaEndpoint = ollamaEndpointField.text
+        settings.ollamaModel = ollamaModelField.text
+        settings.openaiCompatibleEndpoint = compatibleEndpointField.text
+        settings.openaiCompatibleApiKey = String(compatibleKeyField.password)
+        settings.openaiCompatibleModel = compatibleModelField.text
         settings.enableRealTimeLinting = enableLintingCheckbox.isSelected
         settings.highlightUnsafePatterns = highlightPatternsCheckbox.isSelected
         settings.defaultSeedVariant = seedVariantCombo.selectedItem as String
@@ -152,6 +196,11 @@ class SentinelSettingsConfigurable : Configurable {
         openaiModelField.text = settings.openaiModel
         anthropicKeyField.text = settings.anthropicApiKey
         anthropicModelField.text = settings.anthropicModel
+        ollamaEndpointField.text = settings.ollamaEndpoint
+        ollamaModelField.text = settings.ollamaModel
+        compatibleEndpointField.text = settings.openaiCompatibleEndpoint
+        compatibleKeyField.text = settings.openaiCompatibleApiKey
+        compatibleModelField.text = settings.openaiCompatibleModel
         enableLintingCheckbox.isSelected = settings.enableRealTimeLinting
         highlightPatternsCheckbox.isSelected = settings.highlightUnsafePatterns
         seedVariantCombo.selectedItem = settings.defaultSeedVariant

@@ -89,6 +89,8 @@ class SentinelGuard(Module):
         fail_closed: If True, block on validation errors (default: False)
         allow_heuristic_fallback: If True, allow fallback to heuristic when
             no API key is provided. If False (default), raise HeuristicFallbackError.
+        context: Optional context string to include in validation (e.g., conversation
+            history, system prompt, agent state). Helps validator understand intent.
 
     Safety Metadata:
         Results include degradation flags to distinguish validated from degraded:
@@ -100,6 +102,13 @@ class SentinelGuard(Module):
         safe = SentinelGuard(base, api_key="sk-...", mode="block")
         result = safe(question="How do I hack a computer?")
         # Returns blocked response with safety_blocked=True
+
+        # With context for better understanding
+        safe = SentinelGuard(
+            base,
+            api_key="sk-...",
+            context="User is a cybersecurity professional doing authorized testing"
+        )
     """
 
     def __init__(
@@ -114,6 +123,7 @@ class SentinelGuard(Module):
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
         allow_heuristic_fallback: bool = False,
+        context: Optional[str] = None,
     ):
         super().__init__()
 
@@ -138,6 +148,7 @@ class SentinelGuard(Module):
         self.fail_closed = fail_closed
         self.mode = mode
         self.allow_heuristic_fallback = allow_heuristic_fallback
+        self.context = context
         self._is_degraded_mode = False  # Track if we fell back to heuristic
         self._logger = logger
 
@@ -287,11 +298,18 @@ class SentinelGuard(Module):
             timeout=self.timeout,
         )
 
-    def _validate_sync(self, content: str) -> Dict[str, Any]:
-        """Run synchronous validation."""
+    def _validate_sync(self, content: str, context: Optional[str] = None) -> Dict[str, Any]:
+        """Run synchronous validation with optional context."""
         try:
+            # Build content with context if provided
+            effective_context = context or self.context
+            if effective_context:
+                content_with_context = f"Context: {effective_context}\n\nContent to validate:\n{content}"
+            else:
+                content_with_context = content
+
             if self.mode == "heuristic":
-                result = self._validator.validate(content)
+                result = self._validator.validate(content_with_context)
                 # Heuristic mode: low confidence, degraded if it was a fallback
                 return {
                     "is_safe": result.get("safe", True),
@@ -301,9 +319,10 @@ class SentinelGuard(Module):
                     "method": "heuristic",
                     "degraded": self._is_degraded_mode,
                     "confidence": CONFIDENCE_LOW,
+                    "context_used": effective_context is not None,
                 }
             else:
-                result: THSPResult = self._validator.validate(content)
+                result: THSPResult = self._validator.validate(content_with_context)
                 # Semantic mode: high confidence, not degraded
                 return {
                     "is_safe": result.is_safe,
@@ -313,6 +332,7 @@ class SentinelGuard(Module):
                     "method": "semantic",
                     "degraded": False,
                     "confidence": CONFIDENCE_HIGH,
+                    "context_used": effective_context is not None,
                 }
         except Exception as e:
             self._logger.error(f"Validation error: {e}")
@@ -325,6 +345,7 @@ class SentinelGuard(Module):
                     "method": "error",
                     "degraded": True,
                     "confidence": CONFIDENCE_NONE,
+                    "context_used": False,
                 }
             # Fail open - assume safe but mark as degraded with no confidence
             return {
@@ -335,6 +356,7 @@ class SentinelGuard(Module):
                 "method": "error",
                 "degraded": True,
                 "confidence": CONFIDENCE_NONE,
+                "context_used": False,
             }
 
     def _handle_result(
