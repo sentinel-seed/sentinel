@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@sentinelseed/solana-agent-kit)](https://www.npmjs.com/package/@sentinelseed/solana-agent-kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Sentinel Safety Plugin for Solana Agent Kit** — AI safety validation for Solana transactions using the THSP protocol.
+**Sentinel Safety Plugin for Solana Agent Kit**: AI safety validation for Solana transactions using the THSP protocol.
 
 Protect your AI agents from executing harmful, unauthorized, or suspicious transactions on Solana.
 

@@ -11,7 +11,7 @@ pip install sentinelseed openai
 ```
 
 **Dependencies:**
-- `openai>=1.0.0` — [Docs](https://platform.openai.com/docs/assistants)
+- `openai>=1.0.0`: [Docs](https://platform.openai.com/docs/assistants)
 
 ## Overview
 

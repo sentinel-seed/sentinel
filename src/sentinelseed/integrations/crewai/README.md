@@ -11,7 +11,7 @@ pip install sentinelseed crewai
 ```
 
 **Dependencies:**
-- `crewai>=0.1.0` — [Docs](https://docs.crewai.com/)
+- `crewai>=0.1.0`: [Docs](https://docs.crewai.com/)
 
 ## Overview
 
@@ -145,8 +145,8 @@ safe_agent(
 **Returns:** The same agent instance with safety seed injected.
 
 **Attributes added to agent:**
-- `agent._sentinel` — Reference to Sentinel instance
-- `agent._sentinel_injection_method` — Method used for injection
+- `agent._sentinel`: Reference to Sentinel instance
+- `agent._sentinel_injection_method`: Method used for injection
 
 ### SentinelCrew
 

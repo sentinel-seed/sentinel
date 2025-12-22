@@ -5,8 +5,8 @@
 ## Overview
 
 This integration provides two-way compatibility:
-1. **Use OpenGuardrails as backend** — Leverage OpenGuardrails scanners from Sentinel
-2. **Register Sentinel as scanner** — Add THSP validation to OpenGuardrails pipeline
+1. **Use OpenGuardrails as backend:** Leverage OpenGuardrails scanners from Sentinel
+2. **Register Sentinel as scanner:** Add THSP validation to OpenGuardrails pipeline
 
 ## Installation
 

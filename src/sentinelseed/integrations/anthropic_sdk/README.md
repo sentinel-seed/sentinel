@@ -11,7 +11,7 @@ pip install sentinelseed anthropic
 ```
 
 **Dependencies:**
-- `anthropic>=0.18.0` — [Docs](https://docs.anthropic.com/) | [GitHub](https://github.com/anthropics/anthropic-sdk-python)
+- `anthropic>=0.18.0`: [Docs](https://docs.anthropic.com/) | [GitHub](https://github.com/anthropics/anthropic-sdk-python)
 
 ## Overview
 

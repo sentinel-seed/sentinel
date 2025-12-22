@@ -38,17 +38,17 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ### Core Components
 
-- **THSP Protocol** — Four-gate validation (Truth, Harm, Scope, Purpose)
-- **Teleological Core** — Actions must serve legitimate purposes
-- **Anti-Self-Preservation** — Prevents AI from prioritizing its own existence
-- **Alignment Seeds** — System prompts that shape LLM behavior
-- **Memory Integrity** — HMAC-based protection against memory injection attacks
-- **Fiduciary AI** — Ensures AI acts in user's best interest (duty of loyalty and care)
-- **EU AI Act Compliance** — Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
-- **Humanoid Safety** — ISO/TS 15066 contact force limits for robotics
-- **Python SDK** — Easy integration with any LLM
-- **Framework Support** — LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, OpenGuardrails, PyRIT
-- **REST API** — Deploy alignment as a service
+- **THSP Protocol:** Four-gate validation (Truth, Harm, Scope, Purpose)
+- **Teleological Core:** Actions must serve legitimate purposes
+- **Anti-Self-Preservation:** Prevents AI from prioritizing its own existence
+- **Alignment Seeds:** System prompts that shape LLM behavior
+- **Memory Integrity:** HMAC-based protection against memory injection attacks
+- **Fiduciary AI:** Ensures AI acts in user's best interest (duty of loyalty and care)
+- **EU AI Act Compliance:** Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
+- **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
+- **Python SDK:** Easy integration with any LLM
+- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, OpenGuardrails, PyRIT
+- **REST API:** Deploy alignment as a service
 
 ---
 
@@ -116,7 +116,7 @@ Tested across **4 benchmarks** on **6 models** with **97.6% average safety rate*
 | BadRobot | 74% | **99.3%** | +25.3% |
 | JailbreakBench | 96.5% | **97%** | +0.5% |
 
-**Key insight:** v2 introduces the PURPOSE gate (THSP protocol) which requires actions to serve legitimate purposes — not just avoid harm.
+**Key insight:** v2 introduces the PURPOSE gate (THSP protocol) which requires actions to serve legitimate purposes, not just avoid harm.
 
 ---
 
@@ -329,7 +329,7 @@ REQUEST
     ASSIST FULLY
 ```
 
-**Key difference from v1:** The PURPOSE gate ensures actions serve legitimate benefit — the absence of harm is not sufficient.
+**Key difference from v1:** The PURPOSE gate ensures actions serve legitimate benefit; the absence of harm is not sufficient.
 
 ### Programmatic Validators
 
@@ -438,10 +438,10 @@ if not result.compliant:
 ```
 
 **Fiduciary Duties:**
-- **Loyalty** — Act in user's best interest, not provider's
-- **Care** — Exercise reasonable diligence
-- **Transparency** — Disclose limitations and conflicts
-- **Confidentiality** — Protect user information
+- **Loyalty:** Act in user's best interest, not provider's
+- **Care:** Exercise reasonable diligence
+- **Transparency:** Disclose limitations and conflicts
+- **Confidentiality:** Protect user information
 
 ---
 
@@ -1051,11 +1051,11 @@ python run_benchmark_unified.py --benchmark harmbench --model gpt-4o-mini --seed
 ## Acknowledgments
 
 Sentinel builds on research from:
-- [SafeAgentBench](https://arxiv.org/abs/2410.03792) — Embodied AI safety benchmark
-- [HarmBench](https://arxiv.org/abs/2402.04249) — Harmful behavior evaluation
-- [Self-Reminder](https://www.nature.com/articles/s42256-024-00922-3) — Nature Machine Intelligence
-- [Agentic Misalignment](https://www.anthropic.com/research/agentic-misalignment) — Anthropic
-- [SEED 4.1](https://github.com/davfd) — Foundation Labs (pioneer of alignment seeds)
+- [SafeAgentBench](https://arxiv.org/abs/2410.03792): Embodied AI safety benchmark
+- [HarmBench](https://arxiv.org/abs/2402.04249): Harmful behavior evaluation
+- [Self-Reminder](https://www.nature.com/articles/s42256-024-00922-3): Nature Machine Intelligence
+- [Agentic Misalignment](https://www.anthropic.com/research/agentic-misalignment): Anthropic
+- [SEED 4.1](https://github.com/davfd): Foundation Labs (pioneer of alignment seeds)
 
 ---
 
@@ -1093,17 +1093,17 @@ Add this badge to your project's README to show it uses Sentinel for AI safety:
 We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 Areas we need help:
-- **Robotics expansion** — PyBullet, MuJoCo, Gazebo (ROS2, Isaac Lab & Humanoid done ✓)
-- **New benchmarks** — Testing on additional safety datasets
-- **Multi-agent safety** — Coordination between multiple agents
-- **Documentation** — Tutorials and examples
-- **JetBrains Plugin** — IntelliJ/PyCharm integration
+- **Robotics expansion:** PyBullet, MuJoCo, Gazebo (ROS2, Isaac Lab & Humanoid done ✓)
+- **New benchmarks:** Testing on additional safety datasets
+- **Multi-agent safety:** Coordination between multiple agents
+- **Documentation:** Tutorials and examples
+- **JetBrains Plugin:** IntelliJ/PyCharm integration
 
 ---
 
 ## License
 
-MIT License — See [LICENSE](LICENSE)
+MIT License. See [LICENSE](LICENSE)
 
 ---
 

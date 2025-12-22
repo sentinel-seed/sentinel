@@ -25,8 +25,8 @@ pip install sentinelseed langchain langchain-core
 ```
 
 **Dependencies:**
-- `langchain>=0.1.0` — [Docs](https://python.langchain.com/docs/)
-- `langchain-core>=0.1.0` — [API Reference](https://api.python.langchain.com/)
+- `langchain>=0.1.0`: [Docs](https://python.langchain.com/docs/)
+- `langchain-core>=0.1.0`: [API Reference](https://api.python.langchain.com/)
 
 ## Overview
 

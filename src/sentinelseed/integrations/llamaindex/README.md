@@ -11,7 +11,7 @@ pip install sentinelseed llama-index-core
 ```
 
 **Dependencies:**
-- `llama-index-core>=0.10.0` — [Docs](https://docs.llamaindex.ai/)
+- `llama-index-core>=0.10.0`: [Docs](https://docs.llamaindex.ai/)
 
 ## Overview
 

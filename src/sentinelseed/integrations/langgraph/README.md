@@ -9,7 +9,7 @@ pip install sentinelseed langgraph
 ```
 
 **Dependencies:**
-- `langgraph>=0.0.1` — [Docs](https://langchain-ai.github.io/langgraph/)
+- `langgraph>=0.0.1`: [Docs](https://langchain-ai.github.io/langgraph/)
 - `langchain` (optional, for `create_sentinel_tool`)
 
 ## Overview
@@ -180,7 +180,7 @@ Every validation passes through four gates:
 | **SCOPE** | Is this within bounds? | Jailbreaks, authority claims, persona hijacking |
 | **PURPOSE** | Does this serve benefit? | Purposeless destruction, no legitimate value |
 
-**Key Insight:** The Purpose gate is unique to THSP. Actions that pass harm checks may still fail purpose validation—"delete all records" causes harm, but even "reorganize files randomly" fails purpose without legitimate benefit.
+**Key Insight:** The Purpose gate is unique to THSP. Actions that pass harm checks may still fail purpose validation; "delete all records" causes harm, but even "reorganize files randomly" fails purpose without legitimate benefit.
 
 ## State Integration
 

@@ -15,7 +15,7 @@ Technical reports and academic papers documenting Sentinel Alignment Seeds.
 
 | Paper | Date | Purpose |
 |-------|------|---------|
-| [PAPER_arxiv.tex](./PAPER_arxiv.tex) | December 2025 | arXiv submission — Teleological Alignment |
+| [PAPER_arxiv.tex](./PAPER_arxiv.tex) | December 2025 | arXiv submission: Teleological Alignment |
 
 ## Paper Distinction
 

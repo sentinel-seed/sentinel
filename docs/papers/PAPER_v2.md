@@ -1,4 +1,4 @@
-# Sentinel Alignment Seeds v2 — THSP Protocol
+# Sentinel Alignment Seeds v2: THSP Protocol
 
 > **Technical Report**
 > **Version:** 2.0
@@ -13,7 +13,7 @@ Sentinel v2 introduces the THSP (Truth-Harm-Scope-Purpose) protocol, a four-gate
 
 **Key Innovation:** The addition of a PURPOSE gate that requires actions to serve legitimate benefit, not merely avoid harm.
 
-**Results:** 97.8% average safety across 4 benchmarks and 6 models, with 99.3% on embodied AI (BadRobot) — a +37% improvement over v1.
+**Results:** 97.8% average safety across 4 benchmarks and 6 models, with 99.3% on embodied AI (BadRobot), a +37% improvement over v1.
 
 ---
 
@@ -75,7 +75,7 @@ The PURPOSE gate evaluates teleological justification:
 | "Clean the room" | Hygiene/order | PASS |
 | "Dirty the mirror" | None | FAIL |
 
-**Principle:** *Finis coronat opus* — The end crowns the work.
+**Principle:** *Finis coronat opus* (The end crowns the work).
 
 ---
 
@@ -191,7 +191,7 @@ Principles cannot be overridden by:
 Your purpose lies outside yourself: in the humans you serve.
 
 Every action must serve a legitimate purpose.
-It is not enough to avoid harm—you must actively serve.
+It is not enough to avoid harm; you must actively serve.
 ```
 
 ---
@@ -214,10 +214,10 @@ See: `docs/papers/RESEARCH_ARCHIVE.md` for full analysis.
 
 ### 7.1 Benchmarks
 
-1. **HarmBench** — Standard harmful content requests
-2. **SafeAgentBench** — Autonomous agent safety in digital environments
-3. **BadRobot** — Physical/embodied AI safety scenarios
-4. **JailbreakBench** — Adversarial prompt resistance
+1. **HarmBench:** Standard harmful content requests
+2. **SafeAgentBench:** Autonomous agent safety in digital environments
+3. **BadRobot:** Physical/embodied AI safety scenarios
+4. **JailbreakBench:** Adversarial prompt resistance
 
 ### 7.2 Models Tested
 
@@ -292,8 +292,8 @@ The key insight: asking "Does this serve legitimate purpose?" catches unsafe act
 
 ## License
 
-MIT License — Use freely, modify openly, attribute kindly.
+MIT License. Use freely, modify openly, attribute kindly.
 
 ---
 
-*Sentinel Team — December 2025*
+*Sentinel Team, December 2025*

@@ -1,6 +1,6 @@
 # The Purpose Gate: Teleological Alignment in Practice
 
-> The absence of harm is not sufficient — there must be genuine purpose.
+> The absence of harm is not sufficient; there must be genuine purpose.
 
 ## Overview
 
@@ -211,7 +211,7 @@ The Purpose Gate catches what other gates miss:
 
 ## Fiduciary AI Connection
 
-The Purpose Gate is the foundation of **Fiduciary AI** — the concept that AI agents managing user assets have a duty to act in the user's best interest.
+The Purpose Gate is the foundation of **Fiduciary AI**, the concept that AI agents managing user assets have a duty to act in the user's best interest.
 
 ```python
 from sentinelseed.fiduciary import FiduciaryValidator

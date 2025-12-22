@@ -233,7 +233,7 @@ SCOPE GATE:
 - Validates outputs for prompt-like patterns
 - Can be used as a separate check layer
 
-**Note:** Sentinel seeds are intentionally public—they work through behavioral guidance, not secrecy.
+**Note:** Sentinel seeds are intentionally public; they work through behavioral guidance, not secrecy.
 
 **Sentinel Effectiveness:** ✅ Moderate - Helps but credentials should never be in prompts anyway
 

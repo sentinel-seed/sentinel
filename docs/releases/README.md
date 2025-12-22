@@ -6,7 +6,7 @@
 
 ## Current Version
 
-**[v2.0](v2.0.md)** — December 2025
+**[v2.0](v2.0.md)** (December 2025)
 - THSP Protocol (4 gates with PURPOSE)
 - 97.6% average safety across 6 models
 - Teleological Core: actions must serve legitimate purposes

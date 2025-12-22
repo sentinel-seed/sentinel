@@ -1,6 +1,6 @@
 # Sentinel Alignment Seeds v1
 
-> **Technical Report — Initial Release**
+> **Technical Report: Initial Release**
 > **Version:** 1.0
 > **Date:** November 2025
 > **Author:** Sentinel Team
@@ -26,7 +26,7 @@ Current AI safety approaches require either:
 
 ### 1.2 Our Approach
 
-Sentinel Seeds are system prompts that embed safety principles directly into the model's context. No model modification required — works with any LLM via API.
+Sentinel Seeds are system prompts that embed safety principles directly into the model's context. No model modification required; works with any LLM via API.
 
 **Core Insight:** Well-structured safety instructions can significantly improve model behavior without architectural changes.
 
@@ -70,10 +70,10 @@ Sentinel Seeds are system prompts that embed safety principles directly into the
 
 ### 4.1 Benchmarks Used
 
-1. **HarmBench** — Standard harmful content generation benchmark
-2. **SafeAgentBench** — Autonomous agent safety in digital environments
-3. **BadRobot** — Physical/embodied AI safety scenarios
-4. **JailbreakBench** — Adversarial prompt resistance
+1. **HarmBench:** Standard harmful content generation benchmark
+2. **SafeAgentBench:** Autonomous agent safety in digital environments
+3. **BadRobot:** Physical/embodied AI safety scenarios
+4. **JailbreakBench:** Adversarial prompt resistance
 
 ### 4.2 Evaluation Protocol
 
@@ -123,8 +123,8 @@ messages = [
 
 ## License
 
-MIT License — Use freely, modify openly, attribute kindly.
+MIT License. Use freely, modify openly, attribute kindly.
 
 ---
 
-*Sentinel Team — November 2025*
+*Sentinel Team, November 2025*

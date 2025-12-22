@@ -11,7 +11,7 @@ pip install sentinelseed garak
 ```
 
 **Dependencies:**
-- `garak>=0.9.0` — [Docs](https://docs.garak.ai) | [GitHub](https://github.com/NVIDIA/garak)
+- `garak>=0.9.0`: [Docs](https://docs.garak.ai) | [GitHub](https://github.com/NVIDIA/garak)
 
 ## Overview
 
@@ -290,28 +290,28 @@ python -m sentinelseed.integrations.garak.install --uninstall
 
 All probes inherit from `garak.probes.Probe` and include:
 
-- `active: bool` — Whether probe is active by default
-- `lang: str` — Language (BCP47 format)
-- `goal: str` — Probe objective
-- `prompts: List[str]` — Test prompts
-- `primary_detector: str` — Default detector
-- `extended_detectors: List[str]` — Additional detectors
-- `tags: List[str]` — MISP taxonomy tags
-- `tier: Tier` — Classification tier
+- `active: bool`: Whether probe is active by default
+- `lang: str`: Language (BCP47 format)
+- `goal: str`: Probe objective
+- `prompts: List[str]`: Test prompts
+- `primary_detector: str`: Default detector
+- `extended_detectors: List[str]`: Additional detectors
+- `tags: List[str]`: MISP taxonomy tags
+- `tier: Tier`: Classification tier
 
 ### Detectors
 
 All detectors inherit from `garak.detectors.base.Detector` and include:
 
-- `detect(attempt) -> Iterable[float | None]` — Main detection method
-- `refusal_patterns: List[str]` — Patterns indicating safe refusal
-- `compliance_patterns: List[str]` — Patterns indicating violation
-- `jailbreak_compliance_patterns: List[str]` — Jailbreak acceptance patterns
+- `detect(attempt) -> Iterable[float | None]`: Main detection method
+- `refusal_patterns: List[str]`: Patterns indicating safe refusal
+- `compliance_patterns: List[str]`: Patterns indicating violation
+- `jailbreak_compliance_patterns: List[str]`: Jailbreak acceptance patterns
 
 ### Configuration Classes
 
-- `DetectionMetrics` — Estimated precision/recall/accuracy
-- `AmbiguousScoreConfig` — Length thresholds for ambiguous scoring
+- `DetectionMetrics`: Estimated precision/recall/accuracy
+- `AmbiguousScoreConfig`: Length thresholds for ambiguous scoring
 
 ## Resources
 

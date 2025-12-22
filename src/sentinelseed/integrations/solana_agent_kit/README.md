@@ -200,13 +200,13 @@ class TransactionSafetyResult:
 
 ## Checks Performed
 
-1. **Address validation** — Format check (base58, configurable mode)
-2. **Blocked addresses** — Recipient in blocklist
-3. **Program whitelist** — Program ID allowed
-4. **Transfer limits** — Amount within max
-5. **PURPOSE gate** — Sensitive actions need purpose
-6. **Sentinel validation** — THSP protocol check
-7. **Pattern detection** — Drain, sweep, bulk transfers
+1. **Address validation:** Format check (base58, configurable mode)
+2. **Blocked addresses:** Recipient in blocklist
+3. **Program whitelist:** Program ID allowed
+4. **Transfer limits:** Amount within max
+5. **PURPOSE gate:** Sensitive actions need purpose
+6. **Sentinel validation:** THSP protocol check
+7. **Pattern detection:** Drain, sweep, bulk transfers
 
 ## LangChain Tool
 

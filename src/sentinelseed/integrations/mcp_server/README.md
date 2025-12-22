@@ -11,7 +11,7 @@ pip install sentinelseed mcp
 ```
 
 **Dependencies:**
-- `mcp>=0.1.0` — [GitHub](https://github.com/modelcontextprotocol/python-sdk)
+- `mcp>=0.1.0`: [GitHub](https://github.com/modelcontextprotocol/python-sdk)
 
 **For Claude Desktop:**
 ```bash

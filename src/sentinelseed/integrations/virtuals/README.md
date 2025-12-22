@@ -11,7 +11,7 @@ pip install sentinelseed game-sdk
 ```
 
 **Dependencies:**
-- `game-sdk>=0.1.1` — [PyPI](https://pypi.org/project/game-sdk/) | [GitHub](https://github.com/game-by-virtuals/game-python)
+- `game-sdk>=0.1.1`: [PyPI](https://pypi.org/project/game-sdk/) | [GitHub](https://github.com/game-by-virtuals/game-python)
 
 ## Overview
 
