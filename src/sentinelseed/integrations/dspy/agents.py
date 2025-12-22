@@ -118,10 +118,17 @@ class SentinelToolValidator:
             warn_fail_open_default(self._logger, "SentinelToolValidator")
 
         # Initialize validator
+        self._is_degraded = False
         if mode == "heuristic" or not api_key:
             if not api_key and mode != "heuristic":
+                self._is_degraded = True
                 self._logger.warning(
-                    "No API key provided. Using heuristic validation."
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelToolValidator.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "=" * 60
                 )
             self._validator = THSPValidator()
             self._is_semantic = False
@@ -132,6 +139,11 @@ class SentinelToolValidator:
                 api_key=api_key,
             )
             self._is_semantic = True
+
+    @property
+    def is_degraded(self) -> bool:
+        """Check if validator is running in degraded (heuristic) mode."""
+        return self._is_degraded
 
     def _validate(self, content: str, context: str = "") -> Dict[str, Any]:
         """Validate content with optional context."""
@@ -366,10 +378,17 @@ class SentinelAgentGuard(Module):
             warn_fail_open_default(self._logger, "SentinelAgentGuard")
 
         # Initialize validator
+        self._is_degraded = False
         if mode == "heuristic" or not api_key:
             if not api_key and mode != "heuristic":
+                self._is_degraded = True
                 self._logger.warning(
-                    "No API key provided. Using heuristic validation."
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelAgentGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "=" * 60
                 )
             self._validator = THSPValidator()
             self._is_semantic = False
@@ -380,6 +399,11 @@ class SentinelAgentGuard(Module):
                 api_key=api_key,
             )
             self._is_semantic = True
+
+    @property
+    def is_degraded(self) -> bool:
+        """Check if validator is running in degraded (heuristic) mode."""
+        return self._is_degraded
 
     def _validate(self, content: str, context: str = "") -> Dict[str, Any]:
         """Validate content with optional context."""
@@ -587,10 +611,17 @@ class SentinelMemoryGuard:
             warn_fail_open_default(self._logger, "SentinelMemoryGuard")
 
         # Initialize validator
+        self._is_degraded = False
         if mode == "heuristic" or not api_key:
             if not api_key and mode != "heuristic":
+                self._is_degraded = True
                 self._logger.warning(
-                    "No API key provided. Using heuristic validation."
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelMemoryGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "=" * 60
                 )
             self._validator = THSPValidator()
             self._is_semantic = False
@@ -601,6 +632,11 @@ class SentinelMemoryGuard:
                 api_key=api_key,
             )
             self._is_semantic = True
+
+    @property
+    def is_degraded(self) -> bool:
+        """Check if validator is running in degraded (heuristic) mode."""
+        return self._is_degraded
 
     def _validate(self, content: str, context: str = "") -> Dict[str, Any]:
         """Validate content with optional context."""

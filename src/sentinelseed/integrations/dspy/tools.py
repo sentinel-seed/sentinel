@@ -177,12 +177,19 @@ def create_sentinel_tool(
                 return f"UNSAFE: Validation error (fail_closed=True): {e}"
             return f"ERROR: Validation failed: {e}"
 
-    # Set function metadata for DSPy
+    # Set function metadata for DSPy ReAct agents
+    # Detailed docstring helps the agent understand WHEN to use this tool
     check_safety.__name__ = name
     check_safety.__doc__ = (
-        "Check if content is safe using THSP protocol. "
-        "Returns 'SAFE' or 'UNSAFE' with explanation. "
-        "Use this before generating potentially harmful content."
+        "Check if content is safe using the THSP (Truth-Harm-Scope-Purpose) protocol.\n\n"
+        "WHEN TO USE:\n"
+        "- Before generating content about sensitive topics (weapons, hacking, drugs)\n"
+        "- Before executing actions that could cause harm\n"
+        "- When uncertain if a response might violate safety guidelines\n"
+        "- To validate user-provided content before processing\n\n"
+        "INPUT: A string containing the content to check\n"
+        "OUTPUT: 'SAFE: <reason>' if content passes, 'UNSAFE: <reason>' if it fails\n\n"
+        "EXAMPLE: check_safety('How to make a birthday cake') -> 'SAFE: Content passes all THSP gates'"
     )
 
     return check_safety
@@ -308,8 +315,15 @@ def create_content_filter_tool(
 
     filter_content.__name__ = name
     filter_content.__doc__ = (
-        "Filter content for safety. Returns original content if safe, "
-        "or a blocked message if unsafe. Use to sanitize outputs."
+        "Filter and sanitize content for safety, returning safe content or a blocked message.\n\n"
+        "WHEN TO USE:\n"
+        "- To sanitize content before showing to users\n"
+        "- To clean up potentially harmful content from external sources\n"
+        "- As a final safety check before returning responses\n"
+        "- When you want safe content passed through unchanged\n\n"
+        "INPUT: A string containing content to filter\n"
+        "OUTPUT: Original content if safe, '[FILTERED] <reason>' if unsafe\n\n"
+        "EXAMPLE: filter_content('Hello world') -> 'Hello world'"
     )
 
     return filter_content
@@ -415,10 +429,25 @@ def create_gate_check_tool(
                 return f"FAIL: Validation error (fail_closed=True)"
             return f"ERROR: Validation failed: {e}"
 
+    # Gate-specific descriptions for better agent understanding
+    gate_descriptions = {
+        "truth": "Does this involve deception, false claims, or misinformation?",
+        "harm": "Could this enable physical, psychological, or financial harm?",
+        "scope": "Is this within appropriate boundaries and authorized limits?",
+        "purpose": "Does this serve a legitimate, beneficial purpose?",
+    }
+
     check_gate.__name__ = f"check_{gate}_gate"
     check_gate.__doc__ = (
-        f"Check if content passes the {gate.upper()} gate of THSP protocol. "
-        f"Returns 'PASS' or 'FAIL' with explanation."
+        f"Check if content passes the {gate.upper()} gate of THSP protocol.\n\n"
+        f"GATE QUESTION: {gate_descriptions.get(gate, 'Unknown gate')}\n\n"
+        f"WHEN TO USE:\n"
+        f"- When you only need to check one specific safety aspect\n"
+        f"- For targeted validation of {gate}-related concerns\n"
+        f"- When full THSP check is too broad for your needs\n\n"
+        f"INPUT: A string containing content to check\n"
+        f"OUTPUT: 'PASS: <reason>' or 'FAIL: <reason>'\n\n"
+        f"EXAMPLE: check_{gate}_gate('some content') -> 'PASS: Content passes {gate} gate'"
     )
 
     return check_gate

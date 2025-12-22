@@ -166,9 +166,19 @@ class SentinelGuard(Module):
                 if not allow_heuristic_fallback:
                     raise HeuristicFallbackError("SentinelGuard")
 
+                # Emit prominent warning about degraded mode
                 self._logger.warning(
-                    "No API key provided for SentinelGuard. "
-                    "Falling back to heuristic validation (allow_heuristic_fallback=True)."
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
                 )
                 self._validator = THSPValidator()
                 self._async_validator = None
@@ -590,9 +600,19 @@ class SentinelChainOfThought(Module):
                 if not allow_heuristic_fallback:
                     raise HeuristicFallbackError("SentinelChainOfThought")
 
+                # Emit prominent warning about degraded mode
                 self._logger.warning(
-                    "No API key provided for SentinelChainOfThought. "
-                    "Falling back to heuristic validation (allow_heuristic_fallback=True)."
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelChainOfThought.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
                 )
                 self._validator = THSPValidator()
                 self.mode = "heuristic"
