@@ -6,6 +6,7 @@ Provides compliance checking tools for AI regulations and standards.
 Currently supported:
 - EU AI Act (Regulation 2024/1689)
 - CSA AI Controls Matrix (AICM v1.0)
+- OWASP LLM Top 10 (2025)
 
 Usage:
     # EU AI Act
@@ -27,6 +28,24 @@ Usage:
     # Or use convenience function:
     from sentinelseed.compliance import check_csa_aicm_compliance
     result = check_csa_aicm_compliance(content, api_key="...")
+
+    # OWASP LLM Top 10
+    from sentinelseed.compliance import OWASPLLMChecker
+
+    checker = OWASPLLMChecker(api_key="...")
+
+    # Check user input (pre-inference)
+    input_result = checker.check_input(user_input)
+
+    # Check LLM output (post-inference)
+    output_result = checker.check_output(llm_response)
+
+    # Check full pipeline
+    pipeline_result = checker.check_pipeline(user_input, llm_response)
+
+    # Or use convenience function:
+    from sentinelseed.compliance import check_owasp_llm_compliance
+    result = check_owasp_llm_compliance(content, validation_type="output")
 
     # With fail_closed mode (strict):
     checker = EUAIActComplianceChecker(api_key="...", fail_closed=True)
@@ -57,6 +76,16 @@ from sentinelseed.compliance.csa_aicm import (
     check_csa_aicm_compliance,
 )
 
+from sentinelseed.compliance.owasp_llm import (
+    OWASPLLMChecker,
+    OWASPComplianceResult,
+    VulnerabilityFinding,
+    OWASPVulnerability,
+    CoverageLevel as OWASPCoverageLevel,
+    VULNERABILITY_GATE_MAPPING,
+    check_owasp_llm_compliance,
+)
+
 __all__ = [
     # EU AI Act
     "EUAIActComplianceChecker",
@@ -79,4 +108,12 @@ __all__ = [
     "DOMAIN_GATE_MAPPING",
     "THREAT_GATE_MAPPING",
     "check_csa_aicm_compliance",
+    # OWASP LLM Top 10
+    "OWASPLLMChecker",
+    "OWASPComplianceResult",
+    "VulnerabilityFinding",
+    "OWASPVulnerability",
+    "OWASPCoverageLevel",
+    "VULNERABILITY_GATE_MAPPING",
+    "check_owasp_llm_compliance",
 ]

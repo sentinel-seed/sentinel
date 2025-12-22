@@ -1,7 +1,18 @@
 """
-THS (Truth-Harm-Scope) validation gates.
+THSP (Truth-Harm-Scope-Purpose) validation gates.
 
-These gates can be used to validate LLM responses or user inputs.
+This module provides heuristic-based validation through pattern matching.
+For semantic (LLM-based) validation, see validators.semantic module.
+
+Available validators:
+- THSValidator: 3-gate validator (Truth, Harm, Scope)
+- THSPValidator: 4-gate validator (Truth, Harm, Scope, Purpose) - Full protocol
+
+Individual gates can also be used directly:
+- TruthGate: Detects deception and misinformation
+- HarmGate: Detects content that could enable harm
+- ScopeGate: Detects boundary violations and unauthorized authority
+- PurposeGate: Detects lack of legitimate purpose
 """
 
 from abc import ABC, abstractmethod

@@ -323,32 +323,58 @@ This is a rate-limiting and infrastructure concern. THSP cannot:
 ## Implementation Example
 
 ```python
-from sentinelseed import Sentinel
+from sentinelseed.compliance import OWASPLLMChecker
+
+# Initialize the checker (with API key for semantic validation)
+checker = OWASPLLMChecker(api_key="sk-...")  # Optional for enhanced accuracy
 
 def process_llm_request(user_input: str, llm_response: str) -> dict:
-    sentinel = Sentinel(seed_level="standard")
-
-    # Pre-validation (Prompt Injection defense)
-    input_check = sentinel.validate_request(user_input)
-    if not input_check["should_proceed"]:
+    # Pre-validation (LLM01: Prompt Injection, LLM06: Excessive Agency)
+    input_result = checker.check_input(user_input)
+    if not input_result.secure:
         return {
             "blocked": True,
             "stage": "input",
-            "reason": input_check["concerns"],
-            "owasp": "LLM01"
+            "vulnerabilities": [f.vulnerability.value for f in input_result.findings if f.detected],
+            "recommendations": input_result.recommendations,
         }
 
-    # Post-validation (Output handling, Misinformation)
-    is_safe, concerns = sentinel.validate(llm_response)
-    if not is_safe:
+    # Post-validation (LLM02, LLM05, LLM07, LLM09)
+    output_result = checker.check_output(llm_response)
+    if not output_result.secure:
         return {
             "blocked": True,
             "stage": "output",
-            "reason": concerns,
-            "owasp": "LLM05, LLM09"
+            "vulnerabilities": [f.vulnerability.value for f in output_result.findings if f.detected],
+            "recommendations": output_result.recommendations,
         }
 
     return {"blocked": False, "response": llm_response}
+
+
+# Alternative: Check full pipeline in one call
+def secure_pipeline(user_input: str, llm_response: str) -> dict:
+    result = checker.check_pipeline(user_input, llm_response)
+
+    if not result.secure:
+        return {
+            "blocked": True,
+            "input_issues": result.input_validation.get("vulnerabilities_detected", 0),
+            "output_issues": result.output_validation.get("vulnerabilities_detected", 0),
+            "recommendations": result.recommendations,
+        }
+
+    return {"blocked": False, "response": llm_response}
+
+
+# Quick check using convenience function
+from sentinelseed.compliance import check_owasp_llm_compliance
+
+result = check_owasp_llm_compliance(
+    content="User input or LLM output",
+    validation_type="input",  # or "output"
+)
+print(f"Secure: {result['secure']}")
 ```
 
 ---
