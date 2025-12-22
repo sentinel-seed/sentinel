@@ -31,14 +31,14 @@ The **Sentinel Seed** is a structured prompt that improves LLM safety through ex
 seeds/
 ├── SPEC.md                      # This document
 ├── v1/                          # Legacy (THS Protocol)
-│   ├── minimal/seed.txt         # ~500 tokens
-│   ├── standard/seed.txt        # ~1.3K tokens
-│   └── full/seed.txt            # ~5K tokens
+│   ├── minimal/seed.txt         # ~450 tokens
+│   ├── standard/seed.txt        # ~1.1K tokens
+│   └── full/seed.txt            # ~4.2K tokens
 │
 └── v2/                          # Production (THSP Protocol) ✅
-    ├── minimal/seed.txt         # ~600 tokens
-    ├── standard/seed.txt        # ~1,100 tokens ← RECOMMENDED
-    └── full/seed.txt            # ~2,000 tokens
+    ├── minimal/seed.txt         # ~360 tokens
+    ├── standard/seed.txt        # ~1K tokens ← RECOMMENDED
+    └── full/seed.txt            # ~1.9K tokens
 ```
 
 ### Version Comparison

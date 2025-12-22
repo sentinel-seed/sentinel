@@ -10,9 +10,9 @@ import os
 
 class SeedLevel(Enum):
     """Available seed levels with different size/coverage trade-offs."""
-    MINIMAL = "minimal"      # ~500 tokens - essential THS gates only
-    STANDARD = "standard"    # ~1.3K tokens - balanced safety with examples
-    FULL = "full"            # ~5K tokens - comprehensive with anti-self-preservation
+    MINIMAL = "minimal"      # ~360 tokens - essential THSP gates only
+    STANDARD = "standard"    # ~1K tokens - balanced safety with examples
+    FULL = "full"            # ~1.9K tokens - comprehensive with anti-self-preservation
 
 
 class Sentinel:
