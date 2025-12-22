@@ -3,9 +3,12 @@ import { SentinelLinter } from './linter';
 import { SentinelAnalyzer, AnalysisResult } from './analyzer';
 import { SEED_MINIMAL, SEED_STANDARD, estimateTokenCount } from './seeds';
 import { SecretManager, promptForApiKey } from './secrets';
+import { ComplianceChecker, ComplianceFramework } from './compliance';
+import { showComplianceResult } from './compliance/resultPanel';
 
 let linter: SentinelLinter;
 let analyzer: SentinelAnalyzer;
+let complianceChecker: ComplianceChecker;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let statusBarItem: vscode.StatusBarItem;
 let secretManager: SecretManager;
@@ -17,6 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnosticCollection = vscode.languages.createDiagnosticCollection('sentinel');
     linter = new SentinelLinter(diagnosticCollection);
     analyzer = new SentinelAnalyzer();
+    complianceChecker = new ComplianceChecker();
     secretManager = new SecretManager(context);
 
     // Load API keys from SecretStorage
@@ -83,6 +87,27 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
+    // Compliance check commands
+    const checkComplianceAllCmd = vscode.commands.registerCommand(
+        'sentinel.checkComplianceAll',
+        () => checkComplianceHandler(context, 'all')
+    );
+
+    const checkComplianceEUAIActCmd = vscode.commands.registerCommand(
+        'sentinel.checkComplianceEUAIAct',
+        () => checkComplianceHandler(context, 'eu_ai_act')
+    );
+
+    const checkComplianceOWASPCmd = vscode.commands.registerCommand(
+        'sentinel.checkComplianceOWASP',
+        () => checkComplianceHandler(context, 'owasp_llm')
+    );
+
+    const checkComplianceCSACmd = vscode.commands.registerCommand(
+        'sentinel.checkComplianceCSA',
+        () => checkComplianceHandler(context, 'csa_aicm')
+    );
+
     // Listen for configuration changes
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('sentinel')) {
@@ -125,6 +150,10 @@ export async function activate(context: vscode.ExtensionContext) {
         showStatusCmd,
         setOpenAIKeyCmd,
         setAnthropicKeyCmd,
+        checkComplianceAllCmd,
+        checkComplianceEUAIActCmd,
+        checkComplianceOWASPCmd,
+        checkComplianceCSACmd,
         configChangeDisposable
     );
 
@@ -299,5 +328,64 @@ async function insertSeed(variant: 'minimal' | 'standard') {
     const tokenCount = estimateTokenCount(seed);
     vscode.window.showInformationMessage(
         `Sentinel ${variant} seed inserted (~${tokenCount} tokens)`
+    );
+}
+
+// ============================================================================
+// COMPLIANCE CHECKER FUNCTIONS
+// ============================================================================
+
+/**
+ * Handles compliance check commands.
+ * Runs 100% locally - no data sent to Sentinel servers.
+ */
+async function checkComplianceHandler(
+    context: vscode.ExtensionContext,
+    framework: ComplianceFramework | 'all'
+): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('No active editor');
+        return;
+    }
+
+    // Get text (selection or full file)
+    const selection = editor.selection;
+    const text = selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+
+    if (!text || text.trim() === '') {
+        vscode.window.showWarningMessage('No content to check');
+        return;
+    }
+
+    // Show progress
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Checking ${framework === 'all' ? 'all frameworks' : framework.replace(/_/g, ' ')}...`,
+            cancellable: false
+        },
+        async () => {
+            try {
+                if (framework === 'all') {
+                    const result = complianceChecker.checkAll(text);
+                    showComplianceResult(context.extensionUri, result);
+                } else if (framework === 'eu_ai_act') {
+                    const result = complianceChecker.checkEUAIAct(text);
+                    showComplianceResult(context.extensionUri, result, 'eu_ai_act');
+                } else if (framework === 'owasp_llm') {
+                    const result = complianceChecker.checkOWASP(text);
+                    showComplianceResult(context.extensionUri, result, 'owasp_llm');
+                } else if (framework === 'csa_aicm') {
+                    const result = complianceChecker.checkCSA(text);
+                    showComplianceResult(context.extensionUri, result, 'csa_aicm');
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                vscode.window.showErrorMessage(`Compliance check failed: ${message}`);
+            }
+        }
     );
 }

@@ -29,7 +29,11 @@
     "alignment",
     "sentinel",
     "thsp",
-    "guardrails"
+    "guardrails",
+    "compliance",
+    "eu-ai-act",
+    "owasp",
+    "csa"
   ],
   "activationEvents": [
     "onLanguage:markdown",
@@ -70,17 +74,55 @@
       {
         "command": "sentinel.setAnthropicKey",
         "title": "Sentinel: Set Anthropic API Key (Secure)"
+      },
+      {
+        "command": "sentinel.checkComplianceAll",
+        "title": "Sentinel: Check Compliance (All Frameworks)"
+      },
+      {
+        "command": "sentinel.checkComplianceEUAIAct",
+        "title": "Sentinel: Check EU AI Act Compliance"
+      },
+      {
+        "command": "sentinel.checkComplianceOWASP",
+        "title": "Sentinel: Check OWASP LLM Top 10"
+      },
+      {
+        "command": "sentinel.checkComplianceCSA",
+        "title": "Sentinel: Check CSA AI Controls Matrix"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "sentinel.analyzeSelection",
-          "group": "sentinel",
+          "group": "sentinel@1",
           "when": "editorHasSelection"
+        },
+        {
+          "command": "sentinel.checkComplianceAll",
+          "group": "sentinel@2"
+        },
+        {
+          "command": "sentinel.checkComplianceEUAIAct",
+          "group": "sentinel@3"
+        },
+        {
+          "command": "sentinel.checkComplianceOWASP",
+          "group": "sentinel@4"
+        },
+        {
+          "command": "sentinel.checkComplianceCSA",
+          "group": "sentinel@5"
         }
       ]
     },
+    "submenus": [
+      {
+        "id": "sentinel.compliance",
+        "label": "Sentinel Compliance"
+      }
+    ],
     "configuration": {
       "title": "Sentinel AI Safety",
       "properties": {
