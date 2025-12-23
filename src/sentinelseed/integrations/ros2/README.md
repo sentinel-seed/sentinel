@@ -2,7 +2,7 @@
 
 Safety middleware for ROS2 robots using THSP (Truth-Harm-Scope-Purpose) validation.
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ## Overview
 
@@ -106,14 +106,22 @@ node = SentinelSafetyNode(
 Filter for Twist (velocity) messages.
 
 ```python
-from sentinelseed.integrations.ros2 import CommandSafetyFilter, VelocityLimits
+from sentinelseed.integrations.ros2 import CommandSafetyFilter, VelocityLimits, SafetyZone
 
 filter = CommandSafetyFilter(
     velocity_limits=VelocityLimits.differential_drive(),
+    safety_zone=SafetyZone.indoor(room_size=10.0),
     mode='clamp',
 )
 
+# Without position (Scope Gate skipped)
 safe_twist, result = filter.filter(twist_msg)
+
+# With position (Scope Gate active)
+safe_twist, result = filter.filter(
+    twist_msg,
+    current_position=(2.0, 3.0, 0.0),  # From odometry
+)
 print(result.gates)  # {'truth': True, 'harm': True, 'scope': True, 'purpose': True}
 ```
 
@@ -185,9 +193,29 @@ Validates operational boundaries:
 - Position within safety zone
 - Within operational workspace
 
-> **Note:** Scope Gate is currently a placeholder. Position validation requires
-> odometry integration which is robot-specific. The SafetyZone class is provided
-> for future integration with your robot's localization system.
+To use Scope Gate, pass `current_position` to the validation methods:
+
+```python
+from sentinelseed.integrations.ros2 import RobotSafetyRules, SafetyZone
+
+rules = RobotSafetyRules(
+    safety_zone=SafetyZone.indoor(room_size=10.0),  # 10m x 10m room
+)
+
+# Get position from your robot's odometry/localization
+current_pos = (2.0, 3.0, 0.0)  # x, y, z in meters
+
+result = rules.validate_velocity(
+    linear_x=0.5,
+    current_position=current_pos,
+)
+
+if not result.gates['scope']:
+    print("Robot is outside safety zone!")
+```
+
+> **Note:** If `current_position` is not provided, Scope Gate is skipped.
+> This allows the integration to work with robots that don't have localization.
 
 ### Purpose Gate
 Checks for legitimate purpose:

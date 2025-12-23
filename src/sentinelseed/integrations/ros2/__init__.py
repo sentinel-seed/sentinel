@@ -70,7 +70,7 @@ from sentinelseed.integrations.ros2.validators import (
     DEFAULT_MAX_ALTITUDE,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     # Version

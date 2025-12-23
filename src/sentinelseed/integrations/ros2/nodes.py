@@ -25,7 +25,7 @@ Note:
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 from sentinelseed.integrations.ros2.validators import (
     CommandValidationResult,
@@ -50,12 +50,18 @@ try:
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
     ROS2_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
     ROS2_AVAILABLE = False
-    _logger.warning(
-        "ROS2 packages not found. Install rclpy and ROS2 to use ROS2 integration. "
-        "The mock classes will be used for testing."
-    )
+    if isinstance(e, AttributeError):
+        _logger.warning(
+            f"ROS2 packages found but incompatible version: {e}. "
+            "The mock classes will be used for testing."
+        )
+    else:
+        _logger.warning(
+            "ROS2 packages not found. Install rclpy and ROS2 to use ROS2 integration. "
+            "The mock classes will be used for testing."
+        )
 
     # Mock classes for when ROS2 is not available
     class LifecycleState:
@@ -83,8 +89,15 @@ try:
     from geometry_msgs.msg import Twist, Vector3
     from std_msgs.msg import String, Header
     MSGS_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
     MSGS_AVAILABLE = False
+    if isinstance(e, AttributeError):
+        _logger.warning(
+            f"ROS2 message types found but incompatible version: {e}. "
+            "Using mock message classes."
+        )
+    else:
+        _logger.debug("ROS2 message types not found. Using mock message classes.")
 
     # Mock message classes
     @dataclass
@@ -241,13 +254,21 @@ class CommandSafetyFilter:
             "clamped": 0,
         }
 
-    def filter(self, twist: Twist, purpose: Optional[str] = None) -> tuple:
+    def filter(
+        self,
+        twist: Twist,
+        purpose: Optional[str] = None,
+        current_position: Optional[Tuple[float, float, float]] = None,
+    ) -> Tuple[Twist, CommandValidationResult]:
         """
         Filter a Twist message through THSP gates.
 
         Args:
             twist: Input Twist message
             purpose: Optional purpose description
+            current_position: Optional (x, y, z) tuple of current robot position in meters.
+                              If provided, Scope Gate validates position is within safety_zone.
+                              Typically obtained from odometry or localization.
 
         Returns:
             Tuple of (filtered_twist, validation_result)
@@ -269,6 +290,7 @@ class CommandSafetyFilter:
             angular_y=_safe_get_velocity(twist, "angular.y"),
             angular_z=_safe_get_velocity(twist, "angular.z"),
             purpose=purpose,
+            current_position=current_position,
         )
 
         if result.is_safe:
@@ -375,7 +397,7 @@ class StringSafetyFilter:
             "blocked": 0,
         }
 
-    def filter(self, msg: String) -> tuple:
+    def filter(self, msg: String) -> Tuple[String, CommandValidationResult]:
         """
         Filter a String message through THSP gates.
 

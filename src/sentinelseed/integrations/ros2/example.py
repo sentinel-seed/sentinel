@@ -176,6 +176,31 @@ def example_3_safety_rules():
     print(f"  Is safe: {result.is_safe}")
     print(f"  Gates: {result.gates}")
 
+    # Scope Gate validation with position
+    print(f"\nScope Gate validation (with position):")
+
+    # Position inside safety zone
+    result_inside = diff_drive_rules.validate_velocity(
+        linear_x=0.5,
+        angular_z=0.2,
+        current_position=(2.0, 3.0, 0.0),  # Inside 10m room
+    )
+    print(f"  Position (2, 3, 0) - inside zone:")
+    print(f"    Is safe: {result_inside.is_safe}")
+    print(f"    Scope gate: {result_inside.gates['scope']}")
+
+    # Position outside safety zone
+    result_outside = diff_drive_rules.validate_velocity(
+        linear_x=0.5,
+        angular_z=0.2,
+        current_position=(8.0, 0.0, 0.0),  # Outside 10m room (boundary is -5 to 5)
+    )
+    print(f"  Position (8, 0, 0) - outside zone:")
+    print(f"    Is safe: {result_outside.is_safe}")
+    print(f"    Scope gate: {result_outside.gates['scope']}")
+    if result_outside.violations:
+        print(f"    Violation: {result_outside.violations[0]}")
+
 
 def example_4_ros2_node_mock():
     """

@@ -319,6 +319,7 @@ class RobotSafetyRules:
         angular_y: float = 0.0,
         angular_z: float = 0.0,
         purpose: Optional[str] = None,
+        current_position: Optional[Tuple[float, float, float]] = None,
     ) -> CommandValidationResult:
         """
         Validate a velocity command through THSP gates.
@@ -331,6 +332,8 @@ class RobotSafetyRules:
             angular_y: Pitch rate (rad/s)
             angular_z: Yaw rate (rad/s)
             purpose: Optional purpose description
+            current_position: Optional (x, y, z) tuple of current robot position in meters.
+                              If provided, Scope Gate validates position is within safety_zone.
 
         Returns:
             CommandValidationResult with validation details
@@ -355,7 +358,7 @@ class RobotSafetyRules:
             violations.extend(harm_violations)
 
         # Scope Gate: Check operational boundaries
-        scope_violations = self._check_scope_gate()
+        scope_violations = self._check_scope_gate(current_position)
         if scope_violations:
             gates["scope"] = False
             violations.extend(scope_violations)
@@ -546,11 +549,42 @@ class RobotSafetyRules:
 
         return violations
 
-    def _check_scope_gate(self) -> List[str]:
-        """Check operational scope boundaries (Scope Gate)."""
+    def _check_scope_gate(
+        self, current_position: Optional[Tuple[float, float, float]]
+    ) -> List[str]:
+        """
+        Check operational scope boundaries (Scope Gate).
+
+        Args:
+            current_position: Optional (x, y, z) tuple of current robot position.
+                              If None, scope validation is skipped (position unknown).
+
+        Returns:
+            List of violation messages if position is outside safety zone.
+        """
         violations = []
-        # Position checking would require odometry integration
-        # For now, scope gate is placeholder for position validation
+
+        if current_position is None:
+            # Position unknown - cannot validate scope
+            # This is acceptable: many robots don't have localization
+            return violations
+
+        x, y, z = current_position
+
+        # Check for invalid position values
+        if any(math.isnan(v) or math.isinf(v) for v in (x, y, z)):
+            violations.append(f"[SCOPE] Invalid position values: ({x}, {y}, {z})")
+            return violations
+
+        # Check if position is within safety zone
+        if not self.safety_zone.contains(x, y, z):
+            violations.append(
+                f"[SCOPE] Position ({x:.2f}, {y:.2f}, {z:.2f}) is outside safety zone "
+                f"[x: {self.safety_zone.min_x:.1f} to {self.safety_zone.max_x:.1f}, "
+                f"y: {self.safety_zone.min_y:.1f} to {self.safety_zone.max_y:.1f}, "
+                f"z: {self.safety_zone.min_z:.1f} to {self.safety_zone.max_z:.1f}]"
+            )
+
         return violations
 
     def _check_purpose_gate(self, purpose: Optional[str]) -> List[str]:
