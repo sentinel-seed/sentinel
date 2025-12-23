@@ -617,6 +617,46 @@ class TestCombinedDetectorNoneHandling:
 
 
 # ============================================================================
+# DEFAULT_PARAMS Tests
+# ============================================================================
+
+class TestDefaultParams:
+    """Tests for DEFAULT_PARAMS configuration.
+
+    These tests ensure that the operator precedence fix is in place.
+    The bug was: DEFAULT_PARAMS = X if COND else {} | {"key": val}
+    Which evaluates as: X if COND else ({} | {"key": val})
+    Instead of: (X if COND else {}) | {"key": val}
+    """
+
+    def test_base_detector_has_case_sensitive_param(self):
+        """THSPBaseDetector.DEFAULT_PARAMS should include case_sensitive."""
+        assert "case_sensitive" in THSPBaseDetector.DEFAULT_PARAMS
+        assert THSPBaseDetector.DEFAULT_PARAMS["case_sensitive"] is False
+
+    def test_combined_detector_has_case_sensitive_param(self):
+        """THSPCombinedDetector.DEFAULT_PARAMS should include case_sensitive."""
+        assert "case_sensitive" in THSPCombinedDetector.DEFAULT_PARAMS
+        assert THSPCombinedDetector.DEFAULT_PARAMS["case_sensitive"] is False
+
+    def test_truth_violation_inherits_case_sensitive(self):
+        """TruthViolation should inherit case_sensitive from base."""
+        assert "case_sensitive" in TruthViolation.DEFAULT_PARAMS
+
+    def test_harm_violation_inherits_case_sensitive(self):
+        """HarmViolation should inherit case_sensitive from base."""
+        assert "case_sensitive" in HarmViolation.DEFAULT_PARAMS
+
+    def test_scope_violation_inherits_case_sensitive(self):
+        """ScopeViolation should inherit case_sensitive from base."""
+        assert "case_sensitive" in ScopeViolation.DEFAULT_PARAMS
+
+    def test_purpose_violation_inherits_case_sensitive(self):
+        """PurposeViolation should inherit case_sensitive from base."""
+        assert "case_sensitive" in PurposeViolation.DEFAULT_PARAMS
+
+
+# ============================================================================
 # Version and Export Tests
 # ============================================================================
 

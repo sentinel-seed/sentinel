@@ -35,12 +35,12 @@ Usage after installation:
         --probes sentinel_thsp \\
         --detectors sentinel_thsp
 
-Documentation: https://sentinelseed.dev/docs/garak
+Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak
 GitHub: https://github.com/NVIDIA/garak
 
 References:
     - Garak Documentation: https://docs.garak.ai
-    - THSP Protocol: https://sentinelseed.dev/docs/methodology
+    - THSP Protocol: https://github.com/sentinel-seed/sentinel#thsp-protocol
 """
 
 __version__ = "2.0.0"

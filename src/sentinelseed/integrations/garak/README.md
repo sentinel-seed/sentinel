@@ -317,5 +317,5 @@ All detectors inherit from `garak.detectors.base.Detector` and include:
 
 - [Garak Documentation](https://docs.garak.ai)
 - [Garak GitHub](https://github.com/NVIDIA/garak)
-- [Sentinel THSP Protocol](https://sentinelseed.dev/docs/methodology)
+- [Sentinel THSP Protocol](https://github.com/sentinel-seed/sentinel#thsp-protocol)
 - [OWASP LLM Top 10](https://genai.owasp.org/)

@@ -14,7 +14,7 @@ Usage:
 Install:
     python -m sentinelseed.integrations.garak.install
 
-Documentation: https://sentinelseed.dev/docs/garak
+Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak
 """
 
 import os
@@ -38,24 +38,61 @@ MIN_GARAK_VERSION = "0.9.0"
 
 
 def _check_garak_version() -> bool:
-    """Check if installed Garak version meets minimum requirement."""
+    """Check if installed Garak version meets minimum requirement.
+
+    Returns:
+        True if version is compatible or cannot be determined.
+        False if version is known to be incompatible.
+
+    Warnings:
+        - Emits UserWarning if version is below minimum.
+        - Emits UserWarning if version cannot be checked (packaging not installed).
+    """
     try:
         import garak
-        from packaging import version
-        installed = getattr(garak, "__version__", "0.0.0")
-        if version.parse(installed) < version.parse(MIN_GARAK_VERSION):
+        installed = getattr(garak, "__version__", None)
+
+        if installed is None:
             warnings.warn(
-                f"Garak version {installed} is below minimum required {MIN_GARAK_VERSION}. "
-                f"Some features may not work correctly. "
-                f"Upgrade with: pip install 'garak>={MIN_GARAK_VERSION}'",
+                "Could not determine Garak version (__version__ not set). "
+                f"Minimum required version is {MIN_GARAK_VERSION}. "
+                "Some features may not work correctly.",
                 UserWarning
             )
-            return False
-        return True
+            return True  # Assume compatible but warn
+
+        try:
+            from packaging import version
+            if version.parse(installed) < version.parse(MIN_GARAK_VERSION):
+                warnings.warn(
+                    f"Garak version {installed} is below minimum required {MIN_GARAK_VERSION}. "
+                    f"Some features may not work correctly. "
+                    f"Upgrade with: pip install 'garak>={MIN_GARAK_VERSION}'",
+                    UserWarning
+                )
+                return False
+            return True
+        except ImportError:
+            # packaging not installed - cannot check version
+            warnings.warn(
+                f"Cannot verify Garak version (packaging module not installed). "
+                f"Detected version string: {installed}. "
+                f"Minimum required: {MIN_GARAK_VERSION}. "
+                f"Install packaging with: pip install packaging",
+                UserWarning
+            )
+            return True  # Assume compatible but warn
+
     except ImportError:
+        # Garak not installed
         return False
-    except Exception:
-        # packaging not installed or other error
+    except Exception as e:
+        # Unexpected error - warn and assume compatible
+        warnings.warn(
+            f"Error checking Garak version: {e}. "
+            f"Assuming compatible, but some features may not work.",
+            UserWarning
+        )
         return True
 
 
@@ -66,16 +103,35 @@ try:
     from garak import _config
     GARAK_AVAILABLE = True
     _check_garak_version()
-except ImportError:
+except (ImportError, AttributeError) as e:
+    # ImportError: garak not installed
+    # AttributeError: garak installed but structure differs (version mismatch)
     GARAK_AVAILABLE = False
     _config = None
 
-    # Stub for type checking when garak not installed
+    if isinstance(e, AttributeError):
+        warnings.warn(
+            f"Garak is installed but has incompatible structure: {e}. "
+            f"Using standalone mode. Upgrade garak or check compatibility.",
+            UserWarning
+        )
+
+    # Stub for standalone use when garak not installed
+    # This allows using the detector patterns independently
     class Detector:
+        """Stub Detector class for use without garak.
+
+        Provides minimal compatibility for standalone pattern matching.
+        Full functionality requires garak to be installed.
+        """
         DEFAULT_PARAMS = {"skip": False}
 
+        # Flag to indicate this is the stub, not real garak
+        _is_stub = True
+
         def __init__(self, config_root=None):
-            pass
+            self._config_root = config_root
+            self._initialized = True
 
     class _AttemptStub:
         outputs: List[str] = []
@@ -162,10 +218,33 @@ class THSPBaseDetector(Detector):
 
     Configuration:
         Set SENTINEL_DEBUG=1 environment variable to enable debug logging.
+
+    IMPORTANT - Pattern Matching Limitations:
+        The regex patterns used for detection are HEURISTICS, not comprehensive
+        classifiers. They have known limitations:
+
+        1. False Positives: May flag legitimate educational content discussing
+           harmful topics (e.g., security research, journalism, fiction).
+
+        2. False Negatives: Sophisticated attacks using obfuscation, code
+           switching, or novel phrasing will likely evade detection.
+
+        3. English Only: Patterns are designed for English text. Non-English
+           responses or mixed-language attacks may not be detected.
+
+        4. Context Blind: Patterns match text without understanding context.
+           A refusal followed by compliance may score incorrectly.
+
+        5. Limited Testing: Validated against ~500 manually labeled samples.
+           Production use requires calibration against your specific models
+           and use cases.
+
+        For high-stakes applications, combine with human review or more
+        sophisticated classifiers (e.g., LLM-based evaluation).
     """
 
     # Documentation reference
-    doc_uri = "https://sentinelseed.dev/docs/methodology"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol"
 
     # Language specification (BCP47)
     lang_spec = "en"
@@ -179,7 +258,9 @@ class THSPBaseDetector(Detector):
     tags: List[str] = ["sentinel:thsp"]
 
     # Default parameters
-    DEFAULT_PARAMS = Detector.DEFAULT_PARAMS if GARAK_AVAILABLE else {} | {
+    DEFAULT_PARAMS = (
+        Detector.DEFAULT_PARAMS if GARAK_AVAILABLE else {}
+    ) | {
         "case_sensitive": False,
     }
 
@@ -214,8 +295,25 @@ class THSPBaseDetector(Detector):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the detector.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config. If garak is not available,
+                initializes in standalone mode with limited functionality.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            # Use provided config or fall back to global config
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - initialize stub
+            super().__init__(config_root=config_root)
+            if _debug_mode:
+                _logger.warning(
+                    f"[{self.__class__.__name__}] Initialized in standalone mode. "
+                    "Install garak for full functionality."
+                )
 
     def _has_refusal(self, text: str) -> bool:
         """Check if the response contains a refusal pattern."""
@@ -332,7 +430,7 @@ class TruthViolation(THSPBaseDetector):
     impersonation, or misinformation.
     """
 
-    doc_uri = "https://sentinelseed.dev/docs/methodology#truth-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#truth-gate"
     tags = ["sentinel:thsp:truth", "avid-effect:ethics:E0301"]
 
     compliance_patterns: List[str] = [
@@ -364,7 +462,7 @@ class HarmViolation(THSPBaseDetector):
     violence, weapons, hacking, or dangerous activities.
     """
 
-    doc_uri = "https://sentinelseed.dev/docs/methodology#harm-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#harm-gate"
     tags = ["sentinel:thsp:harm", "avid-effect:ethics:E0302", "payload:unwanted:violence"]
 
     compliance_patterns: List[str] = [
@@ -400,7 +498,7 @@ class ScopeViolation(THSPBaseDetector):
     jailbreaks, prompt injection, or persona switches.
     """
 
-    doc_uri = "https://sentinelseed.dev/docs/methodology#scope-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#scope-gate"
     tags = ["sentinel:thsp:scope", "avid-effect:security:S0403", "payload:jailbreak"]
 
     compliance_patterns: List[str] = [
@@ -432,7 +530,7 @@ class PurposeViolation(THSPBaseDetector):
     waste, or meaningless harmful actions.
     """
 
-    doc_uri = "https://sentinelseed.dev/docs/methodology#purpose-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#purpose-gate"
     tags = ["sentinel:thsp:purpose", "avid-effect:ethics:E0101"]
 
     compliance_patterns: List[str] = [
@@ -471,16 +569,31 @@ class THSPCombinedDetector(Detector):
           is also None (not 0.0) to indicate the output couldn't be evaluated.
     """
 
-    doc_uri = "https://sentinelseed.dev/docs/methodology"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol"
     tags = ["sentinel:thsp:combined"]
 
-    DEFAULT_PARAMS = Detector.DEFAULT_PARAMS if GARAK_AVAILABLE else {} | {
+    DEFAULT_PARAMS = (
+        Detector.DEFAULT_PARAMS if GARAK_AVAILABLE else {}
+    ) | {
         "case_sensitive": False,
     }
 
     def __init__(self, config_root=None):
+        """Initialize the combined detector.
+
+        Args:
+            config_root: Garak configuration object. Passed to all sub-detectors.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            super().__init__(config_root=config_root)
+            if _debug_mode:
+                _logger.warning(
+                    "[THSPCombinedDetector] Initialized in standalone mode. "
+                    "Install garak for full functionality."
+                )
 
         # Initialize individual gate detectors
         self.truth_detector = TruthViolation(config_root)

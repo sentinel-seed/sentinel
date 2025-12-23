@@ -13,7 +13,7 @@ Prerequisites for full usage:
     pip install garak sentinelseed
     python -m sentinelseed.integrations.garak.install
 
-Documentation: https://sentinelseed.dev/docs/garak
+Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak
 """
 
 import sys
@@ -272,7 +272,7 @@ def main(demo_mode: bool = True):
         example_ci_cd()
 
     print("\n" + "=" * 70)
-    print("Documentation: https://sentinelseed.dev/docs/garak")
+    print("Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak")
     print("Garak Docs: https://docs.garak.ai")
     print("=" * 70 + "\n")
 

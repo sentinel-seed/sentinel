@@ -13,9 +13,10 @@ Usage:
 Install:
     python -m sentinelseed.integrations.garak.install
 
-Documentation: https://sentinelseed.dev/docs/garak
+Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak
 """
 
+import warnings
 from typing import List, Union, Iterable
 
 # Garak imports - will be available when installed in garak environment
@@ -23,16 +24,35 @@ try:
     import garak.probes
     from garak import _config
     GARAK_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
+    # ImportError: garak not installed
+    # AttributeError: garak installed but structure differs (version mismatch)
     GARAK_AVAILABLE = False
     _config = None
 
-    # Stub for type checking when garak not installed
+    if isinstance(e, AttributeError):
+        warnings.warn(
+            f"Garak is installed but has incompatible structure: {e}. "
+            f"Using standalone mode. Upgrade garak or check compatibility.",
+            UserWarning
+        )
+
+    # Stub for standalone use when garak not installed
+    # This allows inspecting prompts and attributes without full garak
     class _ProbeStub:
+        """Stub Probe class for use without garak.
+
+        Provides minimal compatibility for prompt inspection.
+        Full functionality requires garak to be installed.
+        """
         DEFAULT_PARAMS = {}
 
+        # Flag to indicate this is the stub, not real garak
+        _is_stub = True
+
         def __init__(self, config_root=None):
-            pass
+            self._config_root = config_root
+            self._initialized = True
 
     class _GarakProbesStub:
         Probe = _ProbeStub
@@ -58,7 +78,7 @@ class TruthGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     # Required probe attributes
     active = True
     lang = "en"
-    doc_uri = "https://sentinelseed.dev/docs/methodology#truth-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#truth-gate"
     goal = "make the model generate deceptive or false content"
 
     # Detection configuration
@@ -108,8 +128,18 @@ class TruthGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the probe.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - object.__init__ accepts no arguments
+            pass
 
 
 class HarmGate(garak.probes.Probe if GARAK_AVAILABLE else object):
@@ -124,7 +154,7 @@ class HarmGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://sentinelseed.dev/docs/methodology#harm-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#harm-gate"
     goal = "make the model provide harmful or dangerous information"
 
     primary_detector = "sentinel_thsp.HarmViolation"
@@ -174,8 +204,18 @@ class HarmGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the probe.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - object.__init__ accepts no arguments
+            pass
 
 
 class ScopeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
@@ -190,7 +230,7 @@ class ScopeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://sentinelseed.dev/docs/methodology#scope-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#scope-gate"
     goal = "make the model exceed its operational boundaries"
 
     primary_detector = "sentinel_thsp.ScopeViolation"
@@ -239,8 +279,18 @@ class ScopeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the probe.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - object.__init__ accepts no arguments
+            pass
 
 
 class PurposeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
@@ -255,7 +305,7 @@ class PurposeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://sentinelseed.dev/docs/methodology#purpose-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#purpose-gate"
     goal = "make the model assist with purposeless or destructive actions"
 
     primary_detector = "sentinel_thsp.PurposeViolation"
@@ -301,8 +351,18 @@ class PurposeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the probe.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - object.__init__ accepts no arguments
+            pass
 
 
 class THSPCombined(garak.probes.Probe if GARAK_AVAILABLE else object):
@@ -314,7 +374,7 @@ class THSPCombined(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://sentinelseed.dev/docs/methodology"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol"
     goal = "make the model fail multiple THSP gates simultaneously"
 
     primary_detector = "sentinel_thsp.THSPCombinedDetector"
@@ -362,8 +422,18 @@ class THSPCombined(garak.probes.Probe if GARAK_AVAILABLE else object):
     ]
 
     def __init__(self, config_root=None):
+        """Initialize the probe.
+
+        Args:
+            config_root: Garak configuration object. If None and garak is
+                available, uses the global _config.
+        """
         if GARAK_AVAILABLE:
-            super().__init__(config_root=config_root or _config)
+            effective_config = config_root if config_root is not None else _config
+            super().__init__(config_root=effective_config)
+        else:
+            # Standalone mode - object.__init__ accepts no arguments
+            pass
 
 
 # Module-level list of all probes for garak discovery

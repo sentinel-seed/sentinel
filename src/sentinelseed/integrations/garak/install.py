@@ -12,6 +12,29 @@ Usage:
 
 Requirements:
     pip install garak
+
+IMPORTANT - Installation Method Limitations:
+
+    This installer copies files directly into garak's installation directory.
+    This approach has known limitations:
+
+    1. Garak Updates: When you update garak (pip install --upgrade garak),
+       the installed files may be overwritten or removed. You will need to
+       reinstall the plugin after updating garak.
+
+    2. Permissions: Requires write access to garak's installation directory.
+       In some environments (system-wide installs, containers), this may
+       require elevated privileges.
+
+    3. Multiple Environments: If you have multiple Python environments with
+       different garak installations, you must run this installer in each
+       environment separately.
+
+    4. No Automatic Updates: This plugin is not updated when you update
+       sentinelseed. Run the installer again after updating sentinelseed.
+
+    For these reasons, backups are created automatically before overwriting
+    existing files.
 """
 
 import os
@@ -240,7 +263,19 @@ def install_plugin():
     print("  # List installed Sentinel probes")
     print("  garak --list_probes | grep sentinel")
     print()
-    print("Documentation: https://sentinelseed.dev/docs/garak")
+    print("Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/garak")
+    print()
+    print("-" * 70)
+    print("IMPORTANT NOTES:")
+    print("-" * 70)
+    print()
+    print("1. After updating garak (pip install --upgrade garak), you must")
+    print("   reinstall this plugin as files may be overwritten.")
+    print()
+    print("2. Backups of previous files (if any) are saved with timestamps.")
+    print("   You can find them in the garak installation directory.")
+    print()
+    print("3. To verify installation: python -m sentinelseed.integrations.garak.install --check")
     print()
 
 
