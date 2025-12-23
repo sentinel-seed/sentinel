@@ -8,17 +8,12 @@ Safety middleware for ROS2 robots using THSP (Truth-Harm-Scope-Purpose) validati
 
 This integration provides THSP-based safety validation for ROS2 robots. It implements a subscribe-validate-publish pattern that filters unsafe commands before they reach robot actuators.
 
-```
-┌──────────────┐     ┌────────────────┐     ┌────────────────┐     ┌───────┐
-│ Navigation   │────▶│ /cmd_vel_raw   │────▶│ SentinelSafety │────▶│ Robot │
-│ (nav2/move)  │     │                │     │     Node       │     │       │
-└──────────────┘     └────────────────┘     └────────────────┘     └───────┘
-                                                    │
-                                                    ▼
-                                            ┌────────────────┐
-                                            │ /sentinel/     │
-                                            │ status         │
-                                            └────────────────┘
+```mermaid
+flowchart LR
+    A[Navigation<br/>nav2/move] --> B[/cmd_vel_raw]
+    B --> C[SentinelSafety<br/>Node]
+    C --> D[Robot]
+    C --> E[/sentinel/status]
 ```
 
 ## Installation
