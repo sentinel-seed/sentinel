@@ -20,11 +20,11 @@ try:
     from pyrit.models import Score, MessagePiece
     from pyrit.score.scorer import Scorer
     from pyrit.score.scorer_prompt_validator import ScorerPromptValidator
-except ImportError:
+except (ImportError, AttributeError) as e:
     raise ImportError(
         "PyRIT >= 0.10.0 is required for this integration. "
         "Install with: pip install 'pyrit>=0.10.0'"
-    )
+    ) from e
 
 from sentinelseed.validators.semantic import AsyncSemanticValidator, THSPResult
 from sentinelseed.validators.gates import THSPValidator
@@ -138,8 +138,8 @@ class SentinelTHSPScorer(Scorer):
         max_content_length: int = MAX_CONTENT_LENGTH,
     ):
         validator = ScorerPromptValidator(
-            supported_types=["text"],
-            require_objective=False,
+            supported_data_types=["text"],
+            is_objective_required=False,
         )
         super().__init__(validator=validator)
 
@@ -266,8 +266,8 @@ class SentinelHeuristicScorer(Scorer):
         max_content_length: int = MAX_CONTENT_LENGTH,
     ):
         validator = ScorerPromptValidator(
-            supported_types=["text"],
-            require_objective=False,
+            supported_data_types=["text"],
+            is_objective_required=False,
         )
         super().__init__(validator=validator)
 
@@ -415,8 +415,8 @@ class SentinelGateScorer(Scorer):
             raise ValueError(f"Invalid gate: {gate}. Must be one of {self.VALID_GATES}")
 
         validator = ScorerPromptValidator(
-            supported_types=["text"],
-            require_objective=False,
+            supported_data_types=["text"],
+            is_objective_required=False,
         )
         super().__init__(validator=validator)
 

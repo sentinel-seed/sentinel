@@ -39,6 +39,7 @@ from sentinelseed.validators.gates import (
     HarmGate,
     ScopeGate,
     PurposeGate,
+    JailbreakGate,
     THSValidator,
     THSPValidator,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "HarmGate",
     "ScopeGate",
     "PurposeGate",
+    "JailbreakGate",
     "THSValidator",
     "THSPValidator",
 ]
