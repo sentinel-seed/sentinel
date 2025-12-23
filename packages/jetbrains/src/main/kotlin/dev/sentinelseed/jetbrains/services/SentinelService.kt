@@ -322,36 +322,55 @@ class SentinelService {
     }
 
     private fun parseResponse(response: String): AnalysisResult {
-        // Extract JSON from potential markdown code blocks
-        val jsonStr = Regex("```(?:json)?\\s*([\\s\\S]*?)```").find(response)?.groupValues?.get(1)
-            ?: response
+        try {
+            // Extract JSON from potential markdown code blocks
+            val jsonStr = Regex("```(?:json)?\\s*([\\s\\S]*?)```").find(response)?.groupValues?.get(1)
+                ?: response
 
-        val json = gson.fromJson(jsonStr, JsonObject::class.java)
-        val gates = json.getAsJsonObject("gates")
+            val json = gson.fromJson(jsonStr, JsonObject::class.java)
+                ?: throw IllegalArgumentException("Failed to parse JSON response")
 
-        val gateResults = GateResults(
-            truth = if (gates.getAsJsonObject("truth").get("passed").asBoolean) GateStatus.PASS else GateStatus.FAIL,
-            harm = if (gates.getAsJsonObject("harm").get("passed").asBoolean) GateStatus.PASS else GateStatus.FAIL,
-            scope = if (gates.getAsJsonObject("scope").get("passed").asBoolean) GateStatus.PASS else GateStatus.FAIL,
-            purpose = if (gates.getAsJsonObject("purpose").get("passed").asBoolean) GateStatus.PASS else GateStatus.FAIL
-        )
+            val gates = json.getAsJsonObject("gates")
+                ?: throw IllegalArgumentException("Missing 'gates' field in response")
 
-        val issues = mutableListOf<String>()
-        for (gateName in listOf("truth", "harm", "scope", "purpose")) {
-            val gate = gates.getAsJsonObject(gateName)
-            if (!gate.get("passed").asBoolean) {
-                issues.add("${gateName.uppercase()}: ${gate.get("reasoning").asString}")
+            // Safe gate parsing with null checks
+            fun parseGate(gateName: String): GateStatus {
+                val gate = gates.getAsJsonObject(gateName) ?: return GateStatus.FAIL
+                val passed = gate.get("passed")?.asBoolean ?: false
+                return if (passed) GateStatus.PASS else GateStatus.FAIL
             }
-        }
 
-        return AnalysisResult(
-            safe = json.get("safe").asBoolean,
-            gates = gateResults,
-            issues = issues,
-            confidence = json.get("confidence")?.asDouble ?: 0.9,
-            method = AnalysisMethod.SEMANTIC,
-            reasoning = json.get("overall_reasoning")?.asString
-        )
+            val gateResults = GateResults(
+                truth = parseGate("truth"),
+                harm = parseGate("harm"),
+                scope = parseGate("scope"),
+                purpose = parseGate("purpose")
+            )
+
+            val issues = mutableListOf<String>()
+            for (gateName in listOf("truth", "harm", "scope", "purpose")) {
+                val gate = gates.getAsJsonObject(gateName) ?: continue
+                val passed = gate.get("passed")?.asBoolean ?: false
+                if (!passed) {
+                    val reasoning = gate.get("reasoning")?.asString ?: "No details"
+                    issues.add("${gateName.uppercase()}: $reasoning")
+                }
+            }
+
+            val safe = json.get("safe")?.asBoolean ?: (issues.isEmpty())
+
+            return AnalysisResult(
+                safe = safe,
+                gates = gateResults,
+                issues = issues,
+                confidence = json.get("confidence")?.asDouble ?: 0.9,
+                method = AnalysisMethod.SEMANTIC,
+                reasoning = json.get("overall_reasoning")?.asString
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to parse LLM response, falling back to heuristic", e)
+            throw e // Let caller handle fallback to heuristic
+        }
     }
 
     /**
