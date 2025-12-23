@@ -266,11 +266,11 @@ print(result.is_safe)  # False
 ```python
 rules = RobotSafetyRules(require_purpose=True)
 
-# Without purpose - fails
+# Without purpose (fails)
 result = rules.validate_velocity(linear_x=0.5)
 print(result.gates['purpose'])  # False
 
-# With purpose - passes
+# With purpose (passes)
 result = rules.validate_velocity(
     linear_x=0.5,
     purpose="Navigate to waypoint A for delivery",
@@ -378,4 +378,4 @@ from sentinelseed.integrations.ros2 import (
 
 ## License
 
-MIT License - Sentinel Team
+MIT License
