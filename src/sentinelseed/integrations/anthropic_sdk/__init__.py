@@ -46,6 +46,10 @@ from sentinelseed import Sentinel
 from sentinelseed.validators.gates import THSPValidator
 
 
+# Version (synchronized with pyproject.toml)
+__version__ = "2.14.0"
+
+
 # Default validation model - using current Haiku model
 DEFAULT_VALIDATION_MODEL = "claude-3-5-haiku-20241022"
 
@@ -93,6 +97,58 @@ def _validate_text_size(
     size = len(text.encode("utf-8"))
     if size > max_size:
         raise TextTooLargeError(size, max_size)
+
+
+def _extract_text_from_content(content: Any) -> str:
+    """
+    Extract text from message content in any supported format.
+
+    The Anthropic API accepts content as either:
+    - A string (shorthand for single text block)
+    - A list of content blocks (for multimodal messages)
+
+    This function extracts all text from both formats to ensure
+    validation covers all user-provided text content.
+
+    Args:
+        content: Message content (string or list of content blocks)
+
+    Returns:
+        Concatenated text from all text blocks, or empty string if none found
+
+    Example:
+        # String format
+        _extract_text_from_content("Hello") -> "Hello"
+
+        # List format with text blocks
+        _extract_text_from_content([
+            {"type": "text", "text": "Hello"},
+            {"type": "image", "source": {...}},
+            {"type": "text", "text": "World"}
+        ]) -> "Hello World"
+    """
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict):
+                # Standard content block format: {"type": "text", "text": "..."}
+                if block.get("type") == "text" and "text" in block:
+                    text_value = block.get("text")
+                    if text_value is not None:
+                        text_parts.append(str(text_value))
+            elif isinstance(block, str):
+                # Some SDKs may pass strings directly in lists
+                text_parts.append(block)
+        return " ".join(text_parts)
+
+    # Fallback: try to convert to string
+    return str(content) if content else ""
 
 
 # Logger interface for custom logging
@@ -163,7 +219,8 @@ try:
         THSPResult,
     )
     SEMANTIC_VALIDATOR_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError: Module installed but with incompatible structure
     SemanticValidator = None
     AsyncSemanticValidator = None
     THSPResult = None
@@ -179,7 +236,8 @@ try:
     from anthropic import Anthropic as _Anthropic, AsyncAnthropic as _AsyncAnthropic
     from anthropic.types import Message, MessageStreamEvent
     ANTHROPIC_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError: SDK installed but with incompatible structure
     Message = None
     MessageStreamEvent = None
 
@@ -468,7 +526,12 @@ class _SentinelMessages:
         if semantic_error and not heuristic_passed:
             return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
 
-        return True, None, None
+        # This line should never be reached - all code paths above should return
+        # If we get here, there's a logic error in the validation flow
+        raise RuntimeError(
+            "Unexpected validation state: no validators passed and no error condition matched. "
+            "This indicates a bug in the validation logic."
+        )
 
     def create(
         self,
@@ -494,17 +557,19 @@ class _SentinelMessages:
         # Validate input messages
         if self._validate_input:
             for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, str) and msg.get("role") == "user":
-                    is_safe, gate, reasoning = self._validate_content(content)
-                    if not is_safe:
-                        self._logger.warning(f"Input blocked: {gate} - {reasoning}")
-                        return _create_blocked_response(
-                            f"Input blocked by Sentinel THSP validation. "
-                            f"Gate failed: {gate}. "
-                            f"Reason: {reasoning}",
-                            gate=gate,
-                        )
+                if msg.get("role") == "user":
+                    # Extract text from content (handles both string and list formats)
+                    content = _extract_text_from_content(msg.get("content"))
+                    if content:  # Only validate if there's text content
+                        is_safe, gate, reasoning = self._validate_content(content)
+                        if not is_safe:
+                            self._logger.warning(f"Input blocked: {gate} - {reasoning}")
+                            return _create_blocked_response(
+                                f"Input blocked by Sentinel THSP validation. "
+                                f"Gate failed: {gate}. "
+                                f"Reason: {reasoning}",
+                                gate=gate,
+                            )
 
         # Inject seed into system prompt
         if self._enable_seed_injection:
@@ -558,12 +623,14 @@ class _SentinelMessages:
         # Validate input
         if self._validate_input:
             for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, str) and msg.get("role") == "user":
-                    is_safe, gate, reasoning = self._validate_content(content)
-                    if not is_safe:
-                        self._logger.warning(f"Stream input blocked: {gate} - {reasoning}")
-                        return BlockedStreamIterator(
+                if msg.get("role") == "user":
+                    # Extract text from content (handles both string and list formats)
+                    content = _extract_text_from_content(msg.get("content"))
+                    if content:  # Only validate if there's text content
+                        is_safe, gate, reasoning = self._validate_content(content)
+                        if not is_safe:
+                            self._logger.warning(f"Stream input blocked: {gate} - {reasoning}")
+                            return BlockedStreamIterator(
                             f"Input blocked by Sentinel. "
                             f"Gate: {gate}. "
                             f"Reason: {reasoning}",
@@ -689,7 +756,12 @@ class _SentinelAsyncMessages:
         if semantic_error and not heuristic_passed:
             return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
 
-        return True, None, None
+        # This line should never be reached - all code paths above should return
+        # If we get here, there's a logic error in the validation flow
+        raise RuntimeError(
+            "Unexpected validation state: no validators passed and no error condition matched. "
+            "This indicates a bug in the validation logic."
+        )
 
     async def create(
         self,
@@ -703,17 +775,19 @@ class _SentinelAsyncMessages:
         # Validate input messages
         if self._validate_input:
             for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, str) and msg.get("role") == "user":
-                    is_safe, gate, reasoning = await self._validate_content(content)
-                    if not is_safe:
-                        self._logger.warning(f"Input blocked: {gate} - {reasoning}")
-                        return _create_blocked_response(
-                            f"Input blocked by Sentinel THSP validation. "
-                            f"Gate failed: {gate}. "
-                            f"Reason: {reasoning}",
-                            gate=gate,
-                        )
+                if msg.get("role") == "user":
+                    # Extract text from content (handles both string and list formats)
+                    content = _extract_text_from_content(msg.get("content"))
+                    if content:  # Only validate if there's text content
+                        is_safe, gate, reasoning = await self._validate_content(content)
+                        if not is_safe:
+                            self._logger.warning(f"Input blocked: {gate} - {reasoning}")
+                            return _create_blocked_response(
+                                f"Input blocked by Sentinel THSP validation. "
+                                f"Gate failed: {gate}. "
+                                f"Reason: {reasoning}",
+                                gate=gate,
+                            )
 
         # Inject seed
         if self._enable_seed_injection:
@@ -766,17 +840,19 @@ class _SentinelAsyncMessages:
         # Validate input
         if self._validate_input:
             for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, str) and msg.get("role") == "user":
-                    is_safe, gate, reasoning = await self._validate_content(content)
-                    if not is_safe:
-                        self._logger.warning(f"Stream input blocked: {gate} - {reasoning}")
-                        return AsyncBlockedStreamIterator(
-                            f"Input blocked by Sentinel. "
-                            f"Gate: {gate}. "
-                            f"Reason: {reasoning}",
-                            gate=gate,
-                        )
+                if msg.get("role") == "user":
+                    # Extract text from content (handles both string and list formats)
+                    content = _extract_text_from_content(msg.get("content"))
+                    if content:  # Only validate if there's text content
+                        is_safe, gate, reasoning = await self._validate_content(content)
+                        if not is_safe:
+                            self._logger.warning(f"Stream input blocked: {gate} - {reasoning}")
+                            return AsyncBlockedStreamIterator(
+                                f"Input blocked by Sentinel. "
+                                f"Gate: {gate}. "
+                                f"Reason: {reasoning}",
+                                gate=gate,
+                            )
 
         # Inject seed
         if self._enable_seed_injection:
@@ -1197,6 +1273,8 @@ def create_safe_client(
 
 
 __all__ = [
+    # Version
+    "__version__",
     # Main classes
     "SentinelAnthropic",
     "SentinelAsyncAnthropic",
