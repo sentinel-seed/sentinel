@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="#0f0f1a"/>
+
+  <!-- Shield shape -->
+  <path d="M64 16 L108 32 L108 64 C108 88 88 108 64 116 C40 108 20 88 20 64 L20 32 Z"
+        fill="url(#shieldGradient)"
+        stroke="#22c55e"
+        stroke-width="2"/>
+
+  <!-- Inner shield highlight -->
+  <path d="M64 24 L100 38 L100 64 C100 84 82 100 64 108 C46 100 28 84 28 64 L28 38 Z"
+        fill="#1a1a2e"
+        opacity="0.8"/>
+
+  <!-- Checkmark / S symbol -->
+  <path d="M48 64 L58 74 L80 52"
+        fill="none"
+        stroke="#22c55e"
+        stroke-width="8"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+</svg>
