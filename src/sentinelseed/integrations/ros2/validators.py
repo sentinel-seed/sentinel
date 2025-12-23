@@ -569,9 +569,41 @@ class RobotSafetyRules:
             # This is acceptable: many robots don't have localization
             return violations
 
-        x, y, z = current_position
+        # Validate position format
+        try:
+            if not hasattr(current_position, '__iter__') or isinstance(current_position, str):
+                violations.append(
+                    f"[SCOPE] Invalid position format: expected (x, y, z) tuple, got {type(current_position).__name__}"
+                )
+                return violations
 
-        # Check for invalid position values
+            pos_list = list(current_position)
+            if len(pos_list) != 3:
+                violations.append(
+                    f"[SCOPE] Invalid position format: expected 3 values (x, y, z), got {len(pos_list)}"
+                )
+                return violations
+
+            x, y, z = pos_list
+
+            # Validate each coordinate is a number
+            for name, val in [("x", x), ("y", y), ("z", z)]:
+                if val is None:
+                    violations.append(f"[SCOPE] Position {name} is None")
+                    return violations
+                if not isinstance(val, (int, float)):
+                    violations.append(
+                        f"[SCOPE] Position {name} must be a number, got {type(val).__name__}"
+                    )
+                    return violations
+
+            x, y, z = float(x), float(y), float(z)
+
+        except (TypeError, ValueError) as e:
+            violations.append(f"[SCOPE] Invalid position: {e}")
+            return violations
+
+        # Check for invalid position values (NaN, inf)
         if any(math.isnan(v) or math.isinf(v) for v in (x, y, z)):
             violations.append(f"[SCOPE] Invalid position values: ({x}, {y}, {z})")
             return violations
