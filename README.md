@@ -1065,9 +1065,9 @@ python run_benchmark_unified.py --benchmark harmbench --model gpt-4o-mini --seed
 ## Acknowledgments
 
 Sentinel builds on research from:
-- [SafeAgentBench](https://arxiv.org/abs/2410.03792): Embodied AI safety benchmark
+- [SafeAgentBench](https://arxiv.org/abs/2412.13178): Embodied AI safety benchmark
 - [HarmBench](https://arxiv.org/abs/2402.04249): Harmful behavior evaluation
-- [Self-Reminder](https://www.nature.com/articles/s42256-024-00922-3): Nature Machine Intelligence
+- [Self-Reminder](https://www.nature.com/articles/s42256-023-00765-8): Nature Machine Intelligence
 - [Agentic Misalignment](https://www.anthropic.com/research/agentic-misalignment): Anthropic
 - [SEED 4.1](https://github.com/davfd): Foundation Labs (pioneer of alignment seeds)
 
