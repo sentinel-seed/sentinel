@@ -17,12 +17,16 @@ AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope
 
 ## Installation
 
-### Status: Development Build
+### From JetBrains Marketplace
 
-> ⚠️ **Note:** This plugin is not yet published to the JetBrains Marketplace.
-> Install from disk using the instructions below.
+1. Open your JetBrains IDE (IntelliJ IDEA, PyCharm, WebStorm, etc.)
+2. Go to **Settings → Plugins → Marketplace**
+3. Search for "Sentinel AI Safety"
+4. Click **Install**
 
-### From Disk (Recommended)
+Or visit: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
+
+### From Disk
 
 1. Download the latest `.zip` from [Releases](https://github.com/sentinel-seed/sentinel/releases)
 2. Go to **Settings → Plugins → ⚙️ → Install Plugin from Disk**
