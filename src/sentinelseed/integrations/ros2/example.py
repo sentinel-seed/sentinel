@@ -81,6 +81,49 @@ def example_1_basic_filter():
     print(f"\nStatistics: {stats}")
 
 
+def example_1b_warn_mode():
+    """
+    Example 1b: Warn Mode (Monitor Only)
+
+    The 'warn' mode logs violations but passes commands unchanged.
+    Useful for debugging, dry-runs, and auditing.
+    """
+    print("\n" + "=" * 60)
+    print("Example 1b: Warn Mode (Monitor Only)")
+    print("=" * 60)
+
+    from sentinelseed.integrations.ros2 import CommandSafetyFilter, VelocityLimits
+    from sentinelseed.integrations.ros2.nodes import Twist, Vector3
+
+    # Create filter in WARN mode
+    filter = CommandSafetyFilter(
+        velocity_limits=VelocityLimits.differential_drive(
+            max_linear=1.0,
+            max_angular=0.5,
+        ),
+        mode="warn",  # Monitor only - no intervention
+    )
+
+    # Test unsafe command
+    unsafe_cmd = Twist(
+        linear=Vector3(2.0, 0.0, 0.0),  # 2 m/s - exceeds limit!
+        angular=Vector3(0.0, 0.0, 0.0),
+    )
+
+    result_msg, result = filter.filter(unsafe_cmd)
+    print(f"\nUnsafe command in WARN mode:")
+    print(f"  Is safe: {result.is_safe}")
+    print(f"  Level: {result.level}")
+    print(f"  Violations: {result.violations}")
+    print(f"  Output (unchanged!): linear_x={result_msg.linear.x}")
+    print(f"  Note: Command passed through without modification")
+
+    # Get statistics
+    stats = filter.get_stats()
+    print(f"\nStatistics: {stats}")
+    print(f"  warned={stats['warned']} (logged but not blocked)")
+
+
 def example_2_string_filter():
     """
     Example 2: String Command Safety Filter
@@ -399,6 +442,7 @@ def main():
 
     try:
         example_1_basic_filter()
+        example_1b_warn_mode()
         example_2_string_filter()
         example_3_safety_rules()
         example_4_ros2_node_mock()

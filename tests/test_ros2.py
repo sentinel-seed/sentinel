@@ -74,7 +74,7 @@ class TestModuleAttributes:
         """Version should be defined."""
         assert __version__ is not None
         assert isinstance(__version__, str)
-        assert __version__ == "1.1.0"
+        assert __version__ == "1.2.0"
 
     def test_all_exports(self):
         """All expected symbols should be exported."""
