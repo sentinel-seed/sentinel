@@ -25,7 +25,8 @@ try:
     from agents.exceptions import InputGuardrailTripwireTriggered
 
     AGENTS_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError: SDK installed but with incompatible structure
     print("OpenAI Agents SDK not installed. Install with: pip install openai-agents")
 
 from sentinelseed.integrations.openai_agents import (

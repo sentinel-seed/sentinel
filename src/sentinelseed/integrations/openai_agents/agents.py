@@ -169,9 +169,9 @@ def create_sentinel_agent(
     else:
         final_instructions = instructions
 
-    # Build guardrails list
-    input_guardrails = list(kwargs.pop("input_guardrails", []))
-    output_guardrails = list(kwargs.pop("output_guardrails", []))
+    # Build guardrails list (handle None explicitly passed by user)
+    input_guardrails = list(kwargs.pop("input_guardrails", None) or [])
+    output_guardrails = list(kwargs.pop("output_guardrails", None) or [])
 
     if add_input_guardrail:
         input_guardrails.append(
@@ -184,15 +184,24 @@ def create_sentinel_agent(
     if add_output_guardrail:
         output_guardrails.append(sentinel_output_guardrail(config=config))
 
-    # Create agent
-    return Agent(
-        name=name,
-        instructions=final_instructions,
-        model=model,
-        tools=tools or [],
-        handoffs=handoffs or [],
-        model_settings=model_settings,
-        input_guardrails=input_guardrails,
-        output_guardrails=output_guardrails,
-        **kwargs,
-    )
+    # Create agent - only pass parameters that have values
+    # (some SDKs treat None differently from omitted parameters)
+    agent_kwargs = {
+        "name": name,
+        "instructions": final_instructions,
+        "tools": tools or [],
+        "handoffs": handoffs or [],
+        "input_guardrails": input_guardrails,
+        "output_guardrails": output_guardrails,
+    }
+
+    # Only add optional parameters if they have values
+    if model is not None:
+        agent_kwargs["model"] = model
+    if model_settings is not None:
+        agent_kwargs["model_settings"] = model_settings
+
+    # Merge any additional kwargs
+    agent_kwargs.update(kwargs)
+
+    return Agent(**agent_kwargs)

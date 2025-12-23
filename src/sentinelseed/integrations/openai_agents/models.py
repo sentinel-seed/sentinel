@@ -17,7 +17,8 @@ try:
     from pydantic import BaseModel, Field
 
     PYDANTIC_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError: Pydantic installed but with incompatible structure
     BaseModel = None
     Field = None
 

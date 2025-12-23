@@ -154,9 +154,10 @@ def require_agents_sdk() -> None:
     """
     try:
         import agents  # noqa: F401
-    except ImportError:
+    except (ImportError, AttributeError):
+        # AttributeError: SDK installed but with incompatible structure
         raise ImportError(
-            "openai-agents package not installed. "
+            "openai-agents package not installed or incompatible. "
             "Install with: pip install openai-agents"
         )
 

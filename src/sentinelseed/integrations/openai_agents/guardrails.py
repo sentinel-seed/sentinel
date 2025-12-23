@@ -57,7 +57,8 @@ try:
     )
 
     AGENTS_SDK_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError: SDK installed but with incompatible structure
     Agent = None
     Runner = None
     InputGuardrail = None
