@@ -110,7 +110,7 @@ MCP_AVAILABLE = False
 try:
     from mcp.server.fastmcp import FastMCP, Context
     MCP_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     FastMCP = None
     Context = None
 
@@ -573,18 +573,18 @@ class SentinelMCPClient:
         """Async context manager entry - establishes connection."""
         try:
             from mcp import ClientSession
-        except ImportError:
+        except (ImportError, AttributeError):
             raise ImportError(
-                "mcp package not installed. Install with: pip install mcp"
+                "mcp package not installed or incompatible version. Install with: pip install mcp"
             )
 
         if self.url:
             # HTTP transport for remote servers
             try:
                 from mcp.client.streamable_http import streamable_http_client
-            except ImportError:
+            except (ImportError, AttributeError):
                 raise ImportError(
-                    "Streamable HTTP client not available. Update mcp package."
+                    "Streamable HTTP client not available or incompatible version. Update mcp package."
                 )
 
             self._transport_context = streamable_http_client(self.url)

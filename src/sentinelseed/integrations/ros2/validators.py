@@ -94,7 +94,7 @@ class VelocityLimits:
         cls,
         max_linear: float = DEFAULT_MAX_LINEAR_VEL,
         max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
-    ):
+    ) -> "VelocityLimits":
         """Create limits for a differential drive robot."""
         return cls(
             max_linear_x=max_linear,
@@ -110,7 +110,7 @@ class VelocityLimits:
         cls,
         max_linear: float = DEFAULT_MAX_LINEAR_VEL,
         max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
-    ):
+    ) -> "VelocityLimits":
         """Create limits for an omnidirectional robot."""
         return cls(
             max_linear_x=max_linear,
@@ -127,7 +127,7 @@ class VelocityLimits:
         max_linear: float = 2.0,
         max_vertical: float = 1.0,
         max_angular: float = 1.0,
-    ):
+    ) -> "VelocityLimits":
         """Create limits for a drone/UAV."""
         return cls(
             max_linear_x=max_linear,
@@ -198,7 +198,7 @@ class SafetyZone:
         )
 
     @classmethod
-    def unlimited(cls):
+    def unlimited(cls) -> "SafetyZone":
         """
         Create unlimited safety zone.
 
@@ -217,7 +217,7 @@ class SafetyZone:
         )
 
     @classmethod
-    def indoor(cls, room_size: float = DEFAULT_ROOM_SIZE):
+    def indoor(cls, room_size: float = DEFAULT_ROOM_SIZE) -> "SafetyZone":
         """Create indoor safety zone."""
         if room_size <= 0:
             raise ValidationError(
