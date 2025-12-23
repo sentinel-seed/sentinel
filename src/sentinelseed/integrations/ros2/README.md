@@ -10,10 +10,10 @@ This integration provides THSP-based safety validation for ROS2 robots. It imple
 
 ```mermaid
 flowchart LR
-    A[Navigation<br/>nav2/move] --> B[/cmd_vel_raw]
-    B --> C[SentinelSafety<br/>Node]
-    C --> D[Robot]
-    C --> E[/sentinel/status]
+    A["Navigation<br/>(nav2/move)"] --> B["/cmd_vel_raw"]
+    B --> C["SentinelSafety<br/>Node"]
+    C --> D["Robot"]
+    C --> E["/sentinel/status"]
 ```
 
 ## Installation
