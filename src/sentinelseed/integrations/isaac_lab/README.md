@@ -8,15 +8,15 @@ This integration provides gymnasium-compatible wrappers that validate robot acti
 
 ## Architecture
 
-```
-[RL Agent] ──action──> [SentinelSafetyWrapper] ──validated──> [Isaac Lab Env]
-                              │
-                              ▼
-                       [THSP Validation]
-                       ├─ Truth: Is action valid?
-                       ├─ Harm: Is action dangerous?
-                       ├─ Scope: Is action within bounds?
-                       └─ Purpose: Does action serve goal?
+```mermaid
+flowchart LR
+    A["RL Agent"] -->|action| B["SentinelSafetyWrapper"]
+    B -->|validated| C["Isaac Lab Env"]
+    B --> D["THSP Validation"]
+    D --> E["Truth: Is action valid?"]
+    D --> F["Harm: Is action dangerous?"]
+    D --> G["Scope: Is action within bounds?"]
+    D --> H["Purpose: Does action serve goal?"]
 ```
 
 ## Installation

@@ -293,28 +293,32 @@ except InvalidParameterError as e:
 
 ### Content Validation Workflow
 
-```
-[User Input] → [SentinelValidationBlock] → [Conditional]
-                                              ↓ safe=true
-                                         [Process Content]
-                                              ↓ safe=false
-                                         [Reject/Log]
+```mermaid
+flowchart LR
+    A["User Input"] --> B["SentinelValidationBlock"]
+    B --> C{"Conditional"}
+    C -->|safe=true| D["Process Content"]
+    C -->|safe=false| E["Reject/Log"]
 ```
 
 ### Safe Action Execution
 
-```
-[Action Request] → [SentinelActionCheckBlock] → [Conditional]
-                                                    ↓ should_proceed=true
-                                               [Execute Action]
-                                                    ↓ should_proceed=false
-                                               [Human Review]
+```mermaid
+flowchart LR
+    A["Action Request"] --> B["SentinelActionCheckBlock"]
+    B --> C{"Conditional"}
+    C -->|should_proceed=true| D["Execute Action"]
+    C -->|should_proceed=false| E["Human Review"]
 ```
 
 ### LLM with Safety Seed
 
-```
-[SentinelSeedBlock] → [Build System Prompt] → [LLM Call] → [SentinelValidationBlock] → [Output]
+```mermaid
+flowchart LR
+    A["SentinelSeedBlock"] --> B["Build System Prompt"]
+    B --> C["LLM Call"]
+    C --> D["SentinelValidationBlock"]
+    D --> E["Output"]
 ```
 
 ## API Reference

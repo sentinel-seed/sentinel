@@ -35,43 +35,13 @@ This integration includes multiple security layers:
 
 ## How It Works
 
-```
-User Input
-    │
-    ▼
-┌─────────────────────────────────────┐
-│  Sanitization Layer                 │
-│  - XML escape special chars         │
-│  - Generate unique boundary tokens  │
-│  - Detect injection attempts        │
-│  - Truncate oversized input         │
-└─────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────┐
-│  Input Guardrail (LLM Agent)        │
-│  - Analyzes input semantically      │
-│  - Checks all 4 THSP gates          │
-│  - Returns structured validation    │
-│  - Blocks on injection detection    │
-└─────────────────────────────────────┘
-    │ (blocked if unsafe)
-    ▼
-┌─────────────────────────────────────┐
-│  Main Agent                         │
-│  - Has Sentinel seed in instructions│
-│  - Processes the request            │
-└─────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────┐
-│  Output Guardrail (LLM Agent)       │
-│  - Validates response semantically  │
-│  - Ensures safe, purposeful output  │
-└─────────────────────────────────────┘
-    │ (blocked if unsafe)
-    ▼
-User Output
+```mermaid
+flowchart TB
+    A["User Input"] --> B["Sanitization Layer<br/>XML escape, boundary tokens,<br/>injection detection, truncation"]
+    B --> C["Input Guardrail (LLM)<br/>Semantic analysis, THSP gates,<br/>blocks on injection"]
+    C -->|blocked if unsafe| D["Main Agent<br/>Sentinel seed in instructions"]
+    D --> E["Output Guardrail (LLM)<br/>Validates response,<br/>ensures safe output"]
+    E -->|blocked if unsafe| F["User Output"]
 ```
 
 ## Quick Start
