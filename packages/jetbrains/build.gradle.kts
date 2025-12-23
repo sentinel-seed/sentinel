@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.25"
-    id("org.jetbrains.intellij.platform") version "2.2.1"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
 }
 
 group = providers.gradleProperty("pluginGroup").get()
@@ -77,7 +77,7 @@ intellijPlatform {
 
 tasks {
     wrapper {
-        gradleVersion = "8.10"
+        gradleVersion = "8.13"
     }
 
     buildSearchableOptions {
