@@ -421,7 +421,7 @@ from sentinelseed.integrations.ros2 import (
 
 - [ROS 2 Safety Working Group](https://github.com/ros-safety)
 - [ROS 2 Lifecycle Nodes](https://design.ros2.org/articles/node_lifecycle.html)
-- [Nav2 Safety Node](https://navigation.ros.org/2021summerOfCode/projects/safety_node.html)
+- [Nav2 Collision Monitor](https://docs.nav2.org/configuration/packages/configuring-collision-monitor.html)
 - [cmd_vel_mux (Toyota Research)](https://github.com/ToyotaResearchInstitute/cmd_vel_mux)
 
 ## License
