@@ -320,9 +320,57 @@ print(f"Blocked: {diagnostics.commands_blocked}")
 
 ## Running Tests
 
+### Mock Mode (No ROS2 Required)
+
 ```bash
-# Run examples
+# Run examples in mock mode (works on any OS)
 python -m sentinelseed.integrations.ros2.example
+
+# Run unit tests
+pytest tests/test_ros2.py -v
+```
+
+### Real ROS2 Testing (Linux/WSL2)
+
+To test with actual ROS2 nodes and message passing:
+
+**1. Install ROS2 (WSL2/Ubuntu):**
+
+```bash
+# On Windows, open WSL:
+wsl
+
+# Run the installation script:
+curl -sSL https://raw.githubusercontent.com/sentinel-seed/sentinel/main/src/sentinelseed/integrations/ros2/scripts/install_ros2_wsl.sh | bash
+
+# Or manually install ROS2 Humble/Jazzy following ros.org instructions
+```
+
+**2. Run the real integration test:**
+
+```bash
+# Source ROS2
+source /opt/ros/humble/setup.bash  # or jazzy
+
+# Install sentinelseed
+pip install sentinelseed
+
+# Run real ROS2 test
+python3 -m sentinelseed.integrations.ros2.scripts.test_ros2_real
+```
+
+**Expected output:**
+```
+[PASS] ROS2 Available
+[PASS] ROS2 Init
+[PASS] Sentinel Import - Using real ROS2 (not mock)
+[PASS] Create SafetyNode
+[PASS] Configure Lifecycle
+[PASS] Activate Lifecycle
+[PASS] Safe Command Passthrough
+[PASS] Unsafe Command Clamping
+[PASS] Status Publication
+[PASS] Diagnostics
 ```
 
 ## Error Handling
