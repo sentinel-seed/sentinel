@@ -220,10 +220,13 @@ class CommandSafetyFilter:
         velocity_limits: Maximum allowed velocities
         safety_zone: Spatial operation boundaries
         require_purpose: Require explicit purpose for commands
-        mode: Filter mode - 'block' (reject unsafe), 'clamp' (limit to safe values)
+        mode: Filter mode:
+            - 'block': Emergency stop on unsafe command (Cat 0/STO)
+            - 'clamp': Limit velocity to safe maximum (SLS)
+            - 'warn': Log violation but pass command unchanged (monitor only)
 
     Raises:
-        ValueError: If mode is not 'block' or 'clamp'
+        ValueError: If mode is not valid
 
     Example:
         filter = CommandSafetyFilter(
@@ -252,6 +255,7 @@ class CommandSafetyFilter:
             "processed": 0,
             "blocked": 0,
             "clamped": 0,
+            "warned": 0,
         }
 
     def filter(
@@ -296,17 +300,24 @@ class CommandSafetyFilter:
         if result.is_safe:
             return twist, result
 
-        # Handle unsafe command
-        if self.mode == "block" and result.level == SafetyLevel.DANGEROUS:
+        # Handle unsafe command based on mode
+        if self.mode == "warn":
+            # Warn mode: log but pass through unchanged
+            self._stats["warned"] += 1
+            _logger.warning(
+                f"Unsafe command detected (warn mode): {result.violations}"
+            )
+            return twist, result
+        elif self.mode == "block" and result.level == SafetyLevel.DANGEROUS:
+            # Block mode: emergency stop
             self._stats["blocked"] += 1
-            # Return zero velocity (emergency stop)
             return self._create_stop_twist(), result
-        elif result.modified_command:
+        elif self.mode == "clamp" and result.modified_command:
+            # Clamp mode: limit to safe values
             self._stats["clamped"] += 1
-            # Return clamped values
             return self._create_twist_from_dict(result.modified_command), result
         else:
-            # Default: pass through with warning
+            # Fallback: pass through (should not reach here normally)
             return twist, result
 
     def get_stats(self) -> Dict[str, int]:
@@ -497,7 +508,10 @@ class SentinelSafetyNode(LifecycleNode if ROS2_AVAILABLE else Node):
         msg_type: Message type ('twist' or 'string')
         max_linear_vel: Maximum linear velocity (m/s)
         max_angular_vel: Maximum angular velocity (rad/s)
-        mode: Filter mode ('block' or 'clamp')
+        mode: Filter mode:
+            - 'block': Emergency stop on unsafe command (Cat 0/STO)
+            - 'clamp': Limit velocity to safe maximum (SLS)
+            - 'warn': Log violation but pass command unchanged (monitor only)
 
     Raises:
         ValueError: If mode or msg_type is invalid
@@ -784,7 +798,10 @@ def create_safety_node(
         output_topic: Topic to publish safe commands
         max_linear_vel: Maximum linear velocity (m/s)
         max_angular_vel: Maximum angular velocity (rad/s)
-        mode: Filter mode ('block' or 'clamp')
+        mode: Filter mode:
+            - 'block': Emergency stop on unsafe command
+            - 'clamp': Limit velocity to safe maximum
+            - 'warn': Log violation but pass command unchanged
 
     Returns:
         Configured SentinelSafetyNode

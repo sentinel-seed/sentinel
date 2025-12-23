@@ -114,7 +114,7 @@ class TestConstants:
 
     def test_valid_modes(self):
         """VALID_MODES should contain expected values."""
-        assert VALID_MODES == ("block", "clamp")
+        assert VALID_MODES == ("block", "clamp", "warn")
 
     def test_valid_msg_types(self):
         """VALID_MSG_TYPES should contain expected values."""
@@ -375,6 +375,11 @@ class TestCommandSafetyFilter:
         filter = CommandSafetyFilter(mode="block")
         assert filter.mode == "block"
 
+    def test_valid_mode_warn(self):
+        """Warn mode should be valid."""
+        filter = CommandSafetyFilter(mode="warn")
+        assert filter.mode == "warn"
+
     def test_invalid_mode_raises_error(self):
         """Invalid mode should raise ValueError."""
         with pytest.raises(ValueError) as exc_info:
@@ -425,6 +430,47 @@ class TestCommandSafetyFilter:
         safe_twist, result = filter.filter(twist)
         assert not result.is_safe
         assert safe_twist.linear.x == 0.0  # Stopped
+
+    def test_filter_unsafe_twist_warn(self):
+        """Unsafe twist in warn mode should pass unchanged."""
+        filter = CommandSafetyFilter(
+            velocity_limits=VelocityLimits.differential_drive(max_linear=1.0),
+            mode="warn",
+        )
+        twist = Twist(
+            linear=Vector3(2.0, 0.0, 0.0),
+            angular=Vector3(0.0, 0.0, 0.0),
+        )
+        output_twist, result = filter.filter(twist)
+        assert not result.is_safe
+        # Warn mode: command passes through unchanged
+        assert output_twist.linear.x == 2.0
+
+    def test_warn_mode_tracks_stats(self):
+        """Warn mode should track warned count."""
+        filter = CommandSafetyFilter(
+            velocity_limits=VelocityLimits.differential_drive(max_linear=1.0),
+            mode="warn",
+        )
+        # Safe command
+        safe_twist = Twist(
+            linear=Vector3(0.5, 0.0, 0.0),
+            angular=Vector3(0.0, 0.0, 0.0),
+        )
+        filter.filter(safe_twist)
+
+        # Unsafe command
+        unsafe_twist = Twist(
+            linear=Vector3(2.0, 0.0, 0.0),
+            angular=Vector3(0.0, 0.0, 0.0),
+        )
+        filter.filter(unsafe_twist)
+
+        stats = filter.get_stats()
+        assert stats["processed"] == 2
+        assert stats["warned"] == 1
+        assert stats["blocked"] == 0
+        assert stats["clamped"] == 0
 
     def test_get_stats(self):
         """Stats should track processed commands."""

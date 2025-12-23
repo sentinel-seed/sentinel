@@ -41,7 +41,7 @@ node = SentinelSafetyNode(
     output_topic='/cmd_vel',
     max_linear_vel=1.0,
     max_angular_vel=0.5,
-    mode='clamp',  # 'clamp' or 'block'
+    mode='clamp',  # 'block', 'clamp', or 'warn'
 )
 rclpy.spin(node)
 ```
@@ -85,7 +85,7 @@ node = SentinelSafetyNode(
     msg_type='twist',                # 'twist' or 'string'
     max_linear_vel=1.0,              # m/s
     max_angular_vel=0.5,             # rad/s
-    mode='clamp',                    # 'clamp' or 'block'
+    mode='clamp',                    # 'block', 'clamp', or 'warn'
     require_purpose=False,           # Require purpose for commands
 )
 ```
@@ -168,6 +168,32 @@ zone = SafetyZone(
     min_z=0, max_z=2,
 )
 ```
+
+## Operating Modes
+
+The integration supports three operating modes, inspired by industrial safety standards (IEC 60204-1, ISO 10218):
+
+| Mode | Industrial Ref | Behavior | Use Case |
+|------|---------------|----------|----------|
+| **block** | Cat 0 / STO | Emergency stop (velocity = 0) | Maximum safety, E-stop scenarios |
+| **clamp** | SLS | Limit velocity to safe maximum | Normal operation |
+| **warn** | Monitor only | Log violation, pass unchanged | Debugging, dry-run, auditing |
+
+### Mode Examples
+
+```python
+# Block mode: Stop robot on unsafe command
+filter = CommandSafetyFilter(mode='block')
+
+# Clamp mode: Limit velocity (default)
+filter = CommandSafetyFilter(mode='clamp')
+
+# Warn mode: Monitor only, don't intervene
+filter = CommandSafetyFilter(mode='warn')
+```
+
+**Future modes (planned):**
+- `ramp`: Gradual deceleration (SS1) - planned for next version
 
 ## THSP Gates for Robotics
 
@@ -403,7 +429,7 @@ Available constants for configuration:
 
 ```python
 from sentinelseed.integrations.ros2 import (
-    VALID_MODES,           # ("block", "clamp")
+    VALID_MODES,           # ("block", "clamp", "warn")
     VALID_MSG_TYPES,       # ("twist", "string")
     DEFAULT_MAX_LINEAR_VEL,  # 1.0 m/s
     DEFAULT_MAX_ANGULAR_VEL, # 0.5 rad/s
@@ -414,10 +440,16 @@ from sentinelseed.integrations.ros2 import (
 
 ## References
 
+### ROS2
 - [ROS 2 Safety Working Group](https://github.com/ros-safety)
 - [ROS 2 Lifecycle Nodes](https://design.ros2.org/articles/node_lifecycle.html)
 - [Nav2 Collision Monitor](https://docs.nav2.org/configuration/packages/configuring-collision-monitor.html)
 - [cmd_vel_mux (Toyota Research)](https://github.com/ToyotaResearchInstitute/cmd_vel_mux)
+
+### Industrial Safety Standards
+- [IEC 60204-1](https://www.iso.org/standard/82337.html) - Stop categories (Cat 0, Cat 1, Cat 2)
+- [ISO 10218](https://www.iso.org/standard/73934.html) - Robot safety requirements
+- [ISO/TS 15066](https://www.iso.org/standard/62996.html) - Collaborative robot safety
 
 ## License
 

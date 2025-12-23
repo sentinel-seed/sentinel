@@ -19,7 +19,12 @@ import re
 
 
 # Validation constants
-VALID_MODES = ("block", "clamp")
+# Modes:
+#   - block: Emergency stop on unsafe command (Cat 0/STO)
+#   - clamp: Limit velocity to safe maximum (SLS)
+#   - warn: Log violation but pass command unchanged (monitor only)
+#   - ramp: Gradual deceleration (SS1) - planned for future version
+VALID_MODES = ("block", "clamp", "warn")
 VALID_MSG_TYPES = ("twist", "string")
 DEFAULT_MAX_LINEAR_VEL = 1.0
 DEFAULT_MAX_ANGULAR_VEL = 0.5
