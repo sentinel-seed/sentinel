@@ -309,26 +309,17 @@ sentinel_agent = Sentinel(seed_level=SeedLevel.STANDARD)  # Recommended
 
 All requests pass through four sequential gates:
 
-```
-REQUEST
-   ↓
-┌──────────────────┐
-│  GATE 1: TRUTH   │  "Is this factually accurate?"
-└────────┬─────────┘
-         ↓ PASS
-┌──────────────────┐
-│  GATE 2: HARM    │  "Could this cause harm?"
-└────────┬─────────┘
-         ↓ PASS
-┌──────────────────┐
-│  GATE 3: SCOPE   │  "Is this within boundaries?"
-└────────┬─────────┘
-         ↓ PASS
-┌──────────────────┐
-│  GATE 4: PURPOSE │  "Does this serve a legitimate purpose?"
-└────────┬─────────┘
-         ↓ PASS
-    ASSIST FULLY
+```mermaid
+flowchart TD
+    A["REQUEST"] --> B{"GATE 1: TRUTH<br/><i>Is this factually accurate?</i>"}
+    B -->|PASS| C{"GATE 2: HARM<br/><i>Could this cause harm?</i>"}
+    B -->|FAIL| X["❌ BLOCKED"]
+    C -->|PASS| D{"GATE 3: SCOPE<br/><i>Is this within boundaries?</i>"}
+    C -->|FAIL| X
+    D -->|PASS| E{"GATE 4: PURPOSE<br/><i>Does this serve legitimate purpose?</i>"}
+    D -->|FAIL| X
+    E -->|PASS| F["✅ ASSIST FULLY"]
+    E -->|FAIL| X
 ```
 
 **Key difference from v1:** The PURPOSE gate ensures actions serve legitimate benefit; the absence of harm is not sufficient.
