@@ -38,7 +38,30 @@ import logging
 import time
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+# B002: Removed unused imports (reserved for future semantic validation)
+# from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+
+# B001: Explicit exports
+__all__ = [
+    # Classes principais
+    "SentinelAssistant",
+    "SentinelAssistantClient",
+    "SentinelAsyncAssistantClient",
+    # Funcoes utilitarias
+    "wrap_assistant",
+    "inject_seed_instructions",
+    # Exceptions
+    "AssistantRunError",
+    "AssistantRequiresActionError",
+    "ValidationError",
+    "OutputBlockedError",
+    # Constantes
+    "OPENAI_AVAILABLE",
+    "VALID_SEED_LEVELS",
+    "DEFAULT_POLL_INTERVAL",
+    "DEFAULT_TIMEOUT",
+    "DEFAULT_VALIDATION_TIMEOUT",
+]
 
 logger = logging.getLogger("sentinelseed.openai_assistant")
 
@@ -1142,6 +1165,14 @@ def wrap_assistant(
         assistant = client.beta.assistants.retrieve("asst_...")
         safe_assistant = wrap_assistant(assistant)
     """
+    # M001: Guard against double wrapping
+    if isinstance(assistant, SentinelAssistant):
+        logger.warning(
+            f"Assistant '{getattr(assistant, 'name', 'unknown')}' already wrapped. "
+            "Returning as-is to prevent double wrapping."
+        )
+        return assistant
+
     # Validate seed_level (SentinelAssistant.__init__ also validates, but fail early)
     validated_level = _validate_seed_level(seed_level)
     return SentinelAssistant(assistant, sentinel, validated_level)
