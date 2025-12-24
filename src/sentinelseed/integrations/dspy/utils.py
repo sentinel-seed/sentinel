@@ -570,7 +570,7 @@ def require_dspy(func_name: str = "this function") -> None:
     """
     try:
         import dspy  # noqa: F401
-    except ImportError:
+    except (ImportError, AttributeError):
         raise DSPyNotAvailableError()
 
 

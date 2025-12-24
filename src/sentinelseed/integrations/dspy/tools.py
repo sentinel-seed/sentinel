@@ -22,7 +22,7 @@ from typing import Callable, Optional
 
 try:
     import dspy  # noqa: F401
-except ImportError:
+except (ImportError, AttributeError):
     raise ImportError(
         "dspy is required for this integration. "
         "Install with: pip install dspy"
