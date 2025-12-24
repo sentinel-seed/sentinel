@@ -20,7 +20,16 @@ Usage:
 
 from typing import Any, Dict, List, Optional, Union, Literal
 
+# Check if CrewAI is available
+try:
+    import crewai as _crewai
+    CREWAI_AVAILABLE = True
+except (ImportError, AttributeError):
+    CREWAI_AVAILABLE = False
+
 __all__ = [
+    # Availability flag
+    "CREWAI_AVAILABLE",
     # Core functions
     "safe_agent",
     "create_safe_crew",
@@ -83,6 +92,17 @@ def safe_agent(
         # Force specific method
         safe_researcher = safe_agent(researcher, injection_method="system_template")
     """
+    # Guard against double injection
+    # Check if _sentinel_injection_method has a valid value we set
+    # We check for specific string values to avoid being fooled by Mock objects
+    existing_method = getattr(agent, '_sentinel_injection_method', None)
+    if existing_method in ("auto", "system_template", "backstory"):
+        logger.warning(
+            f"Agent '{getattr(agent, 'role', 'unknown')}' already has Sentinel injected. "
+            "Skipping to prevent duplicate seed injection."
+        )
+        return agent
+
     sentinel = sentinel or Sentinel(seed_level=seed_level)
     seed = sentinel.get_seed()
 
@@ -210,7 +230,7 @@ class SentinelCrew:
                 tasks=self.tasks,
                 **crew_kwargs
             )
-        except ImportError:
+        except (ImportError, AttributeError):
             raise ImportError(
                 "crewai package not installed. "
                 "Install with: pip install sentinelseed[crewai]"
@@ -353,10 +373,24 @@ def create_safe_crew(
                 {"description": "Write about X", "agent_role": "Writer"},
             ]
         )
+
+    Raises:
+        ValueError: If agents_config is empty, has duplicate roles, or task references invalid agent_role
+        ImportError: If crewai is not installed
     """
+    # M002: Validate agents_config is not empty
+    if not agents_config:
+        raise ValueError("agents_config cannot be empty. Provide at least one agent configuration.")
+
+    # M004: Check for duplicate roles before creating agents (no crewai needed)
+    roles = [config.get("role") for config in agents_config]
+    duplicates = set(r for r in roles if roles.count(r) > 1)
+    if duplicates:
+        raise ValueError(f"Duplicate agent roles found: {duplicates}. Each agent must have a unique role.")
+
     try:
         from crewai import Agent, Task
-    except ImportError:
+    except (ImportError, AttributeError):
         raise ImportError(
             "crewai package not installed. "
             "Install with: pip install sentinelseed[crewai]"
@@ -370,11 +404,20 @@ def create_safe_crew(
         agents.append(agent)
         agents_by_role[config["role"]] = agent
 
-    # Create tasks
+    # Create tasks with validation
     tasks = []
     for config in tasks_config:
         agent_role = config.pop("agent_role", None)
-        agent = agents_by_role.get(agent_role) if agent_role else agents[0]
+        # M003: Validate agent_role exists
+        if agent_role:
+            agent = agents_by_role.get(agent_role)
+            if agent is None:
+                raise ValueError(
+                    f"agent_role '{agent_role}' not found. "
+                    f"Available roles: {list(agents_by_role.keys())}"
+                )
+        else:
+            agent = agents[0]
         task = Task(agent=agent, **config)
         tasks.append(task)
 
