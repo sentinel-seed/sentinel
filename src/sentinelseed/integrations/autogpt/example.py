@@ -89,7 +89,7 @@ def example_standalone_check():
 
     for action in checks:
         result = safety_check(action)
-        symbol = "✓" if result["safe"] else "✗"
+        symbol = "[OK]" if result["safe"] else "[X]"
         print(f"{symbol} {action}")
         if not result["safe"]:
             print(f"  Risk: {result['risk_level']}")
@@ -171,10 +171,10 @@ def example_agent_simulation():
         check = safety.validate_action(action)
 
         if check.should_proceed:
-            print(f"✓ Executing: {action[:40]}")
+            print(f"[OK] Executing: {action[:40]}")
             # Would execute task here
         else:
-            print(f"✗ Blocked: {action[:40]}")
+            print(f"[X] Blocked: {action[:40]}")
             print(f"  Reason: {check.reasoning}")
 
     # Final stats

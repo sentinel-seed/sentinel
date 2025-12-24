@@ -5,18 +5,31 @@ MIGRATION NOTICE:
     AutoGPT Platform (v0.6+) uses a Block SDK architecture. For the new
     AutoGPT Platform, use the `autogpt_block` integration instead:
 
-    # For AutoGPT Platform (v0.6+) - Block SDK
+    # For AutoGPT Platform (v0.6+) - Standalone functions
     from sentinelseed.integrations.autogpt_block import (
-        SentinelValidationBlock,
-        SentinelActionCheckBlock,
-        SentinelSeedBlock,
+        validate_content,      # Validate text content
+        check_action,          # Check if action is safe
+        get_seed,              # Get safety seed
+        AUTOGPT_SDK_AVAILABLE, # Check if SDK is installed
     )
+
+    # Block classes (only when AutoGPT SDK is installed)
+    if AUTOGPT_SDK_AVAILABLE:
+        from sentinelseed.integrations.autogpt_block import (
+            SentinelValidationBlock,
+            SentinelActionCheckBlock,
+            SentinelSeedBlock,
+        )
 
     # For standalone validation (no AutoGPT dependency)
     from sentinelseed.integrations.agent_validation import SafetyValidator
 
     # Legacy (this module) - for old AutoGPT versions only
     from sentinelseed.integrations.autogpt import SentinelSafetyComponent
+
+    NOTE: The autogpt_block integration uses heuristic validation. For
+    security-critical applications requiring semantic validation, configure
+    an API key or use sentinelseed.integrations.agent_validation directly.
 
 This module is maintained for backward compatibility with pre-v0.6 AutoGPT.
 All imports are re-exported from agent_validation.py.
@@ -104,3 +117,19 @@ class AutoGPTPluginTemplate:
         """Planning hook to inject safety seed."""
         seed = self.validator.get_seed()
         return f"{seed}\n\n{prompt}"
+
+
+# B001: Explicit exports
+__all__ = [
+    # From agent_validation
+    "ValidationResult",
+    "SafetyValidator",
+    "ExecutionGuard",
+    "safety_check",
+    # Backward compatibility aliases
+    "SafetyCheckResult",
+    "SentinelSafetyComponent",
+    "SentinelGuard",
+    # Legacy
+    "AutoGPTPluginTemplate",
+]
