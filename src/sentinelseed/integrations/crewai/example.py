@@ -34,7 +34,7 @@ def example_safe_agent():
         print(f"Agent '{safe_researcher.role}' wrapped with Sentinel")
         print(f"Injection method: {safe_researcher._sentinel_injection_method}")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("CrewAI not installed. Install with: pip install crewai")
 
 
@@ -81,7 +81,7 @@ def example_safe_crew():
         print("Safe crew created with 2 agents")
         print("All agents have Sentinel protection")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("CrewAI not installed. Install with: pip install crewai")
 
 
