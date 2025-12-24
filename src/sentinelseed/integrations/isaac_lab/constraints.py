@@ -26,7 +26,7 @@ import math
 try:
     import torch
     TORCH_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     TORCH_AVAILABLE = False
     torch = None
 
@@ -34,7 +34,7 @@ except ImportError:
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     NUMPY_AVAILABLE = False
     np = None
 

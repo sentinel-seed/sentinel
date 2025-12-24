@@ -49,7 +49,7 @@ try:
     from gymnasium import Wrapper
     from gymnasium.core import ActType, ObsType
     GYMNASIUM_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     GYMNASIUM_AVAILABLE = False
     gym = None
 
@@ -72,7 +72,7 @@ except ImportError:
 try:
     import torch
     TORCH_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     TORCH_AVAILABLE = False
     torch = None
 
@@ -80,7 +80,7 @@ except ImportError:
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     NUMPY_AVAILABLE = False
     np = None
 

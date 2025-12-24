@@ -861,6 +861,10 @@ class TestSentinelSafetyWrapper:
         )
         env.reset.return_value = ([0.0, 0.0, 0.0], {})
         env.unwrapped = env
+        # Configure mock to avoid TypeError in wrapper initialization and step()
+        # - scene=None: prevents iteration error in _build_context
+        # - num_envs=1: ensures _get_num_envs() returns int, not Mock
+        env.configure_mock(scene=None, num_envs=1)
         return env
 
     def test_create_wrapper(self, mock_env):
@@ -1079,6 +1083,8 @@ class TestSentinelSB3Callback:
         """Create a mock environment with wrapper."""
         env = Mock()
         env.get_stats.return_value = {"total_steps": 0, "violations_total": 0}
+        # Terminate _find_safety_wrapper loop (Mock().env returns another Mock)
+        env.env = None
         return env
 
     def test_create_callback(self, mock_env):
@@ -1119,6 +1125,8 @@ class TestSentinelRLGamesCallback:
         """Create a mock environment."""
         env = Mock()
         env.get_stats.return_value = {"total_steps": 0}
+        # Terminate _find_safety_wrapper loop (Mock().env returns another Mock)
+        env.env = None
         return env
 
     def test_create_callback(self, mock_env):
@@ -1433,6 +1441,8 @@ class TestLoggingErrorHandling:
 
         mock_env = Mock()
         mock_env.get_stats.return_value = {"total_steps": 100}
+        # Terminate _find_safety_wrapper loop (Mock().env returns another Mock)
+        mock_env.env = None
 
         # Create callback with failing on_log
         errors_caught = []
