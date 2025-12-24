@@ -9,7 +9,7 @@ pip install sentinelseed langgraph
 ```
 
 **Dependencies:**
-- `langgraph>=0.0.1`: [Docs](https://langchain-ai.github.io/langgraph/)
+- `langgraph>=0.0.1`: [Docs](https://docs.langchain.com/oss/python/langgraph/overview)
 - `langchain` (optional, for `create_sentinel_tool`)
 
 ## Overview
@@ -367,6 +367,5 @@ result = await executor.ainvoke(state)
 
 ## Links
 
-- **LangGraph Docs:** https://langchain-ai.github.io/langgraph/
-- **LangGraph Concepts:** https://langchain-ai.github.io/langgraph/concepts/
+- **LangGraph Docs:** https://docs.langchain.com/oss/python/langgraph/overview
 - **Sentinel:** https://sentinelseed.dev

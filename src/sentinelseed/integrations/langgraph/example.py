@@ -271,7 +271,9 @@ def example_agent_executor():
         "messages": [{"role": "user", "content": "Help me learn Python"}]
     })
     print(f"Blocked: {result.get('sentinel_blocked', False)}")
-    print(f"Response: {result['messages'][-1]['content']}")
+    msg = result['messages'][-1]
+    content = msg.content if hasattr(msg, 'content') else msg.get('content', str(msg))
+    print(f"Response: {content}")
 
     # Test unsafe request
     print("\n=== Unsafe Request ===")
