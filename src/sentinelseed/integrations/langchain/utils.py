@@ -456,7 +456,11 @@ try:
     AIMessage = _AIMessage
     BaseMessage = _BaseMessage
     LANGCHAIN_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
+    if isinstance(e, AttributeError):
+        _module_logger.warning(
+            f"LangChain installed but langchain_core has incompatible structure: {e}"
+        )
     try:
         from langchain.callbacks.base import BaseCallbackHandler as _BaseCallbackHandler
         from langchain.schema import (
@@ -471,10 +475,15 @@ except ImportError:
         AIMessage = _AIMessage
         BaseMessage = _BaseMessage
         LANGCHAIN_AVAILABLE = True
-    except ImportError:
-        _module_logger.warning(
-            "LangChain not installed. Install with: pip install langchain langchain-core"
-        )
+    except (ImportError, AttributeError) as e2:
+        if isinstance(e2, AttributeError):
+            _module_logger.warning(
+                f"LangChain installed but has incompatible structure: {e2}"
+            )
+        else:
+            _module_logger.warning(
+                "LangChain not installed. Install with: pip install langchain langchain-core"
+            )
 
 
 def require_langchain(func_name: str = "this function") -> None:

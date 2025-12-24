@@ -19,6 +19,8 @@ from sentinelseed.integrations.langchain import (
     wrap_llm,
     create_safe_callback,
     LANGCHAIN_AVAILABLE,
+    is_system_message,
+    extract_content,
 )
 
 
@@ -154,8 +156,8 @@ def example_inject_seed():
     # Inject seed
     safe_messages = inject_seed(messages, seed_level="standard")
     print(f"After inject_seed: {len(safe_messages)} message(s)")
-    print(f"System message added: {safe_messages[0]['role'] == 'system'}")
-    print(f"Seed length: {len(safe_messages[0]['content'])} chars")
+    print(f"System message added: {is_system_message(safe_messages[0])}")
+    print(f"Seed length: {len(extract_content(safe_messages[0]))} chars")
 
     # With existing system message
     messages_with_system = [
@@ -165,7 +167,7 @@ def example_inject_seed():
 
     enhanced = inject_seed(messages_with_system, seed_level="minimal")
     print(f"\nWith existing system: seed prepended to system message")
-    print(f"Contains separator: {'---' in enhanced[0]['content']}")
+    print(f"Contains separator: {'---' in extract_content(enhanced[0])}")
 
 
 def example_wrap_llm():
