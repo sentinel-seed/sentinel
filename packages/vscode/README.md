@@ -276,7 +276,6 @@ For deeper integration with AI assistants in Cursor or Windsurf, you can also us
 - [Documentation](https://sentinelseed.dev/docs)
 - [GitHub](https://github.com/sentinel-seed/sentinel)
 - [PyPI Package](https://pypi.org/project/sentinelseed/)
-- [npm Package](https://www.npmjs.com/package/sentinelseed)
 - [OpenVSX](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety)
 
 ## License

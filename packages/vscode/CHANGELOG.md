@@ -2,6 +2,42 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
+## [0.6.0] - 2025-12-24
+
+### Added
+
+- **OpenAI-Compatible Endpoint Support**: Use any OpenAI-compatible API
+  - Groq, Together AI, or custom endpoints
+  - New command: `Sentinel: Set Custom API Key`
+  - New settings: `sentinel.openaiCompatibleEndpoint`, `sentinel.openaiCompatibleModel`
+
+- **Ollama v1 API Support**: Improved local model integration
+  - Uses OpenAI-compatible endpoint at `/v1/chat/completions`
+  - Better error messages for connection issues
+
+### Changed
+
+- Improved error handling for network failures
+- Better timeout messages with duration
+
+## [0.5.0] - 2025-12-22
+
+### Added
+
+- **Quick Security Commands**: Fast access to common security checks
+  - `Sentinel: Scan Secrets` - Detect API keys, tokens, credentials (OWASP LLM02)
+  - `Sentinel: Sanitize` - Check for prompt injection patterns (OWASP LLM01)
+  - `Sentinel: Validate` - Validate LLM output for security issues
+
+- **Expanded Context Menu**: All security commands accessible via right-click
+  - Scan Secrets, Sanitize, Validate added to editor context menu
+  - Organized in dedicated sentinel menu group
+
+### Changed
+
+- Compliance checker now exposes convenience methods (`hasPromptInjection()`, `hasSensitiveInfo()`)
+- Improved command naming consistency
+
 ## [0.4.0] - 2025-12-22
 
 ### Added
