@@ -31,7 +31,7 @@ def example_create_assistant():
         print(f"Name: {assistant.name}")
         print("Sentinel seed injected into instructions")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("OpenAI package not installed. Install with: pip install openai")
     except Exception as e:
         print(f"Note: Requires OPENAI_API_KEY. Error: {e}")

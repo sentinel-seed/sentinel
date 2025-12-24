@@ -211,7 +211,7 @@ try:
     from openai.types.beta import Assistant, Thread
     from openai.types.beta.threads import Run, Message
     OPENAI_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     OpenAI = None
     AsyncOpenAI = None
     Assistant = None
