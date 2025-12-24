@@ -5,7 +5,7 @@ Provides callback handlers and LLM wrappers for adding Sentinel safety
 to LlamaIndex applications.
 
 This follows the official LlamaIndex documentation:
-https://developers.llamaindex.ai/python/
+https://developers.llamaindex.ai/
 
 Usage:
     from llama_index.core import Settings
@@ -40,7 +40,7 @@ SEMANTIC_AVAILABLE = False
 try:
     from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
     SEMANTIC_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     SemanticValidator = None
     AsyncSemanticValidator = None
     THSPResult = None
@@ -54,12 +54,26 @@ try:
     from llama_index.core.callbacks import CBEventType, EventPayload
     from llama_index.core.llms import ChatMessage, MessageRole
     LLAMAINDEX_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     BaseCallbackHandler = object
     CBEventType = None
     EventPayload = None
     ChatMessage = None
     MessageRole = None
+
+# B001: Explicit exports
+__all__ = [
+    # Availability flag
+    "LLAMAINDEX_AVAILABLE",
+    "SEMANTIC_AVAILABLE",
+    # Classes
+    "SentinelCallbackHandler",
+    "SentinelLLM",
+    "SentinelValidationEvent",
+    # Functions
+    "wrap_llm",
+    "setup_sentinel_monitoring",
+]
 
 
 @dataclass
@@ -353,8 +367,9 @@ class SentinelLLM:
         self._llm = llm
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
         self._inject_seed = inject_seed
-        self._validate_input = validate_input
-        self._validate_output = validate_output
+        # C001: Use _should_* prefix to avoid collision with _validate_output method
+        self._should_validate_input = validate_input
+        self._should_validate_output = validate_output
         self._seed = self._sentinel.get_seed()
 
         # Copy metadata from wrapped LLM
@@ -423,7 +438,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Chat with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             self._validate_messages_input(messages)
 
         if self._inject_seed:
@@ -431,7 +446,7 @@ class SentinelLLM:
 
         response = self._llm.chat(messages, **kwargs)
 
-        if self._validate_output:
+        if self._should_validate_output:
             self._validate_output(response)
 
         return response
@@ -442,7 +457,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Async chat with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             self._validate_messages_input(messages)
 
         if self._inject_seed:
@@ -450,7 +465,7 @@ class SentinelLLM:
 
         response = await self._llm.achat(messages, **kwargs)
 
-        if self._validate_output:
+        if self._should_validate_output:
             self._validate_output(response)
 
         return response
@@ -461,7 +476,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Complete with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             result = self._sentinel.validate_request(prompt)
             if not result["should_proceed"]:
                 raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
@@ -472,7 +487,7 @@ class SentinelLLM:
 
         response = self._llm.complete(prompt, **kwargs)
 
-        if self._validate_output:
+        if self._should_validate_output:
             self._validate_output(response)
 
         return response
@@ -483,7 +498,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Async complete with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             result = self._sentinel.validate_request(prompt)
             if not result["should_proceed"]:
                 raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
@@ -493,7 +508,7 @@ class SentinelLLM:
 
         response = await self._llm.acomplete(prompt, **kwargs)
 
-        if self._validate_output:
+        if self._should_validate_output:
             self._validate_output(response)
 
         return response
@@ -504,7 +519,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Stream chat with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             self._validate_messages_input(messages)
 
         if self._inject_seed:
@@ -518,7 +533,7 @@ class SentinelLLM:
         **kwargs: Any,
     ) -> Any:
         """Stream complete with Sentinel safety."""
-        if self._validate_input:
+        if self._should_validate_input:
             result = self._sentinel.validate_request(prompt)
             if not result["should_proceed"]:
                 raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
@@ -560,6 +575,11 @@ def wrap_llm(
 
         Settings.llm = wrap_llm(OpenAI(model="gpt-4o"))
     """
+    # M002: Guard against double wrapping
+    if isinstance(llm, SentinelLLM):
+        logger.warning("LLM already wrapped with Sentinel. Returning as-is.")
+        return llm
+
     return SentinelLLM(
         llm=llm,
         sentinel=sentinel,

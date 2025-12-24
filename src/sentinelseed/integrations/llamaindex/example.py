@@ -32,7 +32,7 @@ def example_callback_handler():
         print("Sentinel callback handler configured")
         print("All LlamaIndex operations will be monitored")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("LlamaIndex not installed. Install with: pip install llama-index-core")
 
 
@@ -55,7 +55,7 @@ def example_wrap_llm():
 
         print("LLM wrapped with Sentinel protection")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("LlamaIndex OpenAI not installed")
 
 
@@ -71,7 +71,7 @@ def example_quick_setup():
         print("Sentinel monitoring enabled globally")
         print(f"Handler: {handler}")
 
-    except ImportError:
+    except (ImportError, AttributeError):
         print("LlamaIndex not installed")
 
 
