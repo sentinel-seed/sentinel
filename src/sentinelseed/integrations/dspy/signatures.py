@@ -18,7 +18,7 @@ from typing import Literal, Optional
 try:
     import dspy
     from dspy import InputField, OutputField, Signature
-except ImportError:
+except (ImportError, AttributeError):
     raise ImportError(
         "dspy is required for this integration. "
         "Install with: pip install dspy"

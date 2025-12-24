@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 try:
     import dspy
     from dspy import Module, Prediction
-except ImportError:
+except (ImportError, AttributeError):
     raise ImportError(
         "dspy is required for this integration. "
         "Install with: pip install dspy"

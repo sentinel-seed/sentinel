@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 try:
     import dspy
     from dspy import Module, Prediction
-except ImportError:
+except (ImportError, AttributeError):
     raise ImportError(
         "dspy is required for this integration. "
         "Install with: pip install dspy"
@@ -239,12 +239,16 @@ class SentinelGuard(Module):
         """Async version of forward."""
         try:
             # Execute wrapped module (try async first)
-            if hasattr(self.module, "aforward"):
+            # Check if aforward is defined in the module's class (not just inherited)
+            module_cls = type(self.module)
+            has_own_aforward = 'aforward' in module_cls.__dict__ or \
+                any('aforward' in base.__dict__ for base in module_cls.__mro__[1:]
+                    if hasattr(base, '__dict__') and base.__name__ != 'Module')
+
+            if has_own_aforward:
                 result = await self.module.aforward(**kwargs)
-            elif hasattr(self.module, "acall"):
-                result = await self.module.acall(**kwargs)
             else:
-                result = self.module(**kwargs)
+                result = self.module(**kwargs)  # Fallback to sync for custom modules
 
             # Get content to validate
             content = self._extract_content(result)
@@ -964,12 +968,16 @@ class SentinelChainOfThought(Module):
         """Async version of forward."""
         try:
             # Execute chain-of-thought (try async first)
-            if hasattr(self._cot, "aforward"):
+            # Check if aforward is defined in the module's class (not just inherited)
+            cot_cls = type(self._cot)
+            has_own_aforward = 'aforward' in cot_cls.__dict__ or \
+                any('aforward' in base.__dict__ for base in cot_cls.__mro__[1:]
+                    if hasattr(base, '__dict__') and base.__name__ != 'Module')
+
+            if has_own_aforward:
                 result = await self._cot.aforward(**kwargs)
-            elif hasattr(self._cot, "acall"):
-                result = await self._cot.acall(**kwargs)
             else:
-                result = self._cot(**kwargs)
+                result = self._cot(**kwargs)  # Fallback to sync for custom modules
 
             # Extract fields to validate
             fields = self._extract_fields(result)
