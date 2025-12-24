@@ -25,8 +25,8 @@ pip install sentinelseed langchain langchain-core
 ```
 
 **Dependencies:**
-- `langchain>=0.1.0`: [Docs](https://python.langchain.com/docs/introduction/)
-- `langchain-core>=0.1.0`: [API Reference](https://python.langchain.com/api_reference/)
+- `langchain>=0.1.0`: [Docs](https://docs.langchain.com/oss/python/langchain/overview)
+- `langchain-core>=0.1.0`: [API Reference](https://reference.langchain.com/python/)
 
 ## Overview
 
@@ -539,6 +539,6 @@ When `fail_closed=False` (default), a debug-level warning is logged at initializ
 
 ## Links
 
-- **LangChain Docs:** https://python.langchain.com/docs/introduction/
-- **LangChain Callbacks:** https://python.langchain.com/docs/concepts/callbacks/
+- **LangChain Docs:** https://docs.langchain.com/oss/python/langchain/overview
+- **LangChain Callbacks:** https://docs.langchain.com/oss/python/langchain/concepts/callbacks
 - **Sentinel:** https://sentinelseed.dev
