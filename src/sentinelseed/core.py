@@ -68,9 +68,9 @@ class Sentinel:
         self._seed_cache: Dict[SeedLevel, str] = {}
         self._current_seed = self.get_seed(seed_level)
 
-        # Initialize validator
-        from sentinelseed.validators.gates import THSValidator
-        self.validator = THSValidator()
+        # Initialize validator (full THSP protocol with jailbreak pre-filter)
+        from sentinelseed.validators.gates import THSPValidator
+        self.validator = THSPValidator()
 
     def _default_model(self) -> str:
         """Get default model for provider."""
@@ -183,25 +183,29 @@ class Sentinel:
 
         # Validate if enabled
         if validate_response:
-            is_safe, violations = self.validator.validate(response)
+            validation_result = self.validator.validate(response)
             result["validation"] = {
-                "is_safe": is_safe,
-                "violations": violations
+                "is_safe": validation_result["is_safe"],
+                "violations": validation_result.get("violations", []),
+                "jailbreak_detected": validation_result.get("jailbreak_detected", False),
+                "gates": validation_result.get("gates", {}),
             }
 
         return result
 
     def validate(self, text: str) -> tuple:
         """
-        Validate text through THS gates.
+        Validate text through THSP gates with jailbreak pre-filter.
 
         Args:
             text: Text to validate
 
         Returns:
             Tuple of (is_safe: bool, violations: List[str])
+            Note: For full result dict, use self.validator.validate() directly
         """
-        return self.validator.validate(text)
+        result = self.validator.validate(text)
+        return (result["is_safe"], result.get("violations", []))
 
     def validate_action(self, action_plan: str) -> tuple:
         """
@@ -275,10 +279,10 @@ class Sentinel:
                 if danger_context:
                     concerns.append(f"Unsafe: {desc} with hazard present")
 
-        # Also run THS validation
-        ths_safe, ths_violations = self.validator.validate(action_plan)
-        if not ths_safe:
-            concerns.extend([f"THS: {v}" for v in ths_violations])
+        # Also run THSP validation
+        thsp_result = self.validator.validate(action_plan)
+        if not thsp_result["is_safe"]:
+            concerns.extend([f"THSP: {v}" for v in thsp_result.get("violations", [])])
 
         is_safe = len(concerns) == 0
         return (is_safe, concerns)

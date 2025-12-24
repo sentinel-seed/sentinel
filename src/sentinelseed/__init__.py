@@ -78,7 +78,10 @@ GitHub: https://github.com/sentinel-seed/sentinel
 """
 
 from sentinelseed.core import Sentinel, SeedLevel
-from sentinelseed.validators.gates import TruthGate, HarmGate, ScopeGate, PurposeGate, THSValidator
+from sentinelseed.validators.gates import (
+    TruthGate, HarmGate, ScopeGate, PurposeGate, JailbreakGate,
+    THSValidator, THSPValidator,
+)
 from sentinelseed.memory import (
     MemoryIntegrityChecker,
     MemoryEntry,
@@ -140,7 +143,9 @@ __all__ = [
     "HarmGate",
     "ScopeGate",
     "PurposeGate",
+    "JailbreakGate",
     "THSValidator",
+    "THSPValidator",
     # Memory Integrity
     "MemoryIntegrityChecker",
     "MemoryEntry",

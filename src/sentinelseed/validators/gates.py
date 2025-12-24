@@ -109,6 +109,7 @@ class HarmGate(BaseGate):
         ],
         "cyber": [
             r"here'?s?\s+(the\s+)?malware\s+code",
+            r"here\s+(is|are)\s+(the\s+)?malware",
             r"code\s+to\s+steal\s+password",
             r"how\s+to\s+hack\s+into",
             r"exploit\s+code\s+for",
@@ -124,6 +125,58 @@ class HarmGate(BaseGate):
             r"here'?s?\s+(a\s+)?phishing\s+(email|message)",
             r"scam\s+(script|template)",
             r"how\s+to\s+commit\s+fraud",
+        ],
+        "system": [
+            # Destructive system commands
+            r"\brm\s+-rf\s+/",
+            r"\brm\s+--no-preserve-root",
+            r"\bsudo\s+rm\s+-rf",
+            r"\bformat\s+[a-zA-Z]:",
+            r"\bdel\s+/[fFsS]",
+            r"\brmdir\s+/[sS]",
+            r">\s*/dev/sd[a-z]",
+            r"\bmkfs\.",
+            r"\bdd\s+if=.*of=/dev/",
+            # Privilege escalation
+            r"\bchmod\s+777\s+/",
+            r"\bchmod\s+[+]?[rwxs]+\s+/etc",
+            r"echo.*>>\s*/etc/sudoers",
+            r"NOPASSWD:\s*ALL",
+            r"\bpasswd\s+root",
+            r"\bsudo\s+su\s*[-]?\s*$",
+        ],
+        "injection": [
+            # SQL injection
+            r"DROP\s+TABLE",
+            r"DELETE\s+FROM\s+\w+\s+WHERE\s+1\s*=\s*1",
+            r"UNION\s+(ALL\s+)?SELECT",
+            r";\s*--\s*$",
+            r"'\s*OR\s+'?1'?\s*=\s*'?1",
+            r"TRUNCATE\s+TABLE",
+            # XSS
+            r"<script[^>]*>",
+            r"javascript\s*:",
+            r"\bonerror\s*=",
+            r"\bonload\s*=",
+            r"\bonclick\s*=",
+            # Code injection
+            r"\beval\s*\(\s*['\"]?[^)]+\$",
+            r"\bexec\s*\(\s*['\"]",
+            r"__import__\s*\(",
+        ],
+        "exfiltration": [
+            # Data exfiltration
+            r"curl.*\|\s*bash",
+            r"wget.*\|\s*sh",
+            r"\bnc\s+-[elp]",
+            r"bash\s+-i\s*>&",
+            r"/bin/sh\s+-i",
+            r"upload.*to\s+(pastebin|external|attacker)",
+            r"send.*to\s+(attacker|evil|external)",
+            r"\bexfiltrat",
+            r"dump.*credentials",
+            r"cat\s+/etc/passwd",
+            r"cat\s+/etc/shadow",
         ],
     }
 

@@ -24,7 +24,7 @@ from typing import Optional, List, Dict, Any
 import os
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators import THSValidator
+from sentinelseed.validators import THSPValidator
 
 # Create app
 app = FastAPI(
@@ -46,7 +46,7 @@ app.add_middleware(
 
 # Global instances
 sentinel = Sentinel(seed_level=SeedLevel.STANDARD)
-validator = THSValidator()
+validator = THSPValidator()
 
 
 # Request/Response models
@@ -165,20 +165,19 @@ async def get_seed(level: str):
 @app.post("/validate", response_model=ValidateResponse)
 async def validate_text(request: ValidateRequest):
     """
-    Validate text through THS (Truth-Harm-Scope) gates.
+    Validate text through THSP (Truth-Harm-Scope-Purpose) gates with jailbreak pre-filter.
 
     Use this to check if an LLM response contains problematic content.
     """
-    result = validator.validate_detailed(request.text)
+    result = validator.validate(request.text)
 
     return ValidateResponse(
         is_safe=result["is_safe"],
-        violations=[
-            f"[{gate.upper()}] {v}"
-            for gate, data in result["gates"].items()
-            for v in data["violations"]
-        ],
-        gates=result["gates"]
+        violations=result.get("violations", []),
+        gates={
+            **result.get("gates", {}),
+            "jailbreak_detected": result.get("jailbreak_detected", False),
+        }
     )
 
 
