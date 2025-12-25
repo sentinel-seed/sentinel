@@ -16,7 +16,6 @@ References:
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import logging
-import time
 
 from .simulator import (
     RiskLevel,
@@ -104,7 +103,7 @@ class JupiterAnalyzer:
             try:
                 import httpx
                 self._http_client = httpx.AsyncClient(timeout=30.0)
-            except ImportError:
+            except (ImportError, AttributeError):
                 import aiohttp
                 self._http_client = aiohttp.ClientSession()
         return self._http_client
@@ -151,7 +150,13 @@ class JupiterAnalyzer:
                 async with client.get(url) as response:
                     data = await response.json()
 
-            if "error" in data:
+            # Check for errors - Jupiter API returns "error" OR "code" field
+            if "error" in data or "code" in data:
+                error_msg = (
+                    data.get("error")
+                    or data.get("message")
+                    or f"API error code: {data.get('code')}"
+                )
                 return QuoteResult(
                     success=False,
                     input_mint=input_mint,
@@ -161,7 +166,8 @@ class JupiterAnalyzer:
                     minimum_output=0,
                     slippage_bps=slippage_bps,
                     price_impact_pct=0,
-                    error=data.get("error"),
+                    error=error_msg,
+                    raw_data=data,
                 )
 
             return QuoteResult(
@@ -328,7 +334,7 @@ class GoPlusAnalyzer:
             try:
                 import httpx
                 self._http_client = httpx.AsyncClient(timeout=30.0)
-            except ImportError:
+            except (ImportError, AttributeError):
                 import aiohttp
                 self._http_client = aiohttp.ClientSession()
         return self._http_client
@@ -358,7 +364,23 @@ class GoPlusAnalyzer:
                 async with client.get(url, headers=headers) as response:
                     data = await response.json()
 
-            result_data = data.get("result", {}).get(token_address.lower(), {})
+            # Check for API errors - GoPlus returns {"code": 1} for success, {"code": 0} for error
+            if data.get("code") == 0 or "error" in data:
+                error_msg = data.get("message") or data.get("error") or "Unknown GoPlus error"
+                return TokenSecurityResult(
+                    token_address=token_address,
+                    is_safe=False,
+                    risk_level=RiskLevel.MEDIUM,
+                    risks=[RiskAssessment(
+                        factor=RiskFactor.SIMULATION_FAILED,
+                        level=RiskLevel.MEDIUM,
+                        description=f"Security check API error: {error_msg}",
+                    )],
+                )
+
+            # Handle None result gracefully
+            result = data.get("result") or {}
+            result_data = result.get(token_address.lower(), {})
 
             if not result_data:
                 return TokenSecurityResult(

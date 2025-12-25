@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 import asyncio
-import base64
-import json
 import logging
 import time
 
@@ -264,11 +262,11 @@ class TransactionSimulator:
             try:
                 import httpx
                 self._http_client = httpx.AsyncClient(timeout=30.0)
-            except ImportError:
+            except (ImportError, AttributeError):
                 try:
                     import aiohttp
                     self._http_client = aiohttp.ClientSession()
-                except ImportError:
+                except (ImportError, AttributeError):
                     raise ImportError(
                         "Either httpx or aiohttp is required: "
                         "pip install httpx  # or pip install aiohttp"
@@ -469,9 +467,13 @@ class TransactionSimulator:
                 async with client.get(quote_url) as response:
                     quote_data = await response.json()
 
-            # Check for quote errors
-            if "error" in quote_data:
-                error_msg = quote_data.get("error", "Unknown quote error")
+            # Check for quote errors - Jupiter API returns "error" OR "code" field
+            if "error" in quote_data or "code" in quote_data:
+                error_msg = (
+                    quote_data.get("error")
+                    or quote_data.get("message")
+                    or f"API error code: {quote_data.get('code')}"
+                )
                 return SwapSimulationResult(
                     success=False,
                     is_safe=False,
@@ -485,6 +487,7 @@ class TransactionSimulator:
                     input_mint=input_mint,
                     output_mint=output_mint,
                     input_amount=amount,
+                    raw_response=quote_data,
                     simulation_time_ms=(time.time() - start_time) * 1000,
                 )
 
@@ -622,8 +625,24 @@ class TransactionSimulator:
                 async with client.get(url, headers=headers) as response:
                     data = await response.json()
 
-            # Parse response
-            result_data = data.get("result", {}).get(token_address.lower(), {})
+            # Check for API errors - GoPlus returns {"code": 1} for success, {"code": 0} for error
+            if data.get("code") == 0 or "error" in data:
+                error_msg = data.get("message") or data.get("error") or "Unknown GoPlus error"
+                return TokenSecurityResult(
+                    token_address=token_address,
+                    is_safe=False,
+                    risk_level=RiskLevel.MEDIUM,
+                    risks=[RiskAssessment(
+                        factor=RiskFactor.SIMULATION_FAILED,
+                        level=RiskLevel.MEDIUM,
+                        description=f"Security check API error: {error_msg}",
+                    )],
+                    raw_data=data,
+                )
+
+            # Parse response - handle None result gracefully
+            result = data.get("result") or {}
+            result_data = result.get(token_address.lower(), {})
 
             if not result_data:
                 # Token not found in GoPlus database

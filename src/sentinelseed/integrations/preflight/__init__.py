@@ -32,7 +32,7 @@ Usage:
     else:
         print(f"Risks detected: {result.risks}")
 
-Documentation: https://sentinelseed.dev/docs/preflight
+GitHub: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/preflight
 
 References:
 - Solana RPC: https://solana.com/docs/rpc/http/simulatetransaction

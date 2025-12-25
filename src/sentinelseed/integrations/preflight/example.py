@@ -340,7 +340,7 @@ async def main():
     print("Pre-flight Transaction Simulator Examples")
     print("=" * 60)
     print("\nDemonstrating transaction simulation for Solana.")
-    print("Documentation: https://sentinelseed.dev/docs/preflight")
+    print("GitHub: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/preflight")
 
     # Check for help
     if "--help" in sys.argv or "-h" in sys.argv:

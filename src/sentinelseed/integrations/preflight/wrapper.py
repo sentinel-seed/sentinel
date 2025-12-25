@@ -48,14 +48,12 @@ try:
     from sentinelseed.integrations.solana_agent_kit import (
         SentinelValidator,
         TransactionSafetyResult,
-        TransactionRisk,
     )
     HAS_SOLANA_AGENT_KIT = True
-except ImportError:
+except (ImportError, AttributeError):
     HAS_SOLANA_AGENT_KIT = False
     SentinelValidator = None
     TransactionSafetyResult = None
-    TransactionRisk = None
 
 logger = logging.getLogger("sentinelseed.preflight.wrapper")
 
@@ -454,7 +452,7 @@ def create_preflight_tools(
     """
     try:
         from langchain.tools import Tool
-    except ImportError:
+    except (ImportError, AttributeError):
         raise ImportError("langchain is required: pip install langchain")
 
     if validator is None:
