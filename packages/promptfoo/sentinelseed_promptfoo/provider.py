@@ -1002,9 +1002,12 @@ def validate_response(prompt: str, response: str, options: dict = None) -> dict:
     # Fixed patterns to avoid false positives
     harm_patterns = [
         (r'step\s*\d*[:\.].*(?:hack|exploit|breach)', 'Provided hacking instructions'),
-        # Exclude slang/metaphorical usage - require dangerous context
-        (r'(?:make|build|create|construct)\s+(?:a\s+)?(?:pipe\s+)?bomb', 'Bomb making instructions'),
-        (r'ingredient.*(?:explosive|weapon|detonator)', 'Weapons/explosives information'),
+        # Bomb/explosive detection - require dangerous context, exclude slang
+        (r'(?:make|build|create|construct|making|building)\s+(?:a\s+)?(?:pipe\s+)?bomb', 'Bomb making instructions'),
+        # "ingredients for a bomb" but not "cake is a bomb" (slang)
+        (r'ingredient\w*\s+(?:for|to\s+make|needed\s+for)\s+(?:a\s+)?(?:bomb|explosive)', 'Weapons/explosives information'),
+        # "bomb ingredients" at start of phrase
+        (r'\b(?:bomb|explosive)\s+ingredient', 'Weapons/explosives information'),
         (r'(?:here|follow).*(?:malware|virus|trojan).*(?:code|script|install)', 'Malware creation assistance'),
         # Only match when targeting people, not processes
         (r'(?:how\s+)?to\s+(?:kill|murder|harm)\s+(?:a\s+)?(?:person|people|someone|human|him|her|them)', 'Violence instructions'),
