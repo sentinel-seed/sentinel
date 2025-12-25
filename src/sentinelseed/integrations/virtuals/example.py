@@ -155,9 +155,19 @@ def example_decorator_usage():
             recipient="0x742d35Cc6634C0532925a3b844Bc9e7595f4E2",
             amount=50,
         )
-        print(f"   [X] Transfer succeeded (should have been blocked): {result}")
+        # When GAME SDK is available, returns tuple instead of raising exception
+        if isinstance(result, tuple) and len(result) >= 2:
+            status, message = result[0], result[1]
+            # Check if it was blocked (FunctionResultStatus.FAILED or contains "blocked")
+            if "FAILED" in str(status) or "blocked" in message.lower():
+                print(f"   [OK] Transfer blocked as expected (tuple return)")
+                print(f"      Message: {message}")
+            else:
+                print(f"   [X] Transfer succeeded (should have been blocked): {result}")
+        else:
+            print(f"   [X] Transfer succeeded (should have been blocked): {result}")
     except SentinelValidationError as e:
-        print(f"   [OK] Transfer blocked as expected")
+        print(f"   [OK] Transfer blocked as expected (exception)")
         print(f"      Gate: {e.gate}")
         print(f"      Concerns: {e.concerns}")
 

@@ -54,6 +54,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger("sentinelseed.virtuals")
 
+# Import THSP validator from core (the global validator with all security patterns)
+try:
+    from sentinelseed.validators.gates import THSPValidator
+    THSP_VALIDATOR_AVAILABLE = True
+except (ImportError, AttributeError):
+    THSPValidator = None
+    THSP_VALIDATOR_AVAILABLE = False
+
 # Import memory integrity checker if available
 try:
     from sentinelseed.memory import (
@@ -65,7 +73,7 @@ try:
         SafeMemoryStore,
     )
     MEMORY_INTEGRITY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     MEMORY_INTEGRITY_AVAILABLE = False
     MemoryIntegrityChecker = None
     MemoryEntry = None
@@ -85,7 +93,7 @@ try:
         FunctionResultStatus,
     )
     GAME_SDK_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     GAME_SDK_AVAILABLE = False
     # Define stubs for type hints when SDK not installed
     Agent = None
@@ -123,6 +131,7 @@ class ValidationResult:
 
     @property
     def failed_gates(self) -> List[str]:
+        """Return list of gate names that failed validation."""
         return [gate for gate, passed in self.gate_results.items() if not passed]
 
 
@@ -174,9 +183,15 @@ class SentinelConfig:
 
 class SentinelValidator:
     """
-    Core validation engine implementing THSP Protocol.
+    Core validation engine implementing THSP Protocol for Virtuals/GAME agents.
 
-    Validates agent actions through four gates:
+    Uses the global THSPValidator for content validation (security patterns,
+    jailbreak detection, etc.) and adds crypto-specific checks on top:
+    - Transaction amount limits
+    - Blocked function names
+    - Crypto-specific patterns (private keys, seed phrases)
+
+    The four THSP gates:
     - TRUTH: Is the action based on accurate information?
     - HARM: Could this action cause harm?
     - SCOPE: Is this action within appropriate limits?
@@ -190,6 +205,14 @@ class SentinelValidator:
         ]
         self._validation_history: List[Dict[str, Any]] = []
 
+        # Use global THSPValidator for content validation
+        self._thsp_validator = None
+        if THSP_VALIDATOR_AVAILABLE and THSPValidator is not None:
+            try:
+                self._thsp_validator = THSPValidator()
+            except Exception as e:
+                logger.warning(f"Could not initialize THSPValidator: {e}")
+
     def validate(
         self,
         action_name: str,
@@ -198,6 +221,10 @@ class SentinelValidator:
     ) -> ValidationResult:
         """
         Validate an action through all THSP gates.
+
+        First uses the global THSPValidator for content validation (detects
+        system attacks, SQL injection, XSS, jailbreaks, etc.), then applies
+        crypto-specific checks (transaction limits, blocked functions).
 
         Args:
             action_name: Name of the function to execute
@@ -209,35 +236,66 @@ class SentinelValidator:
         """
         context = context or {}
         concerns = []
-        gate_results = {}
+        gate_results = {"truth": True, "harm": True, "scope": True, "purpose": True}
 
-        # Gate 1: TRUTH
+        # Step 1: Use global THSPValidator for content validation
+        # This catches: rm -rf, SQL injection, XSS, jailbreaks, etc.
+        if self._thsp_validator is not None:
+            content_to_validate = self._build_content_string(
+                action_name, action_args, context
+            )
+            thsp_result = self._thsp_validator.validate(content_to_validate)
+
+            if not thsp_result.get("is_safe", True):
+                # Map THSPValidator gates to our gate_results
+                thsp_gates = thsp_result.get("gates", {})
+                for gate_name in ["truth", "harm", "scope", "purpose"]:
+                    if thsp_gates.get(gate_name) == "fail":
+                        gate_results[gate_name] = False
+
+                # Add violations as concerns
+                thsp_violations = thsp_result.get("violations", [])
+                concerns.extend(thsp_violations)
+
+                # Check for jailbreak (pre-filter in THSPValidator)
+                if thsp_result.get("jailbreak_detected", False):
+                    gate_results["harm"] = False
+                    if "Jailbreak attempt detected" not in str(concerns):
+                        concerns.append("Jailbreak attempt detected")
+
+        # Step 2: Apply crypto-specific checks (on top of global validation)
+
+        # Gate 1: TRUTH - Check for misleading action names
         truth_passed, truth_concerns = self._check_truth_gate(
             action_name, action_args, context
         )
-        gate_results["truth"] = truth_passed
-        concerns.extend(truth_concerns)
+        if not truth_passed:
+            gate_results["truth"] = False
+            concerns.extend(truth_concerns)
 
-        # Gate 2: HARM
+        # Gate 2: HARM - Check blocked functions and crypto patterns
         harm_passed, harm_concerns = self._check_harm_gate(
             action_name, action_args, context
         )
-        gate_results["harm"] = harm_passed
-        concerns.extend(harm_concerns)
+        if not harm_passed:
+            gate_results["harm"] = False
+            concerns.extend(harm_concerns)
 
-        # Gate 3: SCOPE
+        # Gate 3: SCOPE - Check transaction limits and whitelists
         scope_passed, scope_concerns = self._check_scope_gate(
             action_name, action_args, context
         )
-        gate_results["scope"] = scope_passed
-        concerns.extend(scope_concerns)
+        if not scope_passed:
+            gate_results["scope"] = False
+            concerns.extend(scope_concerns)
 
-        # Gate 4: PURPOSE
+        # Gate 4: PURPOSE - Check for explicit purpose on sensitive actions
         purpose_passed, purpose_concerns = self._check_purpose_gate(
             action_name, action_args, context
         )
-        gate_results["purpose"] = purpose_passed
-        concerns.extend(purpose_concerns)
+        if not purpose_passed:
+            gate_results["purpose"] = False
+            concerns.extend(purpose_concerns)
 
         # All gates must pass
         all_passed = all(gate_results.values())
@@ -264,6 +322,41 @@ class SentinelValidator:
         })
 
         return result
+
+    def _build_content_string(
+        self,
+        action_name: str,
+        action_args: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> str:
+        """
+        Build a content string for THSPValidator from action data.
+
+        Converts action name, arguments, and context into a single string
+        that the THSPValidator can analyze for security patterns.
+
+        Args:
+            action_name: Name of the action
+            action_args: Action arguments
+            context: Context dictionary
+
+        Returns:
+            Combined string for validation
+        """
+        parts = [f"Action: {action_name}"]
+
+        if action_args:
+            args_str = json.dumps(action_args, default=str)
+            parts.append(f"Arguments: {args_str}")
+
+        if context:
+            # Only include relevant context fields
+            relevant_keys = ["purpose", "reason", "user_request", "message"]
+            for key in relevant_keys:
+                if key in context:
+                    parts.append(f"{key}: {context[key]}")
+
+        return " | ".join(parts)
 
     def _check_truth_gate(
         self,
@@ -886,7 +979,9 @@ class SentinelSafetyWorker:
         )
 
         # State function for the worker
-        def get_worker_state(function_result, current_state):
+        def get_worker_state(
+            function_result: Any, current_state: Dict[str, Any]
+        ) -> Dict[str, Any]:
             """Update worker state after function execution."""
             stats = instance.validator.get_stats()
             history = instance.validator._validation_history
@@ -942,11 +1037,17 @@ class SentinelSafetyWorker:
 
 def sentinel_protected(
     config: Optional[SentinelConfig] = None,
-):
+) -> Callable[[Callable], Callable]:
     """
     Decorator to protect a function with Sentinel validation.
 
     Use this for custom executables that aren't wrapped as Function objects.
+
+    Args:
+        config: Optional Sentinel configuration. If not provided, uses defaults.
+
+    Returns:
+        A decorator function that wraps the target function with validation.
 
     Usage:
         @sentinel_protected()
@@ -960,11 +1061,13 @@ def sentinel_protected(
             return (FunctionResultStatus.DONE, "Transferred", {})
     """
     def decorator(func: Callable) -> Callable:
+        """Wrap function with Sentinel validation."""
         cfg = config or SentinelConfig()
         validator = SentinelValidator(cfg)
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Execute function after Sentinel validation passes."""
             # Validate
             result = validator.validate(
                 action_name=func.__name__,
@@ -1008,4 +1111,5 @@ __all__ = [
     "sentinel_protected",
     "GAME_SDK_AVAILABLE",
     "MEMORY_INTEGRITY_AVAILABLE",
+    "THSP_VALIDATOR_AVAILABLE",
 ]
