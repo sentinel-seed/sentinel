@@ -283,6 +283,7 @@ export function createMemoryIntegrityChecker(
  * Helper to check if a memory has integrity metadata
  */
 export function hasIntegrityMetadata(memory: Memory): boolean {
+  if (!memory) return false;
   const metadata = memory.content?.metadata as IntegrityMetadata | undefined;
   return !!metadata?.sentinel_integrity_hash;
 }
@@ -291,6 +292,7 @@ export function hasIntegrityMetadata(memory: Memory): boolean {
  * Helper to extract source from memory metadata
  */
 export function getMemorySource(memory: Memory): MemorySource {
+  if (!memory) return 'unknown';
   const metadata = memory.content?.metadata as IntegrityMetadata | undefined;
   return metadata?.sentinel_source || 'unknown';
 }
@@ -299,6 +301,7 @@ export function getMemorySource(memory: Memory): MemorySource {
  * Helper to get signed timestamp from memory
  */
 export function getSignedTimestamp(memory: Memory): number | undefined {
+  if (!memory) return undefined;
   const metadata = memory.content?.metadata as IntegrityMetadata | undefined;
   return metadata?.sentinel_signed_at;
 }

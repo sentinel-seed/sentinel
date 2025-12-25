@@ -272,6 +272,32 @@ describe('Bug fixes verification', () => {
       expect(result.reason).toContain('null or undefined');
     });
   });
+
+  describe('Helper functions null handling', () => {
+    it('hasIntegrityMetadata should return false for null', () => {
+      expect(hasIntegrityMetadata(null as any)).toBe(false);
+    });
+
+    it('hasIntegrityMetadata should return false for undefined', () => {
+      expect(hasIntegrityMetadata(undefined as any)).toBe(false);
+    });
+
+    it('getMemorySource should return unknown for null', () => {
+      expect(getMemorySource(null as any)).toBe('unknown');
+    });
+
+    it('getMemorySource should return unknown for undefined', () => {
+      expect(getMemorySource(undefined as any)).toBe('unknown');
+    });
+
+    it('getSignedTimestamp should return undefined for null', () => {
+      expect(getSignedTimestamp(null as any)).toBeUndefined();
+    });
+
+    it('getSignedTimestamp should return undefined for undefined', () => {
+      expect(getSignedTimestamp(undefined as any)).toBeUndefined();
+    });
+  });
 });
 
 describe('Helper functions', () => {
