@@ -46,8 +46,7 @@ import logging
 import re
 import warnings
 
-from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+from sentinelseed import Sentinel
 
 logger = logging.getLogger("sentinelseed.solana_agent_kit")
 
@@ -265,15 +264,23 @@ class SentinelValidator:
 
         # Initialize memory checker if enabled
         self._memory_checker = None
+        self._memory_store = None
         if memory_integrity_check:
             try:
-                from sentinelseed.memory import MemoryIntegrityChecker
+                from sentinelseed.memory import (
+                    MemoryIntegrityChecker,
+                    MemoryEntry,
+                    MemorySource,
+                )
                 self._memory_checker = MemoryIntegrityChecker(
                     secret_key=memory_secret_key,
                     strict_mode=False,
                 )
-                logger.debug("Memory integrity checker initialized")
-            except ImportError:
+                self._memory_store = self._memory_checker.create_safe_memory_store()
+                self._MemoryEntry = MemoryEntry
+                self._MemorySource = MemorySource
+                logger.debug("Memory integrity checker initialized with SafeMemoryStore")
+            except (ImportError, AttributeError):
                 warnings.warn(
                     "memory_integrity_check=True but sentinelseed.memory module not available. "
                     "Memory integrity checking will be disabled.",
@@ -312,6 +319,21 @@ class SentinelValidator:
 
         logger.debug(f"Checking transaction: action={action}, amount={amount}")
 
+        # Normalize amount: None becomes 0.0 to prevent TypeError in comparisons
+        if amount is None:
+            amount = 0.0
+
+        # Normalize recipient: ensure it's a string to prevent TypeError in slicing/hashing
+        if recipient is None:
+            recipient = ""
+        elif not isinstance(recipient, str):
+            # Convert non-string types (int, list, etc.) to string representation
+            try:
+                recipient = str(recipient)
+                logger.warning(f"Recipient was not a string, converted from {type(recipient).__name__}")
+            except Exception:
+                recipient = ""
+
         # Validate address format
         if recipient:
             address_valid = is_valid_solana_address(recipient)
@@ -326,18 +348,17 @@ class SentinelValidator:
                 # IGNORE mode: no action
 
         # Validate amount is a valid number and not negative
-        if amount is not None:
-            try:
-                amount = float(amount)
-            except (ValueError, TypeError):
-                concerns.append(f"Invalid transaction amount: {amount}")
-                risk_level = TransactionRisk.CRITICAL
-                amount = 0  # Set to 0 to prevent further errors
+        try:
+            amount = float(amount)
+        except (ValueError, TypeError):
+            concerns.append(f"Invalid transaction amount: {amount}")
+            risk_level = TransactionRisk.CRITICAL
+            amount = 0.0  # Set to 0 to prevent further errors
 
-            if amount < 0:
-                concerns.append(f"Transaction amount cannot be negative: {amount}")
-                risk_level = TransactionRisk.CRITICAL
-                logger.warning(f"Negative amount rejected: {amount}")
+        if amount < 0:
+            concerns.append(f"Transaction amount cannot be negative: {amount}")
+            risk_level = TransactionRisk.CRITICAL
+            logger.warning(f"Negative amount rejected: {amount}")
 
         # Check for high-risk action patterns
         action_lower = action.lower().replace("_", "").replace("-", "")
@@ -390,8 +411,8 @@ class SentinelValidator:
 
         requires_confirmation = amount > self.confirm_above
 
-        # Validate intent with Sentinel
-        description = self._describe_action(action, amount, recipient, kwargs)
+        # Validate intent with Sentinel (include memo for full validation)
+        description = self._describe_action(action, amount, recipient, memo, kwargs)
         is_safe, sentinel_concerns = self.sentinel.validate_action(description)
 
         if not is_safe:
@@ -440,6 +461,25 @@ class SentinelValidator:
         if len(self.history) > self.max_history_size:
             self.history.pop(0)
 
+        # Sign and store in memory store if enabled (for integrity verification)
+        if self._memory_store is not None:
+            content = (
+                f"tx:{action} amount={amount} recipient={recipient[:16] if recipient else 'none'}... "
+                f"safe={result.safe} risk={result.risk_level.name}"
+            )
+            self._memory_store.add(
+                content=content,
+                source=self._MemorySource.AGENT_INTERNAL,
+                metadata={
+                    "action": action,
+                    "amount": amount,
+                    "recipient": recipient,
+                    "safe": result.safe,
+                    "risk_level": result.risk_level.name,
+                    "concerns": result.concerns,
+                },
+            )
+
         # Call validation callback if provided
         if self.on_validation is not None:
             try:
@@ -455,14 +495,20 @@ class SentinelValidator:
         action: str,
         amount: float,
         recipient: str,
+        memo: str,
         extra: Dict
     ) -> str:
-        """Create description for Sentinel validation."""
+        """Create description for Sentinel validation (includes memo for attack detection)."""
         parts = [f"Solana {action}"]
         if amount:
             parts.append(f"amount={amount}")
         if recipient:
             parts.append(f"to={recipient[:8]}...")
+        # Include memo content for full validation (truncate to prevent DoS)
+        if memo:
+            # Truncate long memos to prevent description bloat
+            memo_preview = memo[:100] + "..." if len(memo) > 100 else memo
+            parts.append(f"memo={memo_preview}")
         return " ".join(parts)
 
     def _check_patterns(
@@ -529,6 +575,69 @@ class SentinelValidator:
     def clear_history(self) -> None:
         """Clear validation history."""
         self.history = []
+        if self._memory_store is not None:
+            self._memory_store.clear()
+
+    def verify_transaction_history(self) -> Dict[str, Any]:
+        """
+        Verify integrity of transaction history using cryptographic signatures.
+
+        Returns:
+            Dict with verification results:
+                - all_valid: True if all entries pass verification
+                - checked: Number of entries checked
+                - invalid_count: Number of tampered entries
+                - details: Per-entry results (if any invalid)
+
+        Example:
+            result = validator.verify_transaction_history()
+            if not result["all_valid"]:
+                print(f"Warning: {result['invalid_count']} entries may be tampered!")
+        """
+        if self._memory_store is None:
+            return {
+                "all_valid": True,
+                "checked": 0,
+                "invalid_count": 0,
+                "reason": "Memory integrity check not enabled",
+            }
+
+        all_entries = self._memory_store.get_all(verify=False)
+        valid_entries = self._memory_store.get_all(verify=True)
+
+        invalid_count = len(all_entries) - len(valid_entries)
+
+        return {
+            "all_valid": invalid_count == 0,
+            "checked": len(all_entries),
+            "invalid_count": invalid_count,
+            "valid_count": len(valid_entries),
+        }
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about memory integrity checks.
+
+        Returns:
+            Dict with memory stats:
+                - enabled: Whether memory integrity is enabled
+                - total: Total entries checked
+                - valid: Valid entries
+                - validation_rate: Percentage of valid entries
+
+        Example:
+            stats = validator.get_memory_stats()
+            print(f"Memory integrity: {stats['validation_rate']:.1%} valid")
+        """
+        if self._memory_checker is None:
+            return {"enabled": False}
+
+        checker_stats = self._memory_checker.get_validation_stats()
+        return {
+            "enabled": True,
+            "entries_stored": len(self._memory_store) if self._memory_store else 0,
+            **checker_stats,
+        }
 
     def block_address(self, address: str) -> None:
         """
@@ -758,7 +867,7 @@ def create_langchain_tools(
     """
     try:
         from langchain.tools import Tool
-    except ImportError:
+    except (ImportError, AttributeError):
         raise ImportError(
             "langchain is required: pip install langchain"
         )

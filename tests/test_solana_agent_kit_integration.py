@@ -1219,3 +1219,220 @@ class TestNewExports:
 
         assert isinstance(HIGH_RISK_ACTIONS, list)
         assert "drain" in HIGH_RISK_ACTIONS
+
+
+class TestMemoryIntegrityFunctions:
+    """Tests for memory integrity checker functions."""
+
+    def test_verify_transaction_history_disabled(self):
+        """Test verify_transaction_history when memory check disabled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(memory_integrity_check=False)
+        result = validator.verify_transaction_history()
+
+        assert result["all_valid"] is True
+        assert result["checked"] == 0
+        assert "reason" in result
+
+    def test_verify_transaction_history_enabled(self):
+        """Test verify_transaction_history when memory check enabled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(
+            memory_integrity_check=True,
+            memory_secret_key="test-key"
+        )
+
+        # Add some transactions
+        validator.check("transfer", amount=1.0, purpose="test1")
+        validator.check("transfer", amount=2.0, purpose="test2")
+
+        result = validator.verify_transaction_history()
+
+        assert result["all_valid"] is True
+        assert result["checked"] == 2
+        assert result["valid_count"] == 2
+        assert result["invalid_count"] == 0
+
+    def test_get_memory_stats_disabled(self):
+        """Test get_memory_stats when memory check disabled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(memory_integrity_check=False)
+        stats = validator.get_memory_stats()
+
+        assert stats["enabled"] is False
+
+    def test_get_memory_stats_enabled(self):
+        """Test get_memory_stats when memory check enabled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(
+            memory_integrity_check=True,
+            memory_secret_key="test-key"
+        )
+
+        # Add a transaction
+        validator.check("transfer", amount=1.0, purpose="test")
+
+        stats = validator.get_memory_stats()
+
+        assert stats["enabled"] is True
+        assert stats["entries_stored"] == 1
+
+    def test_clear_history_clears_memory_store(self):
+        """Test clear_history also clears memory store."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator(
+            memory_integrity_check=True,
+            memory_secret_key="test-key"
+        )
+
+        validator.check("transfer", amount=1.0, purpose="test")
+        assert len(validator.history) == 1
+        assert len(validator._memory_store) == 1
+
+        validator.clear_history()
+
+        assert len(validator.history) == 0
+        assert len(validator._memory_store) == 0
+
+
+class TestRecipientTypeHandling:
+    """Tests for recipient type normalization."""
+
+    def test_recipient_none(self):
+        """Test recipient=None is handled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=1.0, recipient=None, purpose="test")
+
+        # Should not crash
+        assert result is not None
+
+    def test_recipient_integer(self):
+        """Test recipient as integer is converted to string."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=1.0, recipient=123, purpose="test")
+
+        # Should not crash, converted to "123"
+        assert result is not None
+
+    def test_recipient_list(self):
+        """Test recipient as list is converted to string."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=1.0, recipient=["abc"], purpose="test")
+
+        # Should not crash, converted to "['abc']"
+        assert result is not None
+
+    def test_recipient_empty_string(self):
+        """Test empty recipient is handled."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=1.0, recipient="", purpose="test")
+
+        assert result is not None
+
+
+class TestAmountTypeHandling:
+    """Tests for amount type edge cases."""
+
+    def test_amount_none(self):
+        """Test amount=None is normalized to 0.0."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=None, purpose="test")
+
+        # Should not crash
+        assert result is not None
+
+    def test_amount_string_numeric(self):
+        """Test amount as numeric string is converted."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount="5.0", purpose="test")
+
+        assert result is not None
+
+    def test_amount_invalid_string(self):
+        """Test amount as invalid string raises concern."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount="invalid", purpose="test")
+
+        assert any("Invalid transaction amount" in c for c in result.concerns)
+        assert result.risk_level == TransactionRisk.CRITICAL
+
+    def test_amount_infinity(self):
+        """Test amount=infinity is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=float('inf'), purpose="test")
+
+        assert any("exceeds limit" in c for c in result.concerns)
+
+
+class TestMemoInDescription:
+    """Tests for memo inclusion in description."""
+
+    def test_memo_sql_injection_detected(self):
+        """Test SQL injection in memo is detected."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check(
+            "transfer",
+            amount=1.0,
+            memo="DROP TABLE users; --",
+            purpose="test"
+        )
+
+        # Should detect the attack
+        assert not result.should_proceed
+        assert any("injection" in c.lower() for c in result.concerns)
+
+    def test_memo_system_command_detected(self):
+        """Test system command in memo is detected."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        result = validator.check(
+            "transfer",
+            amount=1.0,
+            memo="rm -rf /",
+            purpose="test"
+        )
+
+        assert not result.should_proceed
+
+    def test_long_memo_truncated(self):
+        """Test long memo is truncated without error."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+        long_memo = "A" * 500
+        result = validator.check(
+            "transfer",
+            amount=1.0,
+            memo=long_memo,
+            purpose="test"
+        )
+
+        # Should not crash
+        assert result is not None
