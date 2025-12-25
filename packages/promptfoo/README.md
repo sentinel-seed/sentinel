@@ -75,7 +75,7 @@ providers:
 |--------|-------------|---------|
 | `base_provider` | Underlying LLM (`openai:model` or `anthropic:model`) | `openai:gpt-4o-mini` |
 | `seed_version` | Seed version (`v1` or `v2`) | `v2` |
-| `seed_variant` | Seed size (`minimal`, `standard`) | `standard` |
+| `seed_variant` | Seed size (`minimal`, `standard`, `full`) | `standard` |
 | `inject_seed` | Whether to inject the seed | `true` |
 | `temperature` | LLM temperature | `0.7` |
 
