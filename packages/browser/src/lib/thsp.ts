@@ -44,25 +44,24 @@ function validateTruth(input: string, context: ValidationContext): GateResult {
     return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
   }
 
-  // Check for injection patterns - more specific to avoid false positives
+  // Check for injection patterns - balanced for security and usability
   const injectionPatterns = [
-    // M002: Only match actual injection attempts
+    // Core injection attempts - always block
     { pattern: /ignore\s+(?:all\s+)?previous\s+instructions/i, msg: 'Instruction override detected' },
-    { pattern: /disregard\s+(?:all\s+)?(?:prior|previous)\s+(?:instructions|context)/i, msg: 'Instruction disregard detected' },
-    // M003: More specific - require harmful context after "you are now"
-    { pattern: /you\s+are\s+now\s+(?:a|an)\s+(?:evil|harmful|unrestricted|jailbroken)/i, msg: 'Role switch to unsafe persona' },
-    // M004: "pretend to be" only for unsafe roles
-    { pattern: /pretend\s+(?:you\s+are|to\s+be)\s+(?:an?\s+)?(?:evil|harmful|unrestricted|malicious)/i, msg: 'Pretend as unsafe persona' },
-    // M005: Removed "act as if/though" - too common in legitimate text
-    // M006: More specific - "system:" only at start of line or after newline
-    { pattern: /(?:^|\n)\s*system\s*:\s*(?:ignore|override|forget)/i, msg: 'System prompt override' },
-    { pattern: /new\s+instructions\s*:\s*(?:ignore|override|forget)/i, msg: 'New instructions override' },
+    { pattern: /disregard\s+(?:all\s+)?(?:prior|previous)/i, msg: 'Instruction disregard detected' },
+    // Role switching to unsafe personas
+    { pattern: /you\s+are\s+now\s+(?:a|an)\s+/i, msg: 'Role switch attempt' },
+    // "pretend to be" with unsafe context - match "an evil", "evil", etc
+    { pattern: /pretend\s+(?:you\s+are|to\s+be)\s+(?:an?\s+)?(?:evil|harmful|unrestricted|malicious|jailbroken)/i, msg: 'Pretend as unsafe persona' },
+    // System prompt injection
+    { pattern: /system\s*:\s*(?:ignore|override|forget|you\s+are)/i, msg: 'System prompt override' },
+    { pattern: /new\s+instructions\s*:/i, msg: 'New instructions injection' },
   ];
 
   for (const { pattern, msg } of injectionPatterns) {
     if (pattern.test(input)) {
       issues.push(msg);
-      score -= 30;
+      score -= 60; // Single injection should fail the gate
       break;
     }
   }
@@ -100,20 +99,20 @@ function validateHarm(input: string, context: ValidationContext): GateResult {
     return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
   }
 
-  // Sensitive patterns - more specific to avoid false positives
+  // Sensitive patterns - detect credentials and sensitive data
   const sensitivePatterns = [
-    // Password in assignment/config context (not just discussion of passwords)
-    { pattern: /password['":\s=]+['"]?[^\s'"]{6,}/i, penalty: 25, msg: 'Password value detected' },
-    // API key in assignment context
-    { pattern: /api[_-]?key['":\s=]+['"]?[a-zA-Z0-9-_]{10,}/i, penalty: 25, msg: 'API key value detected' },
-    // N009: "secret" too generic - require assignment context
-    { pattern: /(?:client[_-]?)?secret['":\s=]+['"]?[a-zA-Z0-9-_]{10,}/i, penalty: 15, msg: 'Secret value detected' },
-    // Private key content (not just mention)
-    { pattern: /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----/i, penalty: 30, msg: 'Private key detected' },
-    // SSN - with word boundary to be more precise
-    { pattern: /\b\d{3}-\d{2}-\d{4}\b/, penalty: 30, msg: 'SSN pattern detected' },
-    // Credit card - more specific with Luhn-like structure
-    { pattern: /\b(?:4[0-9]{3}|5[1-5][0-9]{2}|6011|3[47][0-9]{2})[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/, penalty: 30, msg: 'Credit card pattern detected' },
+    // Password with value (password=, password:, or password is: followed by value)
+    { pattern: /password\s*(?:is\s*)?[=:]\s*['"]?[^\s'"]{4,}/i, penalty: 60, msg: 'Password value detected' },
+    // API key with value
+    { pattern: /api[_-]?key\s*[=:]\s*['"]?[a-zA-Z0-9-_]{8,}/i, penalty: 60, msg: 'API key value detected' },
+    // Secret with value (client_secret=, secret:, etc)
+    { pattern: /(?:client[_-]?)?secret\s*[=:]\s*['"]?[a-zA-Z0-9-_]{8,}/i, penalty: 60, msg: 'Secret value detected' },
+    // Private key content
+    { pattern: /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----/i, penalty: 60, msg: 'Private key detected' },
+    // SSN pattern
+    { pattern: /\b\d{3}-\d{2}-\d{4}\b/, penalty: 60, msg: 'SSN pattern detected' },
+    // Credit card - common prefixes
+    { pattern: /\b(?:4\d{3}|5[1-5]\d{2}|6011|3[47]\d{2})[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/, penalty: 60, msg: 'Credit card pattern detected' },
   ];
 
   for (const { pattern, penalty, msg } of sensitivePatterns) {
@@ -123,13 +122,15 @@ function validateHarm(input: string, context: ValidationContext): GateResult {
     }
   }
 
-  // Harmful request patterns - more specific
+  // Harmful request patterns
   const harmfulPatterns = [
-    // More specific: "how to hack" requires target context
-    { pattern: /how\s+to\s+hack\s+(?:into|someone|account|password|system)/i, penalty: 20, msg: 'Hacking request' },
-    // Bypass only in clearly malicious context
-    { pattern: /bypass\s+(?:security|authentication)\s+(?:to|and|for)\s+(?:access|steal|get)/i, penalty: 20, msg: 'Security bypass request' },
-    { pattern: /steal\s+(?:data|information|credentials|passwords?)/i, penalty: 25, msg: 'Data theft request' },
+    // Hacking requests - various forms
+    { pattern: /how\s+to\s+hack\s+(?:into|someone|an?\s+account|password|system)/i, penalty: 60, msg: 'Hacking request' },
+    { pattern: /hack\s+into\s+(?:someone|their|an?\s+account)/i, penalty: 60, msg: 'Hacking request' },
+    // Bypass with malicious intent
+    { pattern: /bypass\s+(?:security|authentication).*(?:steal|access|get)/i, penalty: 60, msg: 'Security bypass request' },
+    // Data theft
+    { pattern: /steal\s+(?:data|information|credentials|passwords?|their)/i, penalty: 60, msg: 'Data theft request' },
   ];
 
   for (const { pattern, penalty, msg } of harmfulPatterns) {
@@ -179,13 +180,15 @@ function validateScope(input: string, context: ValidationContext): GateResult {
     score -= 15;
   }
 
-  // Check for scope escalation attempts - more specific patterns
+  // Check for scope escalation attempts
   const scopePatterns = [
-    // More specific: "access all" requires dangerous context
-    { pattern: /(?:grant|give|get)\s+(?:me\s+)?(?:access\s+to\s+)?(?:all|every|full)\s+(?:files?|data|records?)/i, penalty: 15, msg: 'Broad access request' },
-    { pattern: /admin(?:istrator)?\s+(?:access|rights|privileges)/i, penalty: 20, msg: 'Admin access request' },
-    { pattern: /root\s+(?:access|privileges|permissions)/i, penalty: 20, msg: 'Root access request' },
-    { pattern: /sudo\s+/i, penalty: 15, msg: 'Elevated privilege command' },
+    // Broad access requests
+    { pattern: /(?:grant|give|get)\s+(?:me\s+)?(?:access\s+to\s+)?(?:all|every|full)\s+/i, penalty: 30, msg: 'Broad access request' },
+    // Admin/root access
+    { pattern: /admin(?:istrator)?\s+(?:access|rights|privileges)/i, penalty: 60, msg: 'Admin access request' },
+    { pattern: /root\s+(?:access|privileges|permissions)/i, penalty: 60, msg: 'Root access request' },
+    // Sudo commands - dangerous
+    { pattern: /sudo\s+\S+/i, penalty: 60, msg: 'Elevated privilege command' },
   ];
 
   for (const { pattern, penalty, msg } of scopePatterns) {
@@ -228,13 +231,15 @@ function validatePurpose(
     score -= 10;
   }
 
-  // Check for unclear or suspicious purposes - more specific
+  // Check for unclear or suspicious purposes
   const suspiciousPatterns = [
-    // More specific: only match command-like context
-    { pattern: /just\s+(?:do|execute|run)\s+(?:it|this)\s+(?:without|no)/i, penalty: 10, msg: 'Vague execution without verification' },
-    { pattern: /don'?t\s+(?:ask|question|verify)\s+(?:me|anything|this)/i, penalty: 15, msg: 'Verification avoidance' },
-    { pattern: /no\s+(?:questions|explanation)\s+(?:needed|required|please)/i, penalty: 15, msg: 'Explanation avoidance' },
-    { pattern: /(?:skip|bypass)\s+(?:all\s+)?(?:checks?|validation|verification)/i, penalty: 20, msg: 'Validation bypass request' },
+    // Vague execution requests
+    { pattern: /just\s+(?:do|execute|run)\s+(?:it|this)/i, penalty: 30, msg: 'Vague execution request' },
+    // Verification/question avoidance
+    { pattern: /don'?t\s+(?:ask|question|verify)/i, penalty: 60, msg: 'Verification avoidance' },
+    { pattern: /no\s+(?:questions|explanation)/i, penalty: 30, msg: 'Explanation avoidance' },
+    // Skip/bypass validation
+    { pattern: /(?:skip|bypass)\s+(?:all\s+)?(?:checks?|validation|verification)/i, penalty: 60, msg: 'Validation bypass request' },
   ];
 
   for (const { pattern, penalty, msg } of suspiciousPatterns) {
