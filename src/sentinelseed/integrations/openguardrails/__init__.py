@@ -47,7 +47,7 @@ logger = logging.getLogger("sentinelseed.openguardrails")
 try:
     import requests
     REQUESTS_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     REQUESTS_AVAILABLE = False
     requests = None
 
@@ -182,6 +182,30 @@ class OpenGuardrailsValidator:
                 "requests is required for OpenGuardrails integration. "
                 "Install with: pip install requests"
             )
+
+        # Validate api_url
+        if not api_url or not isinstance(api_url, str):
+            raise ValueError("api_url must be a non-empty string")
+
+        # Validate timeout
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("timeout must be a positive number")
+
+        # Validate api_key
+        if api_key is not None and not isinstance(api_key, str):
+            raise TypeError(f"api_key must be string or None, got {type(api_key).__name__}")
+
+        # Validate default_scanners
+        if default_scanners is not None:
+            if not isinstance(default_scanners, list):
+                raise TypeError(f"default_scanners must be list or None, got {type(default_scanners).__name__}")
+            for i, scanner in enumerate(default_scanners):
+                if not isinstance(scanner, str):
+                    raise TypeError(f"default_scanners[{i}] must be string, got {type(scanner).__name__}")
+
+        # Validate fail_safe
+        if not isinstance(fail_safe, bool):
+            raise TypeError(f"fail_safe must be bool, got {type(fail_safe).__name__}")
 
         self.api_url = api_url.rstrip("/")
         self.api_key = api_key
@@ -381,6 +405,31 @@ class SentinelOpenGuardrailsScanner:
                 "Install with: pip install requests"
             )
 
+        # Validate risk_level
+        if not isinstance(risk_level, RiskLevel):
+            if isinstance(risk_level, str):
+                try:
+                    risk_level = RiskLevel(risk_level)
+                except ValueError:
+                    valid = [l.value for l in RiskLevel]
+                    raise ValueError(f"Invalid risk_level '{risk_level}'. Must be one of: {', '.join(valid)}")
+            else:
+                raise TypeError(f"risk_level must be RiskLevel enum or string, got {type(risk_level).__name__}")
+
+        # Validate timeout
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("timeout must be a positive number")
+
+        # Validate scan_prompt and scan_response
+        if not isinstance(scan_prompt, bool):
+            raise TypeError(f"scan_prompt must be bool, got {type(scan_prompt).__name__}")
+        if not isinstance(scan_response, bool):
+            raise TypeError(f"scan_response must be bool, got {type(scan_response).__name__}")
+
+        # Validate jwt_token
+        if jwt_token is not None and not isinstance(jwt_token, str):
+            raise TypeError(f"jwt_token must be string or None, got {type(jwt_token).__name__}")
+
         self.api_url = openguardrails_url.rstrip("/")
         self.jwt_token = jwt_token
         self.risk_level = risk_level
@@ -515,7 +564,7 @@ class SentinelGuardrailsWrapper:
             try:
                 from sentinelseed import Sentinel
                 self.sentinel = Sentinel()
-            except ImportError:
+            except (ImportError, AttributeError):
                 logger.warning("Sentinel not available, using OpenGuardrails only")
 
     def validate(
@@ -570,8 +619,12 @@ class SentinelGuardrailsWrapper:
                     logger.warning(
                         f"Unexpected sentinel_result type: {type(sentinel_result)}"
                     )
+                    result["safe"] = False
+                    result["blocked_by"].append("sentinel_invalid_result")
             except Exception as e:
                 logger.error(f"Sentinel validation error: {e}")
+                result["safe"] = False
+                result["blocked_by"].append("sentinel_error")
 
         # Run OpenGuardrails validation
         if self.openguardrails:
@@ -590,11 +643,11 @@ class SentinelGuardrailsWrapper:
                 raise
             except Exception as e:
                 logger.error(f"OpenGuardrails validation error: {e}")
+                result["safe"] = False
+                result["blocked_by"].append("openguardrails_error")
 
-        # If require_both, only block if both failed
-        if self.require_both and len(result["blocked_by"]) < 2:
-            result["safe"] = True
-            result["blocked_by"] = []
+        # require_both=True means both validators must pass - which is the default
+        # behavior (any failure blocks). The logic is already correct.
 
         return result
 
