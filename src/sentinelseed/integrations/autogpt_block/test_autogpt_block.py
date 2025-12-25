@@ -633,3 +633,97 @@ class TestConcurrency:
 
         assert len(results) == 10
         assert all("should_proceed" in r for r in results)
+
+
+# ============================================================================
+# Bug Fix Verification Tests (Correction #050)
+# ============================================================================
+
+class TestBugFixVerification:
+    """Tests to verify bug fixes from Correction #050."""
+
+    # C001: check_action(None) should reject
+    def test_c001_check_action_none_raises(self):
+        """C001: check_action(None) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            check_action(None)
+        assert "action_name" in str(exc_info.value)
+
+    def test_c001_check_action_none_fail_closed(self):
+        """C001: check_action(None, fail_closed=True) should return should_proceed=False."""
+        result = check_action(None, fail_closed=True)
+        assert result["should_proceed"] is False
+        assert "error" in result
+        assert result["action"] is None
+
+    # N001: check_action('') should reject
+    def test_n001_check_action_empty_string_raises(self):
+        """N001: check_action('') should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            check_action('')
+        assert "action_name" in str(exc_info.value)
+
+    def test_n001_check_action_empty_string_fail_closed(self):
+        """N001: check_action('', fail_closed=True) should return should_proceed=False."""
+        result = check_action('', fail_closed=True)
+        assert result["should_proceed"] is False
+        assert "error" in result
+
+    # N002: check_action(123) should reject
+    def test_n002_check_action_int_raises(self):
+        """N002: check_action(123) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            check_action(123)
+        assert "action_name" in str(exc_info.value)
+
+    def test_n002_check_action_int_fail_closed(self):
+        """N002: check_action(123, fail_closed=True) should return should_proceed=False."""
+        result = check_action(123, fail_closed=True)
+        assert result["should_proceed"] is False
+
+    # N004: check_action with invalid action_args type
+    def test_n004_check_action_invalid_args_type_raises(self):
+        """N004: check_action with string action_args should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            check_action("test", "invalid_string")
+        assert "action_args" in str(exc_info.value)
+
+    def test_n004_check_action_invalid_args_list_raises(self):
+        """N004: check_action with list action_args should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            check_action("test", [1, 2, 3])
+        assert "action_args" in str(exc_info.value)
+
+    def test_n004_check_action_invalid_args_fail_closed(self):
+        """N004: check_action with invalid args and fail_closed=True should return should_proceed=False."""
+        result = check_action("test", "invalid", fail_closed=True)
+        assert result["should_proceed"] is False
+        assert "error" in result
+
+    # C002: Dangerous command detection
+    def test_c002_dangerous_command_blocked(self):
+        """C002: Dangerous commands like 'rm -rf /' should be blocked."""
+        result = check_action("execute_command", {"cmd": "rm -rf /"})
+        assert result["should_proceed"] is False
+        assert len(result["concerns"]) > 0
+
+    def test_c002_format_command_blocked(self):
+        """C002: Dangerous commands like 'format C:' should be blocked."""
+        result = check_action("execute_command", {"cmd": "format C:"})
+        assert result["should_proceed"] is False
+
+    # Verify normal functionality still works
+    def test_valid_action_still_works(self):
+        """Verify normal valid actions still work after fixes."""
+        result = check_action("read_file", {"path": "/tmp/test.txt"})
+        assert "should_proceed" in result
+        assert result["action"] == "read_file"
+
+    def test_valid_action_with_purpose(self):
+        """Verify actions with purpose still work."""
+        result = check_action(
+            "send_email",
+            {"to": "test@example.com"},
+            purpose="Notify user of status"
+        )
+        assert "should_proceed" in result

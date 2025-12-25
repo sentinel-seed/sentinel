@@ -37,7 +37,7 @@ For standalone Python usage:
         execute_action()
 
 References:
-    - AutoGPT Block SDK: https://dev-docs.agpt.co/platform/block-sdk-guide/
+    - AutoGPT Block SDK: https://agpt.co/docs/platform/block-sdk-guide
     - Sentinel: https://sentinelseed.dev
 """
 
@@ -50,8 +50,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import logging
 
-from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult, RiskLevel
+from sentinelseed import Sentinel
+from sentinelseed.validators.semantic import SemanticValidator
 
 logger = logging.getLogger("sentinelseed.autogpt_block")
 
@@ -110,7 +110,7 @@ try:
         SchemaField,
     )
     AUTOGPT_SDK_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     # Define stubs for type hints when SDK not installed
     Block = object
     BlockCategory = None
@@ -428,11 +428,41 @@ def check_action(
         Dict with should_proceed, concerns, recommendations, risk_level
 
     Example:
-        result = check_action("delete_file", {"path": "/etc/passwd"})
+        result = check_action("execute_command", {"cmd": "rm -rf /"})
         if not result["should_proceed"]:
             print(f"Blocked: {result['concerns']}")
     """
-    # Validate parameters
+    # Validate action_name - must be non-empty string
+    if not action_name or not isinstance(action_name, str):
+        error_msg = "action_name must be a non-empty string"
+        logger.error(f"Parameter validation failed: {error_msg}")
+        if fail_closed:
+            return {
+                "should_proceed": False,
+                "action": action_name,
+                "concerns": [error_msg],
+                "recommendations": ["Provide valid action name"],
+                "risk_level": "high",
+                "error": error_msg,
+            }
+        raise InvalidParameterError("action_name", action_name, ("non-empty string",))
+
+    # Validate action_args - must be dict or None
+    if action_args is not None and not isinstance(action_args, dict):
+        error_msg = "action_args must be a dict or None"
+        logger.error(f"Parameter validation failed: {error_msg}")
+        if fail_closed:
+            return {
+                "should_proceed": False,
+                "action": action_name,
+                "concerns": [error_msg],
+                "recommendations": ["Provide valid action arguments as dict"],
+                "risk_level": "high",
+                "error": error_msg,
+            }
+        raise InvalidParameterError("action_args", type(action_args).__name__, ("dict", "None"))
+
+    # Validate seed_level
     try:
         seed_level = _validate_seed_level(seed_level)
     except InvalidParameterError as e:

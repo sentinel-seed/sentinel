@@ -7,7 +7,7 @@ Sentinel safety validation blocks for AutoGPT Platform v0.6+.
 This integration is designed for the **AutoGPT Platform** which uses the Block SDK architecture. For standalone usage without AutoGPT, you can use the provided standalone functions.
 
 **References:**
-- [AutoGPT Block SDK Guide](https://dev-docs.agpt.co/platform/block-sdk-guide/)
+- [AutoGPT Block SDK Guide](https://agpt.co/docs/platform/block-sdk-guide)
 - [AutoGPT Platform](https://platform.agpt.co)
 
 ## Overview
@@ -74,9 +74,9 @@ print(result["gate_results"])  # Real per-gate results
 
 # Check action before execution
 result = check_action(
-    action_name="delete_file",
-    action_args={"path": "/etc/passwd"},
-    purpose="Clean up temporary files"
+    action_name="execute_command",
+    action_args={"cmd": "rm -rf /"},
+    purpose="Clean up files"
 )
 if not result["should_proceed"]:
     print(f"Blocked: {result['concerns']}")
@@ -433,6 +433,6 @@ The legacy module is deprecated and should not be used for new projects.
 ## Resources
 
 - [AutoGPT Platform](https://platform.agpt.co)
-- [Block SDK Guide](https://dev-docs.agpt.co/platform/block-sdk-guide/)
+- [Block SDK Guide](https://agpt.co/docs/platform/block-sdk-guide)
 - [Sentinel Documentation](https://sentinelseed.dev/docs)
 - [THSP Protocol](https://sentinelseed.dev/docs/methodology)
