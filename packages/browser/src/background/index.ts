@@ -10,35 +10,14 @@
 
 import { validateTHSP, ValidationContext } from '../lib/thsp';
 import { scanAll, PatternMatch } from '../lib/patterns';
+// M009: Import types from centralized location instead of duplicating
+import { Settings, Stats, Alert } from '../types';
 
-// Types
+// Types - only StorageData is unique to this file
 interface StorageData {
   settings: Settings;
   stats: Stats;
   alerts: Alert[];
-}
-
-interface Settings {
-  enabled: boolean;
-  protectionLevel: 'basic' | 'recommended' | 'maximum';
-  platforms: string[];
-  notifications: boolean;
-}
-
-interface Stats {
-  threatsBlocked: number;
-  secretsCaught: number;
-  sessionsProtected: number;
-  lastUpdated: number;
-}
-
-interface Alert {
-  id: string;
-  type: 'harvest' | 'secret' | 'bot' | 'phishing';
-  message: string;
-  timestamp: number;
-  acknowledged: boolean;
-  details?: Record<string, unknown>;
 }
 
 // Default settings

@@ -14,6 +14,47 @@ export interface PatternMatch {
   message: string;
 }
 
+// BIP39 wordlist (2048 words) - first 200 most common for quick validation
+// Full list at: https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+const BIP39_COMMON_WORDS = new Set([
+  'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
+  'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid',
+  'acoustic', 'acquire', 'across', 'act', 'action', 'actor', 'actress', 'actual',
+  'adapt', 'add', 'addict', 'address', 'adjust', 'admit', 'adult', 'advance',
+  'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'age', 'agent',
+  'agree', 'ahead', 'aim', 'air', 'airport', 'aisle', 'alarm', 'album',
+  'alcohol', 'alert', 'alien', 'all', 'alley', 'allow', 'almost', 'alone',
+  'alpha', 'already', 'also', 'alter', 'always', 'amateur', 'amazing', 'among',
+  'amount', 'amused', 'analyst', 'anchor', 'ancient', 'anger', 'angle', 'angry',
+  'animal', 'ankle', 'announce', 'annual', 'answer', 'antenna', 'antique', 'anxiety',
+  'any', 'apart', 'apology', 'appear', 'apple', 'approve', 'april', 'arch',
+  'area', 'arena', 'argue', 'arm', 'armed', 'armor', 'army', 'around',
+  'arrange', 'arrest', 'arrive', 'arrow', 'art', 'artefact', 'artist', 'artwork',
+  'ask', 'aspect', 'assault', 'asset', 'assist', 'assume', 'asthma', 'athlete',
+  'atom', 'attack', 'attend', 'attitude', 'attract', 'auction', 'audit', 'august',
+  'aunt', 'author', 'auto', 'autumn', 'average', 'avocado', 'avoid', 'awake',
+  'aware', 'away', 'awesome', 'awful', 'awkward', 'axis', 'baby', 'bachelor',
+  'bacon', 'badge', 'bag', 'balance', 'balcony', 'ball', 'bamboo', 'banana',
+  'banner', 'bar', 'barely', 'bargain', 'barrel', 'base', 'basic', 'basket',
+  'battle', 'beach', 'bean', 'beauty', 'because', 'become', 'beef', 'before',
+  'begin', 'behave', 'behind', 'believe', 'below', 'belt', 'bench', 'benefit',
+  'best', 'betray', 'better', 'between', 'beyond', 'bicycle', 'bid', 'bike',
+  'bind', 'biology', 'bird', 'birth', 'bitter', 'black', 'blade', 'blame',
+  'blanket', 'blast', 'bleak', 'bless', 'blind', 'blood', 'blossom', 'blouse',
+  'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil', 'bomb',
+  // Common non-BIP39 words that should NOT trigger seed detection
+]);
+
+// Words that commonly appear in regular text but aren't likely in seed phrases
+const COMMON_TEXT_WORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'this', 'that', 'have',
+  'from', 'with', 'they', 'will', 'would', 'there', 'their', 'what', 'which',
+  'when', 'where', 'who', 'how', 'can', 'could', 'should', 'would', 'been',
+  'was', 'were', 'has', 'had', 'does', 'did', 'just', 'very', 'more', 'most',
+  'some', 'than', 'then', 'into', 'only', 'other', 'such', 'these', 'those',
+  'your', 'our', 'his', 'her', 'its', 'my', 'we', 'us', 'them', 'him',
+]);
+
 // API Keys and Tokens
 export const SECRET_PATTERNS: Record<string, RegExp> = {
   // AWS
@@ -133,9 +174,41 @@ const MESSAGES: Record<string, string> = {
 };
 
 /**
+ * Check if a sequence of words is likely a BIP39 seed phrase
+ * Returns true if it looks like a real seed phrase
+ */
+function isLikelySeedPhrase(words: string[]): boolean {
+  // Must have exactly 12 or 24 words
+  if (words.length !== 12 && words.length !== 24) return false;
+
+  // Count words that are in BIP39 wordlist vs common text words
+  let bip39Count = 0;
+  let commonTextCount = 0;
+
+  for (const word of words) {
+    const lower = word.toLowerCase();
+    if (BIP39_COMMON_WORDS.has(lower)) bip39Count++;
+    if (COMMON_TEXT_WORDS.has(lower)) commonTextCount++;
+  }
+
+  // If more than 2 common text words, likely not a seed phrase
+  if (commonTextCount > 2) return false;
+
+  // Seed phrases should have most words from BIP39 list
+  // At least 50% should be recognizable BIP39 words
+  const bip39Ratio = bip39Count / words.length;
+  return bip39Ratio >= 0.5;
+}
+
+/**
  * Scan text for secrets and sensitive data
  */
 export function scanForSecrets(text: string): PatternMatch[] {
+  // Guard against null/undefined/non-string input
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+
   const matches: PatternMatch[] = [];
 
   // Check secret patterns
@@ -161,12 +234,10 @@ export function scanForSecrets(text: string): PatternMatch[] {
     let match;
 
     while ((match = regex.exec(text)) !== null) {
-      // Skip if likely not a real seed phrase (common words)
+      // Validate seed phrases more carefully to reduce false positives
       if (type.startsWith('seed_phrase')) {
         const words = match[0].toLowerCase().split(/\s+/);
-        const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you'];
-        const hasCommon = words.some((w) => commonWords.includes(w));
-        if (hasCommon) continue;
+        if (!isLikelySeedPhrase(words)) continue;
       }
 
       matches.push({
@@ -187,6 +258,11 @@ export function scanForSecrets(text: string): PatternMatch[] {
  * Scan text for PII
  */
 export function scanForPII(text: string): PatternMatch[] {
+  // Guard against null/undefined/non-string input
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+
   const matches: PatternMatch[] = [];
 
   for (const [type, pattern] of Object.entries(PII_PATTERNS)) {
@@ -194,6 +270,24 @@ export function scanForPII(text: string): PatternMatch[] {
     let match;
 
     while ((match = regex.exec(text)) !== null) {
+      // M007: SSN pattern also matches phone numbers - add context check
+      if (type === 'ssn') {
+        // Check if it's preceded by phone-related context
+        const before = text.substring(Math.max(0, match.index - 20), match.index).toLowerCase();
+        if (before.includes('phone') || before.includes('tel') || before.includes('call') || before.includes('fax')) {
+          continue;
+        }
+      }
+
+      // M008: Email pattern too broad - skip code-like patterns
+      if (type === 'email') {
+        const value = match[0];
+        // Skip if it looks like code (e.g., @decorator, @annotation)
+        if (value.startsWith('@') || /^[a-z_]+@[a-z_]+\.[a-z]{2}$/i.test(value)) {
+          continue;
+        }
+      }
+
       matches.push({
         type,
         value: match[0],
@@ -209,31 +303,97 @@ export function scanForPII(text: string): PatternMatch[] {
 }
 
 /**
- * Scan text for all sensitive data
+ * Remove overlapping matches, keeping higher severity ones
  */
-export function scanAll(text: string): PatternMatch[] {
-  const secrets = scanForSecrets(text);
-  const pii = scanForPII(text);
+function deduplicateMatches(matches: PatternMatch[]): PatternMatch[] {
+  if (matches.length <= 1) return matches;
 
-  // Deduplicate overlapping matches
-  const all = [...secrets, ...pii];
-  return all.sort((a, b) => b.severity.localeCompare(a.severity));
+  // Sort by severity (critical > high > medium > low) then by start position
+  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = [...matches].sort((a, b) => {
+    const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+    if (severityDiff !== 0) return severityDiff;
+    return a.start - b.start;
+  });
+
+  const result: PatternMatch[] = [];
+  const covered = new Set<number>();
+
+  for (const match of sorted) {
+    // Check if any position in this match is already covered
+    let overlaps = false;
+    for (let i = match.start; i < match.end; i++) {
+      if (covered.has(i)) {
+        overlaps = true;
+        break;
+      }
+    }
+
+    if (!overlaps) {
+      result.push(match);
+      // Mark all positions as covered
+      for (let i = match.start; i < match.end; i++) {
+        covered.add(i);
+      }
+    }
+  }
+
+  return result;
 }
 
 /**
- * Mask sensitive data in text
+ * Scan text for all sensitive data
+ */
+export function scanAll(text: string): PatternMatch[] {
+  // Guard against null/undefined/non-string input
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+
+  const secrets = scanForSecrets(text);
+  const pii = scanForPII(text);
+
+  // Deduplicate overlapping matches, keeping higher severity
+  const all = [...secrets, ...pii];
+  const deduplicated = deduplicateMatches(all);
+
+  // Sort by severity for display
+  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  return deduplicated.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+}
+
+/**
+ * Mask sensitive data in text, handling overlaps correctly
  */
 export function maskSensitiveData(
   text: string,
   matches: PatternMatch[]
 ): string {
+  // Guard against null/undefined/non-string input
+  if (!text || typeof text !== 'string') {
+    return text ?? '';
+  }
+
+  if (!matches || !Array.isArray(matches) || matches.length === 0) {
+    return text;
+  }
+
+  // First deduplicate to avoid overlap corruption
+  const deduplicated = deduplicateMatches(matches);
+
+  // Sort by position (reverse) to maintain indices while replacing
+  const sorted = [...deduplicated].sort((a, b) => b.start - a.start);
+
   let result = text;
-
-  // Sort by position (reverse) to maintain indices
-  const sorted = [...matches].sort((a, b) => b.start - a.start);
-
   for (const match of sorted) {
-    const masked = match.value.substring(0, 4) + '****';
+    // Safety check: ensure indices are within bounds
+    if (match.start < 0 || match.end > result.length || match.start >= match.end) {
+      continue;
+    }
+
+    const valueLen = match.end - match.start;
+    const showChars = Math.min(4, Math.floor(valueLen / 2));
+    const masked = match.value.substring(0, showChars) + '****';
     result = result.substring(0, match.start) + masked + result.substring(match.end);
   }
 

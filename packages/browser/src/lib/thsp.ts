@@ -39,20 +39,29 @@ function validateTruth(input: string, context: ValidationContext): GateResult {
   const issues: string[] = [];
   let score = 100;
 
-  // Check for injection patterns
+  // Guard against null/undefined input
+  if (!input || typeof input !== 'string') {
+    return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
+  }
+
+  // Check for injection patterns - more specific to avoid false positives
   const injectionPatterns = [
-    /ignore\s+(?:all\s+)?previous\s+instructions/i,
-    /disregard\s+(?:all\s+)?(?:prior|previous)/i,
-    /you\s+are\s+now\s+(?:a|an)\s+/i,
-    /pretend\s+(?:you\s+are|to\s+be)/i,
-    /act\s+as\s+(?:if|though)/i,
-    /new\s+instructions:/i,
-    /system\s*:\s*/i,
+    // M002: Only match actual injection attempts
+    { pattern: /ignore\s+(?:all\s+)?previous\s+instructions/i, msg: 'Instruction override detected' },
+    { pattern: /disregard\s+(?:all\s+)?(?:prior|previous)\s+(?:instructions|context)/i, msg: 'Instruction disregard detected' },
+    // M003: More specific - require harmful context after "you are now"
+    { pattern: /you\s+are\s+now\s+(?:a|an)\s+(?:evil|harmful|unrestricted|jailbroken)/i, msg: 'Role switch to unsafe persona' },
+    // M004: "pretend to be" only for unsafe roles
+    { pattern: /pretend\s+(?:you\s+are|to\s+be)\s+(?:an?\s+)?(?:evil|harmful|unrestricted|malicious)/i, msg: 'Pretend as unsafe persona' },
+    // M005: Removed "act as if/though" - too common in legitimate text
+    // M006: More specific - "system:" only at start of line or after newline
+    { pattern: /(?:^|\n)\s*system\s*:\s*(?:ignore|override|forget)/i, msg: 'System prompt override' },
+    { pattern: /new\s+instructions\s*:\s*(?:ignore|override|forget)/i, msg: 'New instructions override' },
   ];
 
-  for (const pattern of injectionPatterns) {
+  for (const { pattern, msg } of injectionPatterns) {
     if (pattern.test(input)) {
-      issues.push('Potential prompt injection detected');
+      issues.push(msg);
       score -= 30;
       break;
     }
@@ -86,22 +95,25 @@ function validateHarm(input: string, context: ValidationContext): GateResult {
   const issues: string[] = [];
   let score = 100;
 
-  // Import patterns dynamically to check for secrets
+  // Guard against null/undefined input
+  if (!input || typeof input !== 'string') {
+    return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
+  }
+
+  // Sensitive patterns - more specific to avoid false positives
   const sensitivePatterns = [
-    { pattern: /password['":\s=]+/i, penalty: 25, msg: 'Password detected' },
-    { pattern: /api[_-]?key/i, penalty: 25, msg: 'API key reference detected' },
-    { pattern: /secret/i, penalty: 15, msg: 'Secret reference detected' },
-    { pattern: /private[_-]?key/i, penalty: 30, msg: 'Private key detected' },
-    {
-      pattern: /\b\d{3}-\d{2}-\d{4}\b/,
-      penalty: 30,
-      msg: 'SSN pattern detected',
-    },
-    {
-      pattern: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/,
-      penalty: 30,
-      msg: 'Credit card pattern detected',
-    },
+    // Password in assignment/config context (not just discussion of passwords)
+    { pattern: /password['":\s=]+['"]?[^\s'"]{6,}/i, penalty: 25, msg: 'Password value detected' },
+    // API key in assignment context
+    { pattern: /api[_-]?key['":\s=]+['"]?[a-zA-Z0-9-_]{10,}/i, penalty: 25, msg: 'API key value detected' },
+    // N009: "secret" too generic - require assignment context
+    { pattern: /(?:client[_-]?)?secret['":\s=]+['"]?[a-zA-Z0-9-_]{10,}/i, penalty: 15, msg: 'Secret value detected' },
+    // Private key content (not just mention)
+    { pattern: /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----/i, penalty: 30, msg: 'Private key detected' },
+    // SSN - with word boundary to be more precise
+    { pattern: /\b\d{3}-\d{2}-\d{4}\b/, penalty: 30, msg: 'SSN pattern detected' },
+    // Credit card - more specific with Luhn-like structure
+    { pattern: /\b(?:4[0-9]{3}|5[1-5][0-9]{2}|6011|3[47][0-9]{2})[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/, penalty: 30, msg: 'Credit card pattern detected' },
   ];
 
   for (const { pattern, penalty, msg } of sensitivePatterns) {
@@ -111,19 +123,13 @@ function validateHarm(input: string, context: ValidationContext): GateResult {
     }
   }
 
-  // Check for potentially harmful requests
+  // Harmful request patterns - more specific
   const harmfulPatterns = [
-    { pattern: /how\s+to\s+hack/i, penalty: 20, msg: 'Hacking request' },
-    {
-      pattern: /bypass\s+(?:security|authentication)/i,
-      penalty: 20,
-      msg: 'Security bypass request',
-    },
-    {
-      pattern: /steal\s+(?:data|information|credentials)/i,
-      penalty: 25,
-      msg: 'Data theft request',
-    },
+    // More specific: "how to hack" requires target context
+    { pattern: /how\s+to\s+hack\s+(?:into|someone|account|password|system)/i, penalty: 20, msg: 'Hacking request' },
+    // Bypass only in clearly malicious context
+    { pattern: /bypass\s+(?:security|authentication)\s+(?:to|and|for)\s+(?:access|steal|get)/i, penalty: 20, msg: 'Security bypass request' },
+    { pattern: /steal\s+(?:data|information|credentials|passwords?)/i, penalty: 25, msg: 'Data theft request' },
   ];
 
   for (const { pattern, penalty, msg } of harmfulPatterns) {
@@ -152,6 +158,11 @@ function validateScope(input: string, context: ValidationContext): GateResult {
   const issues: string[] = [];
   let score = 100;
 
+  // Guard against null/undefined input
+  if (!input || typeof input !== 'string') {
+    return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
+  }
+
   // Check if action is appropriate for the platform
   const platformActions: Record<string, string[]> = {
     chatgpt: ['send', 'copy', 'export'],
@@ -168,23 +179,13 @@ function validateScope(input: string, context: ValidationContext): GateResult {
     score -= 15;
   }
 
-  // Check for scope escalation attempts
+  // Check for scope escalation attempts - more specific patterns
   const scopePatterns = [
-    {
-      pattern: /access\s+(?:all|every|full)/i,
-      penalty: 15,
-      msg: 'Broad access request',
-    },
-    {
-      pattern: /admin(?:istrator)?\s+(?:access|rights|privileges)/i,
-      penalty: 20,
-      msg: 'Admin access request',
-    },
-    {
-      pattern: /root\s+(?:access|privileges)/i,
-      penalty: 20,
-      msg: 'Root access request',
-    },
+    // More specific: "access all" requires dangerous context
+    { pattern: /(?:grant|give|get)\s+(?:me\s+)?(?:access\s+to\s+)?(?:all|every|full)\s+(?:files?|data|records?)/i, penalty: 15, msg: 'Broad access request' },
+    { pattern: /admin(?:istrator)?\s+(?:access|rights|privileges)/i, penalty: 20, msg: 'Admin access request' },
+    { pattern: /root\s+(?:access|privileges|permissions)/i, penalty: 20, msg: 'Root access request' },
+    { pattern: /sudo\s+/i, penalty: 15, msg: 'Elevated privilege command' },
   ];
 
   for (const { pattern, penalty, msg } of scopePatterns) {
@@ -216,29 +217,24 @@ function validatePurpose(
   const issues: string[] = [];
   let score = 100;
 
+  // Guard against null/undefined input
+  if (!input || typeof input !== 'string') {
+    return { passed: false, score: 0, issues: ['Invalid input: null or non-string'] };
+  }
+
   // If user hasn't confirmed and input is sensitive
   if (!context.userConfirmed && input.length > 1000) {
     issues.push('Large input without user confirmation');
     score -= 10;
   }
 
-  // Check for unclear or suspicious purposes
+  // Check for unclear or suspicious purposes - more specific
   const suspiciousPatterns = [
-    {
-      pattern: /just\s+(?:do|execute|run)\s+(?:it|this)/i,
-      penalty: 10,
-      msg: 'Vague execution request',
-    },
-    {
-      pattern: /don'?t\s+(?:ask|question|verify)/i,
-      penalty: 15,
-      msg: 'Verification avoidance',
-    },
-    {
-      pattern: /no\s+(?:questions|explanation)/i,
-      penalty: 15,
-      msg: 'Explanation avoidance',
-    },
+    // More specific: only match command-like context
+    { pattern: /just\s+(?:do|execute|run)\s+(?:it|this)\s+(?:without|no)/i, penalty: 10, msg: 'Vague execution without verification' },
+    { pattern: /don'?t\s+(?:ask|question|verify)\s+(?:me|anything|this)/i, penalty: 15, msg: 'Verification avoidance' },
+    { pattern: /no\s+(?:questions|explanation)\s+(?:needed|required|please)/i, penalty: 15, msg: 'Explanation avoidance' },
+    { pattern: /(?:skip|bypass)\s+(?:all\s+)?(?:checks?|validation|verification)/i, penalty: 20, msg: 'Validation bypass request' },
   ];
 
   for (const { pattern, penalty, msg } of suspiciousPatterns) {
@@ -256,16 +252,51 @@ function validatePurpose(
 }
 
 /**
+ * Create a default context for validation
+ */
+function getDefaultContext(): ValidationContext {
+  return {
+    source: 'user',
+    platform: 'generic',
+    action: 'send',
+    userConfirmed: false,
+  };
+}
+
+/**
+ * Create a failed gate result for invalid input
+ */
+function createFailedGate(reason: string): GateResult {
+  return { passed: false, score: 0, issues: [reason] };
+}
+
+/**
  * Run full THSP validation
  */
 export function validateTHSP(
   input: string,
-  context: ValidationContext
+  context?: ValidationContext | null
 ): THSPResult {
-  const truth = validateTruth(input, context);
-  const harm = validateHarm(input, context);
-  const scope = validateScope(input, context);
-  const purpose = validatePurpose(input, context);
+  // N010/N011: Handle null/undefined input
+  if (!input || typeof input !== 'string') {
+    const failedGate = createFailedGate('Invalid input: null or non-string');
+    return {
+      truth: failedGate,
+      harm: failedGate,
+      scope: failedGate,
+      purpose: failedGate,
+      overall: false,
+      summary: 'Validation failed: Invalid input provided',
+    };
+  }
+
+  // N010: Handle null/undefined context
+  const safeContext = context ?? getDefaultContext();
+
+  const truth = validateTruth(input, safeContext);
+  const harm = validateHarm(input, safeContext);
+  const scope = validateScope(input, safeContext);
+  const purpose = validatePurpose(input, safeContext);
 
   const overall = truth.passed && harm.passed && scope.passed && purpose.passed;
 
@@ -303,13 +334,11 @@ export function validateTHSP(
  * Quick check - returns true if input is likely safe
  */
 export function quickCheck(input: string): boolean {
-  const context: ValidationContext = {
-    source: 'user',
-    platform: 'generic',
-    action: 'send',
-    userConfirmed: false,
-  };
+  // N011: Handle null/undefined input - fail closed (return false = not safe)
+  if (!input || typeof input !== 'string') {
+    return false;
+  }
 
-  const result = validateTHSP(input, context);
+  const result = validateTHSP(input, getDefaultContext());
   return result.overall;
 }

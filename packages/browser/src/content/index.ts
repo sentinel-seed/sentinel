@@ -9,6 +9,27 @@
 
 import { scanAll, maskSensitiveData, PatternMatch } from '../lib/patterns';
 
+/**
+ * Escape HTML to prevent XSS attacks
+ * C001: Critical security fix
+ */
+function escapeHtml(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Create an HTML element safely without innerHTML
+ */
+function createSafeElement(tag: string, className?: string, textContent?: string): HTMLElement {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (textContent) element.textContent = textContent;
+  return element;
+}
+
 // Platform detection
 function detectPlatform(): string {
   const hostname = window.location.hostname;
@@ -126,18 +147,25 @@ function setupInputProtection() {
   });
 }
 
+// Track forms with attached listeners to avoid duplicates (N003)
+const formsWithListeners = new WeakSet<HTMLFormElement>();
+
 function attachInputListener(input: HTMLElement) {
   if (input.dataset.sentinelProtected) return;
   input.dataset.sentinelProtected = 'true';
 
-  // Intercept form submission
+  // Intercept form submission - N003: avoid duplicate listeners
   const form = input.closest('form');
-  if (form) {
+  if (form && !formsWithListeners.has(form)) {
     form.addEventListener('submit', handleSubmit, true);
+    formsWithListeners.add(form);
   }
 
-  // Intercept Enter key
+  // Intercept Enter key - N004: check bypass flag
   input.addEventListener('keydown', (e) => {
+    // N004: Check bypass flag before blocking
+    if (input.dataset.sentinelBypass === 'true') return;
+
     if (e.key === 'Enter' && !e.shiftKey) {
       const text = getInputText(input);
       if (text && shouldBlockSubmission(text)) {
@@ -204,6 +232,11 @@ function scanAndIndicate(text: string, input: HTMLElement) {
   const matches = scanAll(text);
   const indicator = getOrCreateIndicator(input);
 
+  // N002: Handle case where indicator creation failed
+  if (!indicator) {
+    return;
+  }
+
   if (matches.length > 0) {
     const critical = matches.filter((m) => m.severity === 'critical').length;
     const high = matches.filter((m) => m.severity === 'high').length;
@@ -225,13 +258,18 @@ function scanAndIndicate(text: string, input: HTMLElement) {
   }
 }
 
-function getOrCreateIndicator(input: HTMLElement): HTMLElement {
-  let indicator = input.parentElement?.querySelector('.sentinel-indicator') as HTMLElement;
+function getOrCreateIndicator(input: HTMLElement): HTMLElement | null {
+  // N002: Handle case where parentElement is null
+  if (!input.parentElement) {
+    return null;
+  }
+
+  let indicator = input.parentElement.querySelector('.sentinel-indicator') as HTMLElement | null;
 
   if (!indicator) {
     indicator = document.createElement('div');
     indicator.className = 'sentinel-indicator';
-    input.parentElement?.insertBefore(indicator, input);
+    input.parentElement.insertBefore(indicator, input);
   }
 
   return indicator;
@@ -241,7 +279,7 @@ function getOrCreateIndicator(input: HTMLElement): HTMLElement {
 function showWarning(text: string, input: HTMLElement) {
   const matches = scanAll(text);
 
-  // Report to background
+  // N005: Handle sendMessage errors
   chrome.runtime.sendMessage({
     type: 'REPORT_THREAT',
     payload: {
@@ -249,37 +287,75 @@ function showWarning(text: string, input: HTMLElement) {
       message: `Blocked: ${matches.length} sensitive item(s) detected`,
       details: { matches: matches.slice(0, 5) },
     },
+  }).catch((err) => {
+    console.warn('[Sentinel Guard] Failed to report threat:', err);
   });
 
-  // Create modal
+  // C001: Create modal using safe DOM methods instead of innerHTML
   const modal = document.createElement('div');
   modal.className = 'sentinel-modal-overlay';
-  modal.innerHTML = `
-    <div class="sentinel-modal">
-      <div class="sentinel-modal-header">
-        <span class="sentinel-logo">🛡️</span>
-        <span>Sentinel Guard</span>
-        <button class="sentinel-close">&times;</button>
-      </div>
-      <div class="sentinel-modal-body">
-        <h3>⚠️ Sensitive Data Detected</h3>
-        <p>The following items were found in your message:</p>
-        <ul class="sentinel-matches">
-          ${matches
-            .slice(0, 5)
-            .map((m) => `<li><strong>${m.type}:</strong> ${m.message}</li>`)
-            .join('')}
-          ${matches.length > 5 ? `<li>...and ${matches.length - 5} more</li>` : ''}
-        </ul>
-      </div>
-      <div class="sentinel-modal-actions">
-        <button class="sentinel-btn sentinel-btn-primary" data-action="remove">Remove All</button>
-        <button class="sentinel-btn sentinel-btn-secondary" data-action="mask">Mask Data</button>
-        <button class="sentinel-btn sentinel-btn-danger" data-action="send">Send Anyway</button>
-      </div>
-    </div>
-  `;
 
+  const modalContent = document.createElement('div');
+  modalContent.className = 'sentinel-modal';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'sentinel-modal-header';
+  const logo = document.createElement('span');
+  logo.className = 'sentinel-logo';
+  logo.textContent = '🛡️';
+  const title = document.createElement('span');
+  title.textContent = 'Sentinel Guard';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'sentinel-close';
+  closeBtn.textContent = '×';
+  header.append(logo, title, closeBtn);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'sentinel-modal-body';
+  const h3 = document.createElement('h3');
+  h3.textContent = '⚠️ Sensitive Data Detected';
+  const p = document.createElement('p');
+  p.textContent = 'The following items were found in your message:';
+  const ul = document.createElement('ul');
+  ul.className = 'sentinel-matches';
+
+  // C001: Create list items safely (no innerHTML with user data)
+  for (const match of matches.slice(0, 5)) {
+    const li = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = escapeHtml(match.type) + ':';
+    li.append(strong, ' ' + escapeHtml(match.message));
+    ul.appendChild(li);
+  }
+  if (matches.length > 5) {
+    const li = document.createElement('li');
+    li.textContent = `...and ${matches.length - 5} more`;
+    ul.appendChild(li);
+  }
+
+  body.append(h3, p, ul);
+
+  // Actions
+  const actions = document.createElement('div');
+  actions.className = 'sentinel-modal-actions';
+  const btnRemove = document.createElement('button');
+  btnRemove.className = 'sentinel-btn sentinel-btn-primary';
+  btnRemove.dataset.action = 'remove';
+  btnRemove.textContent = 'Remove All';
+  const btnMask = document.createElement('button');
+  btnMask.className = 'sentinel-btn sentinel-btn-secondary';
+  btnMask.dataset.action = 'mask';
+  btnMask.textContent = 'Mask Data';
+  const btnSend = document.createElement('button');
+  btnSend.className = 'sentinel-btn sentinel-btn-danger';
+  btnSend.dataset.action = 'send';
+  btnSend.textContent = 'Send Anyway';
+  actions.append(btnRemove, btnMask, btnSend);
+
+  modalContent.append(header, body, actions);
+  modal.appendChild(modalContent);
   document.body.appendChild(modal);
 
   // Handle actions
@@ -328,79 +404,157 @@ function setInputText(element: HTMLElement, text: string) {
   }
 }
 
-function triggerSend(input: HTMLElement) {
+function triggerSend(input: HTMLElement): boolean {
   const sendSelector = SEND_SELECTORS[platform] || SEND_SELECTORS.unknown;
-  const sendButton = document.querySelector(sendSelector) as HTMLButtonElement;
+  const sendButton = document.querySelector(sendSelector) as HTMLButtonElement | null;
+
   if (sendButton) {
     sendButton.click();
+    return true;
+  }
+
+  // N006: Try alternative - simulate Enter key on input
+  try {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    });
+    input.dispatchEvent(event);
+    return true;
+  } catch (err) {
+    console.warn('[Sentinel Guard] Failed to trigger send:', err);
+    return false;
   }
 }
 
 // Conversation Shield - protect from other extensions
+// C003: Instead of modifying native prototypes, use MutationObserver to monitor DOM access
 function setupConversationShield() {
-  // Monitor for suspicious DOM access
-  const originalQuerySelector = Document.prototype.querySelector;
-  const originalQuerySelectorAll = Document.prototype.querySelectorAll;
+  // Monitor for suspicious script injections instead of wrapping native methods
+  const scriptObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node instanceof HTMLScriptElement) {
+          // Check for suspicious script content
+          const src = node.src || '';
+          if (src && !isTrustedScriptSource(src)) {
+            logSuspiciousActivity('External script injection', { src });
+          }
+        }
+      }
+    }
+  });
 
-  // Wrap querySelector to detect suspicious queries
-  Document.prototype.querySelector = function (selector: string) {
-    checkSuspiciousSelector(selector);
-    return originalQuerySelector.call(this, selector);
-  };
+  // Only observe if document.head exists
+  if (document.head) {
+    scriptObserver.observe(document.head, { childList: true });
+  }
 
-  Document.prototype.querySelectorAll = function (selector: string) {
-    checkSuspiciousSelector(selector);
-    return originalQuerySelectorAll.call(this, selector);
-  };
+  // Monitor for potentially dangerous attribute changes on inputs
+  const inputObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && mutation.target instanceof HTMLElement) {
+        const target = mutation.target;
+        // Check for suspicious attribute manipulation on protected inputs
+        if (target.dataset.sentinelProtected && mutation.attributeName === 'value') {
+          logSuspiciousActivity('Protected input value modified externally', {
+            element: target.tagName
+          });
+        }
+      }
+    }
+  });
+
+  // Observe the body for attribute changes on inputs
+  if (document.body) {
+    inputObserver.observe(document.body, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['value', 'data-sentinel-protected']
+    });
+  }
 }
 
-function checkSuspiciousSelector(selector: string) {
-  // Selectors that other extensions might use to harvest conversations
-  const suspiciousPatterns = [
-    /conversation/i,
-    /message.*content/i,
-    /chat.*history/i,
-    /assistant.*response/i,
+function isTrustedScriptSource(src: string): boolean {
+  const trustedDomains = [
+    'cdn.jsdelivr.net',
+    'unpkg.com',
+    'chat.openai.com',
+    'chatgpt.com',
+    'claude.ai',
+    'gemini.google.com',
+    'perplexity.ai'
   ];
 
-  for (const pattern of suspiciousPatterns) {
-    if (pattern.test(selector)) {
-      // Log but don't block (might be legitimate)
-      console.log('[Sentinel Guard] Detected query for conversation data:', selector);
-      break;
-    }
+  try {
+    const url = new URL(src);
+    return trustedDomains.some(domain => url.hostname.endsWith(domain));
+  } catch {
+    return false;
   }
+}
+
+function logSuspiciousActivity(type: string, details: Record<string, unknown>) {
+  console.warn(`[Sentinel Guard] Suspicious activity detected: ${type}`, details);
+
+  // Report to background - N005: Handle errors
+  chrome.runtime.sendMessage({
+    type: 'REPORT_THREAT',
+    payload: { type, message: `Suspicious: ${type}`, details }
+  }).catch(() => {
+    // Ignore - background might not be available
+  });
+}
+
+/**
+ * Create a toast notification safely (no innerHTML)
+ */
+function createToast(message: string, type: 'warning' | 'success'): HTMLElement {
+  const toast = document.createElement('div');
+  toast.className = `sentinel-toast sentinel-toast-${type}`;
+
+  const icon = document.createElement('span');
+  icon.textContent = '🛡️';
+
+  const text = document.createElement('span');
+  text.textContent = message;
+
+  toast.append(icon, text);
+  return toast;
 }
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SCAN_PAGE') {
-    const bodyText = document.body.innerText;
+    // N001: Guard against document.body being null
+    if (!document.body) {
+      sendResponse({ matches: [], count: 0, error: 'Document body not available' });
+      return true;
+    }
+
+    const bodyText = document.body.innerText || '';
     const matches = scanAll(bodyText);
 
     if (matches.length > 0) {
       const critical = matches.filter((m) => m.severity === 'critical').length;
       const high = matches.filter((m) => m.severity === 'high').length;
 
-      // Show toast notification
-      const toast = document.createElement('div');
-      toast.className = 'sentinel-toast sentinel-toast-warning';
-      toast.innerHTML = `
-        <span>🛡️</span>
-        <span>Page scan: ${matches.length} item(s) found (${critical} critical, ${high} high)</span>
-      `;
+      // C001: Create toast safely without innerHTML
+      const toast = createToast(
+        `Page scan: ${matches.length} item(s) found (${critical} critical, ${high} high)`,
+        'warning'
+      );
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5000);
 
       sendResponse({ matches, count: matches.length });
     } else {
-      // Show success toast
-      const toast = document.createElement('div');
-      toast.className = 'sentinel-toast sentinel-toast-success';
-      toast.innerHTML = `
-        <span>🛡️</span>
-        <span>Page scan complete: No sensitive data found</span>
-      `;
+      // C001: Create toast safely without innerHTML
+      const toast = createToast('Page scan complete: No sensitive data found', 'success');
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 3000);
 

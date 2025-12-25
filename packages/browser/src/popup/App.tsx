@@ -1,26 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-interface Settings {
-  enabled: boolean;
-  protectionLevel: 'basic' | 'recommended' | 'maximum';
-  platforms: string[];
-  notifications: boolean;
-}
-
-interface Stats {
-  threatsBlocked: number;
-  secretsCaught: number;
-  sessionsProtected: number;
-  lastUpdated: number;
-}
-
-interface Alert {
-  id: string;
-  type: string;
-  message: string;
-  timestamp: number;
-  acknowledged: boolean;
-}
+// M009: Import types from centralized location instead of duplicating
+import { Settings, Stats, Alert } from '../types';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
