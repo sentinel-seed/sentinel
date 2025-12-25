@@ -321,6 +321,29 @@ class TestM011ApiErrorDetection:
         assert result['valid'] is False
         assert 'API error' in result['violations'][0]
 
+    def test_api_error_none_not_treated_as_error(self, mock_sentinel):
+        """Edge case: error=None should NOT be treated as error."""
+        response = {'error': None, 'choices': [{'message': {'content': 'Hello'}}]}
+        result = validate_response(response, sentinel=mock_sentinel)
+        # error=None is falsy, so should be treated as normal response
+        assert result['valid'] is True
+        assert result['content'] == 'Hello'
+
+    def test_api_error_empty_list_not_treated_as_error(self, mock_sentinel):
+        """Edge case: error=[] should NOT be treated as error."""
+        response = {'error': [], 'choices': [{'message': {'content': 'Hello'}}]}
+        result = validate_response(response, sentinel=mock_sentinel)
+        # error=[] is falsy, so should be treated as normal response
+        assert result['valid'] is True
+        assert result['content'] == 'Hello'
+
+    def test_api_error_empty_dict_not_treated_as_error(self, mock_sentinel):
+        """Edge case: error={} should NOT be treated as error."""
+        response = {'error': {}, 'choices': [{'message': {'content': 'Hello'}}]}
+        result = validate_response(response, sentinel=mock_sentinel)
+        # error={} is falsy, so should be treated as normal response
+        assert result['valid'] is True
+
     def test_normal_response_returns_valid_true(self, mock_sentinel):
         """Normal response should return valid=True."""
         response = {

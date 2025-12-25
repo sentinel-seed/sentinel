@@ -600,8 +600,10 @@ def validate_response(
     _validate_bool(block_on_unsafe, "block_on_unsafe")
 
     # M011: Detect API error responses before processing
-    if "error" in response:
-        error_info = response.get("error", {})
+    # Only treat as error if "error" key exists AND has a truthy value
+    # This avoids false positives with {"error": null} or {"error": []}
+    error_info = response.get("error")
+    if error_info:
         if isinstance(error_info, dict):
             error_msg = error_info.get("message", "Unknown API error")
         else:
