@@ -292,5 +292,5 @@ except RawAPIError as e:
 ## Links
 
 - **OpenAI API:** https://platform.openai.com/docs/api-reference
-- **Anthropic API:** https://docs.anthropic.com/en/api
+- **Anthropic API:** https://docs.anthropic.com/
 - **Sentinel:** https://sentinelseed.dev

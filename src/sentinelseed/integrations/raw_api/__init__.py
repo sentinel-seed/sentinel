@@ -35,12 +35,11 @@ Usage:
     )
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 from json import JSONDecodeError
 import logging
 
-from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+from sentinelseed import Sentinel
 
 __version__ = "1.0.0"
 
@@ -126,6 +125,95 @@ def _validate_messages(messages: Any) -> None:
             raise ValueError(f"messages[{i}] must be a dict, got {type(msg).__name__}")
         if "role" not in msg:
             raise ValueError(f"messages[{i}] missing required 'role' key")
+        # M008: Validate role is a string
+        if not isinstance(msg["role"], str):
+            raise ValueError(
+                f"messages[{i}]['role'] must be a string, got {type(msg['role']).__name__}"
+            )
+
+
+def _validate_timeout(timeout: Any, param_name: str = "timeout") -> None:
+    """Validate timeout parameter is a positive number."""
+    if not isinstance(timeout, (int, float)):
+        raise ValueError(
+            f"{param_name} must be a number, got {type(timeout).__name__}"
+        )
+    if timeout <= 0:
+        raise ValueError(f"{param_name} must be positive, got {timeout}")
+
+
+def _validate_temperature(temperature: Any) -> None:
+    """Validate temperature parameter is a number between 0 and 2."""
+    if not isinstance(temperature, (int, float)):
+        raise ValueError(
+            f"temperature must be a number, got {type(temperature).__name__}"
+        )
+    if temperature < 0 or temperature > 2:
+        raise ValueError(
+            f"temperature must be between 0 and 2, got {temperature}"
+        )
+
+
+def _validate_max_tokens(max_tokens: Any) -> None:
+    """Validate max_tokens parameter is a positive integer."""
+    if not isinstance(max_tokens, int):
+        raise ValueError(
+            f"max_tokens must be an integer, got {type(max_tokens).__name__}"
+        )
+    if max_tokens < 1:
+        raise ValueError(f"max_tokens must be positive, got {max_tokens}")
+
+
+def _validate_model(model: Any) -> None:
+    """Validate model parameter is a non-empty string."""
+    if model is None:
+        raise ValueError("model cannot be None")
+    if not isinstance(model, str):
+        raise ValueError(f"model must be a string, got {type(model).__name__}")
+    if not model.strip():
+        raise ValueError("model cannot be an empty string")
+
+
+def _validate_api_key(api_key: Any, required: bool = False) -> None:
+    """Validate api_key parameter is None or a non-empty string."""
+    if api_key is None:
+        if required:
+            raise ValueError("api_key is required")
+        return
+    if not isinstance(api_key, str):
+        raise ValueError(
+            f"api_key must be a string, got {type(api_key).__name__}"
+        )
+    if not api_key.strip():
+        raise ValueError("api_key cannot be an empty string")
+
+
+def _validate_bool(value: Any, param_name: str) -> None:
+    """Validate a parameter is a boolean."""
+    if not isinstance(value, bool):
+        raise TypeError(
+            f"{param_name} must be a bool, got {type(value).__name__}"
+        )
+
+
+def _validate_system(system: Any) -> None:
+    """Validate system parameter is None or a string."""
+    if system is None:
+        return
+    if not isinstance(system, str):
+        raise ValueError(
+            f"system must be a string, got {type(system).__name__}"
+        )
+
+
+def _validate_base_url(base_url: Any) -> None:
+    """Validate base_url parameter is None or a non-empty string."""
+    if base_url is None:
+        return
+    if not isinstance(base_url, str):
+        raise ValueError(
+            f"base_url must be a string, got {type(base_url).__name__}"
+        )
 
 
 def _safe_get_content(msg: Dict[str, Any]) -> str:
@@ -200,6 +288,12 @@ def prepare_openai_request(
     # Validate parameters
     _validate_messages(messages)
     _validate_seed_level(seed_level)
+    _validate_model(model)
+    _validate_api_key(api_key)
+    _validate_max_tokens(max_tokens)
+    _validate_temperature(temperature)
+    _validate_bool(inject_seed, "inject_seed")
+    _validate_bool(validate_input, "validate_input")
 
     # Create sentinel instance
     try:
@@ -323,6 +417,12 @@ def prepare_anthropic_request(
     # Validate parameters
     _validate_messages(messages)
     _validate_seed_level(seed_level)
+    _validate_model(model)
+    _validate_api_key(api_key)
+    _validate_max_tokens(max_tokens)
+    _validate_system(system)
+    _validate_bool(inject_seed, "inject_seed")
+    _validate_bool(validate_input, "validate_input")
 
     # Create sentinel instance
     try:
@@ -495,6 +595,24 @@ def validate_response(
         raise ValueError("response cannot be None")
     if not isinstance(response, dict):
         raise ValueError(f"response must be a dict, got {type(response).__name__}")
+
+    # Validate block_on_unsafe
+    _validate_bool(block_on_unsafe, "block_on_unsafe")
+
+    # M011: Detect API error responses before processing
+    if "error" in response:
+        error_info = response.get("error", {})
+        if isinstance(error_info, dict):
+            error_msg = error_info.get("message", "Unknown API error")
+        else:
+            error_msg = str(error_info)
+        return {
+            "valid": False,
+            "response": response,
+            "violations": [f"API error: {error_msg}"],
+            "content": "",
+            "sentinel_checked": False,
+        }
 
     # Create sentinel
     try:
@@ -683,6 +801,15 @@ class RawAPIClient:
         # Validate seed_level
         _validate_seed_level(seed_level)
 
+        # Validate timeout (M001, M002)
+        _validate_timeout(timeout)
+
+        # Validate api_key (A005)
+        _validate_api_key(api_key)
+
+        # Validate base_url (C001)
+        _validate_base_url(base_url)
+
         self.provider = provider
         self.api_key = api_key
         self.timeout = timeout
@@ -737,6 +864,12 @@ class RawAPIClient:
             from requests.exceptions import RequestException, Timeout, HTTPError
         except ImportError:
             raise ImportError("requests package required. Install with: pip install requests")
+
+        # Validate parameters (A003, A006, A002)
+        _validate_max_tokens(max_tokens)
+        _validate_bool(block_on_unsafe, "block_on_unsafe")
+        if timeout is not None:
+            _validate_timeout(timeout)
 
         # Set default model
         if model is None:
@@ -895,6 +1028,7 @@ def inject_seed_anthropic(
         system = inject_seed_anthropic("You are a helpful assistant")
     """
     _validate_seed_level(seed_level)
+    _validate_system(system)
 
     try:
         sentinel = Sentinel(seed_level=seed_level)
