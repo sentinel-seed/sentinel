@@ -264,9 +264,13 @@ export class SentinelValidator {
     }
     this.history.push(result);
 
-    // Call optional callback
+    // Call optional callback (wrapped in try/catch to prevent callback errors from crashing validation)
     if (this.config.onValidation) {
-      this.config.onValidation(result);
+      try {
+        this.config.onValidation(result);
+      } catch (callbackError) {
+        console.error("[Sentinel] onValidation callback error:", callbackError);
+      }
     }
 
     return result;
