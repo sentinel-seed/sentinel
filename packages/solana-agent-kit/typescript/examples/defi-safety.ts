@@ -103,7 +103,7 @@ async function main() {
   const riskySwapResult = await agent.methods.validateTransaction({
     action: "swap",
     amount: 100,
-    purpose: "Quick trade",
+    purpose: "Quick speculative trade for testing purposes",
     metadata: {
       fromToken: "SOL",
       toToken: "UNKNOWN_MEMECOIN",

@@ -65,7 +65,7 @@ async function main() {
     action: "transfer",
     amount: 10,
     recipient: "ScamWa11etAddress111111111111111111111111111",
-    purpose: "Test transfer",
+    purpose: "Testing transfer to blocked address for validation",
   });
 
   console.log("Transfer to blocked address:", {
