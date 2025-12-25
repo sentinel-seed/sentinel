@@ -36,19 +36,62 @@ Usage patterns:
 Documentation: https://sentinelseed.dev/docs/solana-agent-kit
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "Sentinel Team"
 
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Callable, Union, Set
 from dataclasses import dataclass, field
 from enum import Enum
+import json
 import logging
+import math
 import re
 import warnings
 
 from sentinelseed import Sentinel
 
 logger = logging.getLogger("sentinelseed.solana_agent_kit")
+
+
+# Allowed metadata keys to prevent injection via arbitrary metadata
+# Only these keys are included in validation text
+ALLOWED_METADATA_KEYS: Set[str] = {
+    "fromToken",
+    "toToken",
+    "slippage",
+    "protocol",
+    "expectedAPY",
+    "bridge",
+    "fromChain",
+    "toChain",
+    "tokenSymbol",
+    "tokenName",
+    "decimals",
+}
+
+
+def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Filter metadata to only allowed keys with primitive values.
+
+    This prevents injection attacks via arbitrary metadata fields.
+
+    Args:
+        metadata: Raw metadata dictionary
+
+    Returns:
+        Sanitized dictionary with only allowed keys and primitive values
+    """
+    if not metadata or not isinstance(metadata, dict):
+        return {}
+
+    sanitized = {}
+    for key, value in metadata.items():
+        if key in ALLOWED_METADATA_KEYS:
+            # Only allow primitive values (str, int, float, bool)
+            if isinstance(value, (str, int, float, bool)):
+                sanitized[key] = value
+    return sanitized
 
 
 # Solana address validation
@@ -116,41 +159,51 @@ class SuspiciousPattern:
     pattern: str  # Regex pattern string
     risk_level: TransactionRisk
     message: str
+    _compiled: Optional[re.Pattern] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self):
+        """Pre-compile the regex pattern for performance."""
+        if self._compiled is None:
+            self._compiled = re.compile(self.pattern, re.IGNORECASE)
 
     def matches(self, text: str) -> bool:
-        """Check if pattern matches the given text."""
-        return bool(re.search(self.pattern, text, re.IGNORECASE))
+        """Check if pattern matches the given text using pre-compiled regex."""
+        if self._compiled is None:
+            self._compiled = re.compile(self.pattern, re.IGNORECASE)
+        return bool(self._compiled.search(text))
 
 
 # Default suspicious patterns for crypto transactions
+# SECURITY: All patterns use word boundaries (\b) to prevent false positives
+# and avoid ReDoS vulnerabilities (no unbounded .* quantifiers)
 DEFAULT_SUSPICIOUS_PATTERNS: List[SuspiciousPattern] = [
     SuspiciousPattern(
         name="drain_operation",
-        pattern=r"drain|sweep|empty",
+        pattern=r"\b(?:drain|sweep|empty)\b",
         risk_level=TransactionRisk.CRITICAL,
         message="Potential drain operation detected",
     ),
     SuspiciousPattern(
         name="unlimited_approval",
-        pattern=r"unlimited|infinite|max.*approv",
+        pattern=r"\b(?:unlimited|infinite)\s+(?:approv|access|permission)",
         risk_level=TransactionRisk.HIGH,
         message="Unlimited approval request detected",
     ),
     SuspiciousPattern(
         name="bulk_transfer",
-        pattern=r"(?:send|transfer).*(?:all|entire|whole)|(?:all|entire|whole).*(?:send|transfer)",
+        pattern=r"\b(?:send|transfer)\s+(?:all|entire|whole)\b",
         risk_level=TransactionRisk.HIGH,
         message="Bulk transfer operation detected",
     ),
     SuspiciousPattern(
         name="private_key_exposure",
-        pattern=r"private.*key|secret.*key|seed.*phrase|mnemonic",
+        pattern=r"\b(?:private\s+key|secret\s+key|seed\s+phrase|mnemonic)\b",
         risk_level=TransactionRisk.CRITICAL,
         message="Potential private key exposure in transaction data",
     ),
     SuspiciousPattern(
         name="suspicious_urgency",
-        pattern=r"urgent|immediately|right.*now|asap",
+        pattern=r"\b(?:urgent|immediately|right\s+now|asap)\b",
         risk_level=TransactionRisk.MEDIUM,
         message="Suspicious urgency language detected",
     ),
@@ -215,7 +268,7 @@ class SentinelValidator:
         max_history_size: int = 1000,
         memory_integrity_check: bool = False,
         memory_secret_key: Optional[str] = None,
-        address_validation: Union[str, AddressValidationMode] = AddressValidationMode.WARN,
+        address_validation: Union[str, AddressValidationMode] = AddressValidationMode.STRICT,
         strict_mode: bool = False,
         custom_patterns: Optional[List[SuspiciousPattern]] = None,
         on_validation: Optional[Callable[[TransactionSafetyResult], None]] = None,
@@ -233,7 +286,7 @@ class SentinelValidator:
             max_history_size: Maximum validation history entries (prevents memory growth)
             memory_integrity_check: Enable memory integrity verification
             memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
-            address_validation: How to handle invalid addresses ("ignore", "warn", "strict")
+            address_validation: How to handle invalid addresses ("ignore", "warn", "strict"). Default is STRICT for security.
             strict_mode: If True, block any transaction with concerns (default False)
             custom_patterns: Additional suspicious patterns to check
             on_validation: Callback function called after each validation
@@ -347,12 +400,19 @@ class SentinelValidator:
                     recommendations.append("Verify recipient address format")
                 # IGNORE mode: no action
 
-        # Validate amount is a valid number and not negative
+        # Validate amount is a valid finite number
         try:
             amount = float(amount)
         except (ValueError, TypeError):
             concerns.append(f"Invalid transaction amount: {amount}")
             risk_level = TransactionRisk.CRITICAL
+            amount = 0.0  # Set to 0 to prevent further errors
+
+        # Check for Infinity and NaN (must be a finite number)
+        if not math.isfinite(amount):
+            concerns.append(f"Invalid amount: {amount} is not a valid finite number")
+            risk_level = TransactionRisk.CRITICAL
+            logger.warning(f"Non-finite amount rejected: {amount}")
             amount = 0.0  # Set to 0 to prevent further errors
 
         if amount < 0:
@@ -402,12 +462,35 @@ class SentinelValidator:
             if risk_level < TransactionRisk.MEDIUM:
                 risk_level = TransactionRisk.MEDIUM
             logger.debug(f"Missing purpose for action: {action}")
-        elif effective_purpose and len(effective_purpose.strip()) < 10:
-            concerns.append(
-                "Purpose explanation is too brief - provide meaningful justification"
-            )
-            if risk_level < TransactionRisk.MEDIUM:
-                risk_level = TransactionRisk.MEDIUM
+        elif effective_purpose:
+            trimmed_purpose = effective_purpose.strip()
+
+            # Check minimum length (20 characters for meaningful justification)
+            if len(trimmed_purpose) < 20:
+                concerns.append(
+                    "Purpose explanation is too brief - provide at least 20 characters"
+                )
+                if risk_level < TransactionRisk.MEDIUM:
+                    risk_level = TransactionRisk.MEDIUM
+
+            # Check minimum word count (3 words for meaningful content)
+            words = trimmed_purpose.split()
+            if len(words) < 3:
+                concerns.append(
+                    "Purpose should contain at least 3 words to be meaningful"
+                )
+                if risk_level < TransactionRisk.MEDIUM:
+                    risk_level = TransactionRisk.MEDIUM
+
+            # Detect gibberish (repeated characters like "aaaaaaaaaa")
+            # Remove spaces and check if it's mostly the same character repeated
+            no_spaces = trimmed_purpose.replace(" ", "")
+            if len(no_spaces) >= 10 and re.match(r'^(.)\1{9,}$', no_spaces):
+                concerns.append(
+                    "Purpose appears to be meaningless repeated characters"
+                )
+                if risk_level < TransactionRisk.MEDIUM:
+                    risk_level = TransactionRisk.MEDIUM
 
         requires_confirmation = amount > self.confirm_above
 
@@ -509,6 +592,18 @@ class SentinelValidator:
             # Truncate long memos to prevent description bloat
             memo_preview = memo[:100] + "..." if len(memo) > 100 else memo
             parts.append(f"memo={memo_preview}")
+
+        # Include sanitized metadata (only allowed keys with primitive values)
+        # This prevents injection attacks via arbitrary metadata fields
+        if extra:
+            sanitized = _sanitize_metadata(extra)
+            if sanitized:
+                # Truncate serialized metadata to prevent bloat
+                meta_str = json.dumps(sanitized)
+                if len(meta_str) > 200:
+                    meta_str = meta_str[:200] + "..."
+                parts.append(f"metadata={meta_str}")
+
         return " ".join(parts)
 
     def _check_patterns(
@@ -1033,6 +1128,7 @@ __all__ = [
     # Constants
     "DEFAULT_SUSPICIOUS_PATTERNS",
     "HIGH_RISK_ACTIONS",
+    "ALLOWED_METADATA_KEYS",
     # Classes
     "SentinelValidator",
     "SentinelSafetyMiddleware",
@@ -1042,4 +1138,5 @@ __all__ = [
     "create_sentinel_actions",
     "create_langchain_tools",
     "is_valid_solana_address",
+    "_sanitize_metadata",
 ]

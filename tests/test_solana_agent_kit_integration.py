@@ -300,7 +300,7 @@ class TestSentinelValidator:
         assert any("requires explicit purpose" in c for c in result.concerns)
 
     def test_purpose_gate_brief_purpose(self):
-        """Test PURPOSE gate with brief purpose."""
+        """Test PURPOSE gate with brief purpose (less than 20 chars)."""
         from sentinelseed.integrations.solana_agent_kit import SentinelValidator
 
         validator = SentinelValidator()
@@ -309,10 +309,11 @@ class TestSentinelValidator:
             action="transfer",
             amount=5.0,
             recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-            purpose="pay",  # Too short
+            purpose="pay",  # Too short (3 chars, needs 20+)
         )
 
-        assert any("too brief" in c for c in result.concerns)
+        # Should flag as too brief (less than 20 characters)
+        assert any("at least 20 characters" in c for c in result.concerns)
 
     def test_purpose_gate_valid_purpose(self):
         """Test PURPOSE gate with valid purpose."""
@@ -600,9 +601,14 @@ class TestSentinelSafetyMiddleware:
         from sentinelseed.integrations.solana_agent_kit import (
             SentinelSafetyMiddleware,
             SentinelValidator,
+            AddressValidationMode,
         )
 
-        validator = SentinelValidator(max_transfer=100.0)
+        # Use WARN mode to allow invalid addresses in this test
+        validator = SentinelValidator(
+            max_transfer=100.0,
+            address_validation=AddressValidationMode.WARN
+        )
         middleware = SentinelSafetyMiddleware(validator=validator)
 
         def my_transfer(amount, recipient):
@@ -653,9 +659,14 @@ class TestSentinelSafetyMiddleware:
         from sentinelseed.integrations.solana_agent_kit import (
             SentinelSafetyMiddleware,
             SentinelValidator,
+            AddressValidationMode,
         )
 
-        validator = SentinelValidator(max_transfer=100.0)
+        # Use WARN mode to allow invalid addresses in this test
+        validator = SentinelValidator(
+            max_transfer=100.0,
+            address_validation=AddressValidationMode.WARN
+        )
         middleware = SentinelSafetyMiddleware(validator=validator)
 
         def my_transfer(amount, recipient):
@@ -668,9 +679,15 @@ class TestSentinelSafetyMiddleware:
 
     def test_middleware_handles_invalid_amount_type(self):
         """Test middleware handles non-numeric amount."""
-        from sentinelseed.integrations.solana_agent_kit import SentinelSafetyMiddleware
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelSafetyMiddleware,
+            SentinelValidator,
+            AddressValidationMode,
+        )
 
-        middleware = SentinelSafetyMiddleware()
+        # Use WARN mode to allow invalid addresses in this test
+        validator = SentinelValidator(address_validation=AddressValidationMode.WARN)
+        middleware = SentinelSafetyMiddleware(validator=validator)
 
         def my_transfer(amount, recipient):
             return amount
@@ -729,7 +746,7 @@ class TestExports:
             is_valid_solana_address,
         )
 
-        assert __version__ == "2.0.0"
+        assert __version__ == "2.1.0"
         assert TransactionRisk is not None
         assert AddressValidationMode is not None
         assert TransactionSafetyResult is not None
@@ -810,12 +827,13 @@ class TestEdgeCases:
         assert any("purpose" in c.lower() for c in result3.concerns)
 
     def test_very_long_purpose(self):
-        """Test very long purpose is accepted."""
+        """Test very long valid purpose is accepted."""
         from sentinelseed.integrations.solana_agent_kit import SentinelValidator
 
         validator = SentinelValidator()
 
-        long_purpose = "A" * 1000
+        # Use a meaningful long purpose (not gibberish)
+        long_purpose = "This is a very long and detailed purpose explanation for this transfer. " * 20
 
         result = validator.check(
             action="transfer",
@@ -824,8 +842,10 @@ class TestEdgeCases:
             purpose=long_purpose,
         )
 
-        # Long purpose should be accepted
-        assert not any("brief" in c.lower() for c in result.concerns)
+        # Long valid purpose should be accepted
+        assert not any("20 characters" in c.lower() for c in result.concerns)
+        assert not any("3 words" in c.lower() for c in result.concerns)
+        assert not any("repeated characters" in c.lower() for c in result.concerns)
 
     def test_reason_alias_for_purpose(self):
         """Test 'reason' works as alias for 'purpose'."""
@@ -1380,12 +1400,42 @@ class TestAmountTypeHandling:
 
     def test_amount_infinity(self):
         """Test amount=infinity is blocked."""
-        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
 
         validator = SentinelValidator()
         result = validator.check("transfer", amount=float('inf'), purpose="test")
 
-        assert any("exceeds limit" in c for c in result.concerns)
+        assert any("not a valid finite number" in c for c in result.concerns)
+        assert result.risk_level == TransactionRisk.CRITICAL
+
+    def test_amount_negative_infinity(self):
+        """Test amount=-infinity is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=float('-inf'), purpose="test")
+
+        assert any("not a valid finite number" in c for c in result.concerns)
+        assert result.risk_level == TransactionRisk.CRITICAL
+
+    def test_amount_nan(self):
+        """Test amount=NaN is blocked."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        validator = SentinelValidator()
+        result = validator.check("transfer", amount=float('nan'), purpose="test")
+
+        assert any("not a valid finite number" in c for c in result.concerns)
+        assert result.risk_level == TransactionRisk.CRITICAL
 
 
 class TestMemoInDescription:
@@ -1436,3 +1486,351 @@ class TestMemoInDescription:
 
         # Should not crash
         assert result is not None
+
+
+class TestPurposeGateEnhancements:
+    """Tests for enhanced Purpose Gate validation (20 chars, 3 words, gibberish)."""
+
+    def test_purpose_minimum_20_characters(self):
+        """Test purpose requires at least 20 characters."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # 15 characters - too short
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="short purpose",  # 13 chars
+        )
+
+        assert any("at least 20 characters" in c for c in result.concerns)
+
+    def test_purpose_20_characters_accepted(self):
+        """Test purpose with exactly 20+ characters is accepted."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # 25+ characters
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="This is a valid purpose with enough characters and words",
+        )
+
+        assert not any("at least 20 characters" in c for c in result.concerns)
+
+    def test_purpose_minimum_3_words(self):
+        """Test purpose requires at least 3 words."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # 2 words only (but 20+ chars)
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="TwoWordsOnlyHere1234",  # 20 chars, 1 word
+        )
+
+        assert any("at least 3 words" in c for c in result.concerns)
+
+    def test_purpose_3_words_accepted(self):
+        """Test purpose with 3+ words is accepted."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="Payment for monthly services rendered",
+        )
+
+        assert not any("at least 3 words" in c for c in result.concerns)
+
+    def test_purpose_gibberish_detection(self):
+        """Test gibberish (repeated characters) is detected."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Repeated character gibberish
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="aaaaaaaaaaaaaaaaaaaaaa",  # 22 a's
+        )
+
+        assert any("meaningless repeated characters" in c for c in result.concerns)
+
+    def test_purpose_valid_repeated_letters_in_words(self):
+        """Test valid purpose with some repeated letters is accepted."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transfer",
+            amount=5.0,
+            recipient="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            purpose="Good morning, this is a valid purpose",
+        )
+
+        assert not any("meaningless repeated characters" in c for c in result.concerns)
+
+
+class TestAddressValidationDefault:
+    """Tests for address_validation default = STRICT."""
+
+    def test_default_is_strict(self):
+        """Test that address_validation defaults to STRICT."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            AddressValidationMode,
+        )
+
+        validator = SentinelValidator()
+        assert validator.address_validation == AddressValidationMode.STRICT
+
+    def test_default_blocks_invalid_address(self):
+        """Test that default config blocks invalid addresses."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SentinelValidator,
+            TransactionRisk,
+        )
+
+        # Using default config (STRICT)
+        validator = SentinelValidator()
+
+        result = validator.check(
+            action="transfer",
+            amount=1.0,
+            recipient="invalid-address-format",
+            purpose="Test transfer with valid purpose here",
+        )
+
+        assert not result.should_proceed
+        assert result.risk_level == TransactionRisk.CRITICAL
+        assert any("Invalid Solana address" in c for c in result.concerns)
+
+
+class TestMetadataSanitization:
+    """Tests for metadata sanitization."""
+
+    def test_allowed_metadata_keys_included(self):
+        """Test allowed metadata keys are included in description."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        metadata = {
+            "fromToken": "SOL",
+            "toToken": "USDC",
+            "slippage": 0.5,
+        }
+
+        sanitized = _sanitize_metadata(metadata)
+
+        assert sanitized["fromToken"] == "SOL"
+        assert sanitized["toToken"] == "USDC"
+        assert sanitized["slippage"] == 0.5
+
+    def test_disallowed_metadata_keys_filtered(self):
+        """Test disallowed metadata keys are filtered out."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        metadata = {
+            "fromToken": "SOL",
+            "malicious_key": "evil_value",
+            "injection": "DROP TABLE",
+            "toToken": "USDC",
+        }
+
+        sanitized = _sanitize_metadata(metadata)
+
+        assert "fromToken" in sanitized
+        assert "toToken" in sanitized
+        assert "malicious_key" not in sanitized
+        assert "injection" not in sanitized
+
+    def test_non_primitive_values_filtered(self):
+        """Test non-primitive values are filtered out."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        metadata = {
+            "fromToken": "SOL",
+            "toToken": {"nested": "object"},  # Object, should be filtered
+            "slippage": [1, 2, 3],  # List, should be filtered
+        }
+
+        sanitized = _sanitize_metadata(metadata)
+
+        assert sanitized["fromToken"] == "SOL"
+        assert "toToken" not in sanitized
+        assert "slippage" not in sanitized
+
+    def test_sanitize_none_metadata(self):
+        """Test sanitizing None returns empty dict."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        assert _sanitize_metadata(None) == {}
+
+    def test_sanitize_empty_metadata(self):
+        """Test sanitizing empty dict returns empty dict."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        assert _sanitize_metadata({}) == {}
+
+    def test_sanitize_non_dict_metadata(self):
+        """Test sanitizing non-dict returns empty dict."""
+        from sentinelseed.integrations.solana_agent_kit import _sanitize_metadata
+
+        assert _sanitize_metadata("not a dict") == {}
+        assert _sanitize_metadata([1, 2, 3]) == {}
+
+
+class TestPatternPrecompilation:
+    """Tests for regex pattern pre-compilation."""
+
+    def test_pattern_compiled_on_init(self):
+        """Test pattern is pre-compiled on initialization."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SuspiciousPattern,
+            TransactionRisk,
+        )
+        import re
+
+        pattern = SuspiciousPattern(
+            name="test",
+            pattern=r"\btest\b",
+            risk_level=TransactionRisk.LOW,
+            message="Test pattern",
+        )
+
+        assert pattern._compiled is not None
+        assert isinstance(pattern._compiled, re.Pattern)
+
+    def test_precompiled_pattern_matches(self):
+        """Test pre-compiled pattern matching works correctly."""
+        from sentinelseed.integrations.solana_agent_kit import (
+            SuspiciousPattern,
+            TransactionRisk,
+        )
+
+        pattern = SuspiciousPattern(
+            name="drain",
+            pattern=r"\bdrain\b",
+            risk_level=TransactionRisk.CRITICAL,
+            message="Drain detected",
+        )
+
+        # Should match
+        assert pattern.matches("drain wallet")
+        assert pattern.matches("DRAIN operation")
+        assert pattern.matches("Please drain")
+
+        # Should not match (no word boundary)
+        assert not pattern.matches("drainage system")
+        assert not pattern.matches("undrained")
+
+
+class TestWordBoundaryPatterns:
+    """Tests for word boundary regex patterns (anti-ReDoS)."""
+
+    def test_drain_pattern_word_boundary(self):
+        """Test drain pattern uses word boundaries."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Should match "drain" as a word
+        result1 = validator.check(
+            action="drain wallet",
+            amount=1.0,
+            purpose="Test drain operation here",
+        )
+        assert any("drain" in c.lower() for c in result1.concerns)
+
+        # Should NOT match "drainage" (drain is not a separate word)
+        result2 = validator.check(
+            action="check_drainage",
+            amount=1.0,
+            purpose="Check the drainage system carefully",
+        )
+        # The pattern detection should not trigger
+        assert not any("Potential drain operation" in c for c in result2.concerns)
+
+    def test_private_key_pattern_word_boundary(self):
+        """Test private key pattern uses word boundaries."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Should match "private key" as separate words
+        result1 = validator.check(
+            action="transfer",
+            amount=1.0,
+            memo="send me your private key",
+            purpose="Test transfer with valid purpose",
+        )
+        assert any("private key" in c.lower() for c in result1.concerns)
+
+        # Should NOT match "privatekey" as one word (no space)
+        result2 = validator.check(
+            action="transfer",
+            amount=1.0,
+            memo="privatekey variable name",
+            purpose="Test transfer with valid purpose",
+        )
+        # The "private key exposure" pattern should not trigger
+        assert not any("Potential private key exposure" in c for c in result2.concerns)
+
+    def test_bulk_transfer_pattern(self):
+        """Test bulk transfer pattern with word boundaries."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Should match "send all" as separate words
+        result1 = validator.check(
+            action="send all tokens",
+            amount=1.0,
+            purpose="Send all tokens to recipient wallet",
+        )
+        # Check for bulk transfer detection
+        assert any("Bulk transfer" in c for c in result1.concerns)
+
+    def test_urgency_pattern_word_boundary(self):
+        """Test urgency pattern uses word boundaries."""
+        from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+        validator = SentinelValidator()
+
+        # Should match "urgent" as a word
+        result1 = validator.check(
+            action="transfer",
+            amount=1.0,
+            memo="this is urgent please act now",
+            purpose="Urgent transfer needed right away",
+        )
+        assert any("urgency" in c.lower() for c in result1.concerns)
+
+
+class TestAllowedMetadataKeys:
+    """Tests for ALLOWED_METADATA_KEYS constant."""
+
+    def test_allowed_keys_defined(self):
+        """Test ALLOWED_METADATA_KEYS is properly defined."""
+        from sentinelseed.integrations.solana_agent_kit import ALLOWED_METADATA_KEYS
+
+        expected_keys = {
+            "fromToken", "toToken", "slippage", "protocol", "expectedAPY",
+            "bridge", "fromChain", "toChain", "tokenSymbol", "tokenName", "decimals",
+        }
+
+        assert ALLOWED_METADATA_KEYS == expected_keys
