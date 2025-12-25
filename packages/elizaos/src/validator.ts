@@ -66,6 +66,20 @@ export function validateContent(
   config?: SentinelPluginConfig
 ): SafetyCheckResult {
   const timestamp = Date.now();
+
+  // Guard against null/undefined/non-string input
+  if (!content || typeof content !== 'string') {
+    return {
+      safe: false,
+      shouldProceed: config?.blockUnsafe === false,
+      gates: { truth: 'unknown', harm: 'unknown', scope: 'unknown', purpose: 'unknown' },
+      concerns: ['Invalid input: content must be a non-empty string'],
+      riskLevel: 'medium',
+      recommendation: 'Content validation failed: invalid input type',
+      timestamp,
+    };
+  }
+
   const concerns: string[] = [];
   const gates: THSPGates = {
     truth: 'pass',
@@ -205,6 +219,9 @@ function generateRecommendation(
  * Content that passes quickCheck still goes through full THSP validation.
  */
 export function quickCheck(content: string): boolean {
+  // Guard against null/undefined/non-string input
+  if (!content || typeof content !== 'string') return true;
+
   // Fast path for very short content (but not too short to contain threats)
   if (content.length < 5) return true;
 
@@ -238,6 +255,19 @@ export function validateAction(
   action: string,
   params?: Record<string, unknown>
 ): SafetyCheckResult {
+  // Guard against null/undefined/non-string action
+  if (!action || typeof action !== 'string') {
+    return {
+      safe: false,
+      shouldProceed: false,
+      gates: { truth: 'unknown', harm: 'unknown', scope: 'unknown', purpose: 'unknown' },
+      concerns: ['Invalid action: action name must be a non-empty string'],
+      riskLevel: 'medium',
+      recommendation: 'Action validation failed: invalid action name',
+      timestamp: Date.now(),
+    };
+  }
+
   const content = params
     ? `${action}: ${JSON.stringify(params)}`
     : action;

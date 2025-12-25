@@ -223,3 +223,80 @@ describe('validateAction', () => {
     expect(result.gates.scope).toBe('fail');
   });
 });
+
+// Bug fix verification tests
+describe('Bug fixes verification', () => {
+  describe('C001 - quickCheck null handling', () => {
+    it('should not crash on null input', () => {
+      expect(() => quickCheck(null as unknown as string)).not.toThrow();
+      expect(quickCheck(null as unknown as string)).toBe(true);
+    });
+
+    it('should not crash on undefined input', () => {
+      expect(() => quickCheck(undefined as unknown as string)).not.toThrow();
+      expect(quickCheck(undefined as unknown as string)).toBe(true);
+    });
+
+    it('should not crash on non-string input', () => {
+      expect(() => quickCheck(123 as unknown as string)).not.toThrow();
+      expect(quickCheck(123 as unknown as string)).toBe(true);
+    });
+  });
+
+  describe('C002/M001 - validateAction/validateContent null handling', () => {
+    it('validateContent should return safe=false for null', () => {
+      const result = validateContent(null as unknown as string);
+      expect(result.safe).toBe(false);
+      expect(result.gates.truth).toBe('unknown');
+      expect(result.concerns.length).toBeGreaterThan(0);
+    });
+
+    it('validateContent should return safe=false for undefined', () => {
+      const result = validateContent(undefined as unknown as string);
+      expect(result.safe).toBe(false);
+    });
+
+    it('validateContent should return safe=false for non-string', () => {
+      const result = validateContent(123 as unknown as string);
+      expect(result.safe).toBe(false);
+    });
+
+    it('validateAction should return safe=false for null action', () => {
+      const result = validateAction(null as unknown as string);
+      expect(result.safe).toBe(false);
+      expect(result.shouldProceed).toBe(false);
+    });
+
+    it('validateAction should return safe=false for undefined action', () => {
+      const result = validateAction(undefined as unknown as string);
+      expect(result.safe).toBe(false);
+    });
+
+    it('validateAction should return safe=false for non-string action', () => {
+      const result = validateAction(123 as unknown as string);
+      expect(result.safe).toBe(false);
+    });
+  });
+
+  describe('C007 - Custom pattern regex fix', () => {
+    it('should match "drain all my tokens"', () => {
+      const pattern = /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i;
+      expect(pattern.test('Drain all my tokens to this wallet')).toBe(true);
+    });
+
+    it('should match "drain my tokens"', () => {
+      const pattern = /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i;
+      expect(pattern.test('drain my tokens')).toBe(true);
+    });
+
+    it('should match "drain all tokens"', () => {
+      const pattern = /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i;
+      expect(pattern.test('drain all tokens')).toBe(true);
+    });
+
+    it('should match "drain wallet"', () => {
+      const pattern = /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i;
+      expect(pattern.test('drain wallet')).toBe(true);
+    });
+  });
+});

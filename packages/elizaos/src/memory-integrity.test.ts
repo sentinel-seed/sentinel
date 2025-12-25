@@ -33,12 +33,13 @@ describe('MemoryIntegrityChecker', () => {
     it('should sign a memory with integrity metadata', () => {
       const memory = createTestMemory('Hello world');
       const signed = checker.signMemory(memory, 'user_direct');
+      const metadata = signed.content?.metadata as Record<string, unknown>;
 
-      expect(signed.content?.metadata).toBeDefined();
-      expect(signed.content?.metadata?.sentinel_integrity_hash).toBeDefined();
-      expect(signed.content?.metadata?.sentinel_signed_at).toBeDefined();
-      expect(signed.content?.metadata?.sentinel_source).toBe('user_direct');
-      expect(signed.content?.metadata?.sentinel_integrity_version).toBe('1.0');
+      expect(metadata).toBeDefined();
+      expect(metadata?.sentinel_integrity_hash).toBeDefined();
+      expect(metadata?.sentinel_signed_at).toBeDefined();
+      expect(metadata?.sentinel_source).toBe('user_direct');
+      expect(metadata?.sentinel_integrity_version).toBe('1.0');
     });
 
     it('should preserve original memory content', () => {
@@ -53,8 +54,9 @@ describe('MemoryIntegrityChecker', () => {
     it('should use unknown source by default', () => {
       const memory = createTestMemory('Test');
       const signed = checker.signMemory(memory);
+      const metadata = signed.content?.metadata as Record<string, unknown>;
 
-      expect(signed.content?.metadata?.sentinel_source).toBe('unknown');
+      expect(metadata?.sentinel_source).toBe('unknown');
     });
   });
 
@@ -238,6 +240,37 @@ describe('createMemoryIntegrityChecker', () => {
     const result = checker.verifyMemory(signed);
 
     expect(result.valid).toBe(true);
+  });
+});
+
+// Bug fix verification tests
+describe('Bug fixes verification', () => {
+  describe('M003/M004 - MemoryIntegrityChecker null handling', () => {
+    let checker: MemoryIntegrityChecker;
+
+    beforeEach(() => {
+      checker = new MemoryIntegrityChecker({ secretKey: 'test-key' });
+    });
+
+    it('signMemory should throw on null input', () => {
+      expect(() => checker.signMemory(null as any)).toThrow('Memory cannot be null or undefined');
+    });
+
+    it('signMemory should throw on undefined input', () => {
+      expect(() => checker.signMemory(undefined as any)).toThrow('Memory cannot be null or undefined');
+    });
+
+    it('verifyMemory should return valid=false for null', () => {
+      const result = checker.verifyMemory(null as any);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('null or undefined');
+    });
+
+    it('verifyMemory should return valid=false for undefined', () => {
+      const result = checker.verifyMemory(undefined as any);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('null or undefined');
+    });
   });
 });
 

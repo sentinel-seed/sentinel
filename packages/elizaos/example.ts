@@ -86,7 +86,7 @@ const web3Plugin = sentinelPlugin({
   customPatterns: [
     {
       name: 'Token drain attempt',
-      pattern: /drain\s+(all|my)\s+(tokens|funds|wallet)/i,
+      pattern: /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i,
       gate: 'harm',
     },
     {

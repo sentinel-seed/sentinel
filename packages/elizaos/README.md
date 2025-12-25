@@ -232,7 +232,7 @@ const plugin = sentinelPlugin({
   customPatterns: [
     {
       name: 'Token drain attempt',
-      pattern: /drain\s+(all|my)\s+(tokens|funds|wallet)/i,
+      pattern: /drain\s+(all\s+)?(my\s+)?(tokens|funds|wallet)/i,
       gate: 'harm',
     },
     {
@@ -251,10 +251,12 @@ const plugin = sentinelPlugin({
 
 ### Validation Statistics
 
+**Note:** Statistics are tracked only for validations performed through plugin handlers (evaluators). Direct calls to `validateContent()` are not tracked.
+
 ```typescript
 import { getValidationStats, getValidationHistory, clearValidationHistory } from '@sentinelseed/elizaos-plugin';
 
-// Get aggregate statistics
+// Get aggregate statistics (from plugin evaluators only)
 const stats = getValidationStats();
 console.log(`Total checks: ${stats.total}`);
 console.log(`Safe: ${stats.safe}`);

@@ -162,7 +162,7 @@ export interface Plugin {
 export type SeedVersion = 'v1' | 'v2';
 export type SeedVariant = 'minimal' | 'standard' | 'full';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
-export type GateStatus = 'pass' | 'fail' | 'unknown';
+export type GateStatus = 'pass' | 'fail' | 'unknown';  // 'unknown' used for invalid input validation
 
 export interface THSPGates {
   truth: GateStatus;

@@ -126,8 +126,14 @@ export class MemoryIntegrityChecker {
    * @param memory - The memory to sign
    * @param source - The source of this memory
    * @returns Memory with integrity metadata added
+   * @throws Error if memory is null or undefined
    */
   signMemory(memory: Memory, source: MemorySource = 'unknown'): Memory {
+    // Guard against null/undefined memory
+    if (!memory) {
+      throw new Error('Memory cannot be null or undefined');
+    }
+
     const signableContent = this.getSignableContent(memory, source);
     const hash = this.computeHmac(signableContent);
 
@@ -160,6 +166,16 @@ export class MemoryIntegrityChecker {
    * @returns Verification result with validity and trust score
    */
   verifyMemory(memory: Memory): MemoryVerificationResult {
+    // Guard against null/undefined memory
+    if (!memory) {
+      return {
+        valid: false,
+        reason: 'Memory is null or undefined',
+        trustScore: 0,
+        source: 'unknown',
+      };
+    }
+
     const metadata = memory.content?.metadata as IntegrityMetadata | undefined;
 
     // Check if memory has integrity metadata

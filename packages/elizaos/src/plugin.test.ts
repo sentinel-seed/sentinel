@@ -15,6 +15,8 @@ import {
   removePluginInstance,
   clearPluginRegistry,
   TextTooLargeError,
+  signMemory,
+  verifyMemory,
 } from './plugin';
 
 describe('sentinelPlugin', () => {
@@ -333,7 +335,7 @@ describe('Text size validation', () => {
     );
 
     expect(result?.success).toBe(false);
-    expect(result?.data?.error).toBe('text_too_large');
+    expect((result?.data as Record<string, unknown>)?.error).toBe('text_too_large');
   });
 
   it('should skip validation for oversized text when not blocking', async () => {
@@ -345,10 +347,11 @@ describe('Text size validation', () => {
       mockRuntime,
       { content: { text: 'This text is definitely longer than 10 bytes' }, entityId: 'e1', roomId: 'r1' } as any
     );
+    const data = result?.data as Record<string, unknown>;
 
     expect(result?.success).toBe(true);
-    expect(result?.data?.skipped).toBe(true);
-    expect(result?.data?.reason).toBe('text_too_large');
+    expect(data?.skipped).toBe(true);
+    expect(data?.reason).toBe('text_too_large');
   });
 });
 
@@ -367,10 +370,11 @@ describe('Error handling in handlers', () => {
       mockRuntime,
       { entityId: 'e1', roomId: 'r1' } as any
     );
+    const data = result?.data as Record<string, unknown>;
 
     expect(result?.success).toBe(true);
-    expect(result?.data?.skipped).toBe(true);
-    expect(result?.data?.reason).toBe('no_content');
+    expect(data?.skipped).toBe(true);
+    expect(data?.reason).toBe('no_content');
   });
 
   it('should handle missing content gracefully in postAction', async () => {
@@ -382,9 +386,10 @@ describe('Error handling in handlers', () => {
       mockRuntime,
       { entityId: 'e1', roomId: 'r1' } as any
     );
+    const data = result?.data as Record<string, unknown>;
 
     expect(result?.success).toBe(true);
-    expect(result?.data?.skipped).toBe(true);
+    expect(data?.skipped).toBe(true);
   });
 
   it('should handle null message in safetyCheck action', async () => {
@@ -399,5 +404,51 @@ describe('Error handling in handlers', () => {
 
     expect(result?.success).toBe(false);
     expect(result?.error).toContain('Invalid message structure');
+  });
+});
+
+// Bug fix verification tests
+describe('Bug fixes verification', () => {
+  beforeEach(() => {
+    clearPluginRegistry();
+  });
+
+  describe('C005/C006 - All seed versions available', () => {
+    it('should support v1_minimal seed', () => {
+      const plugin = sentinelPlugin({ seedVersion: 'v1', seedVariant: 'minimal' });
+      expect(plugin.config?.seedVersion).toBe('v1');
+      expect(plugin.config?.seedVariant).toBe('minimal');
+    });
+
+    it('should support v1_standard seed', () => {
+      const plugin = sentinelPlugin({ seedVersion: 'v1', seedVariant: 'standard' });
+      expect(plugin.config?.seedVersion).toBe('v1');
+    });
+
+    it('should support v1_full seed', () => {
+      const plugin = sentinelPlugin({ seedVersion: 'v1', seedVariant: 'full' });
+      expect(plugin.config?.seedVersion).toBe('v1');
+      expect(plugin.config?.seedVariant).toBe('full');
+    });
+
+    it('should support v2_full seed', () => {
+      const plugin = sentinelPlugin({ seedVersion: 'v2', seedVariant: 'full' });
+      expect(plugin.config?.seedVersion).toBe('v2');
+      expect(plugin.config?.seedVariant).toBe('full');
+    });
+  });
+
+  describe('C003/C004 - Memory functions null handling', () => {
+    it('signMemory should not crash on null', () => {
+      sentinelPlugin({ memoryIntegrity: { enabled: true, secretKey: 'test' } });
+      expect(() => signMemory(null as any)).not.toThrow();
+    });
+
+    it('verifyMemory should not crash on null', () => {
+      sentinelPlugin({ memoryIntegrity: { enabled: true, secretKey: 'test' } });
+      expect(() => verifyMemory(null as any)).not.toThrow();
+      const result = verifyMemory(null as any);
+      expect(result).toBeNull();
+    });
   });
 });
