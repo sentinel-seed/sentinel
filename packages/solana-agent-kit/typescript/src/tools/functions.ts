@@ -10,6 +10,7 @@
  */
 
 import type { SolanaAgentKit } from "solana-agent-kit";
+import { PublicKey } from "@solana/web3.js";
 import { SentinelValidator } from "./validator";
 import type {
   SafetyValidationResult,
@@ -17,6 +18,21 @@ import type {
   ValidationStats,
   SentinelPluginConfig,
 } from "../types";
+
+/**
+ * Validate Solana address format using PublicKey
+ */
+function isValidSolanaAddress(address: string): boolean {
+  if (!address || typeof address !== "string") {
+    return false;
+  }
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Shared validator instance - initialized when plugin is registered
 let sharedValidator: SentinelValidator | null = null;
@@ -103,11 +119,14 @@ export function validateTransaction(
  * @param action - Action name (e.g., "transfer", "swap")
  * @param amount - Transaction amount
  * @param recipient - Optional recipient address
+ * @param purpose - Optional purpose justification (required for some actions)
  * @returns Boolean indicating if transaction is safe
  *
  * @example
  * ```typescript
- * const isSafe = await agent.methods.checkSafety("transfer", 10, "ABC123...");
+ * const isSafe = await agent.methods.checkSafety(
+ *   "transfer", 10, "ABC123...", "Payment for services"
+ * );
  * if (isSafe) {
  *   // Proceed with transaction
  * }
@@ -117,10 +136,11 @@ export function checkSafety(
   _agent: SolanaAgentKit,
   action: string,
   amount?: number,
-  recipient?: string
+  recipient?: string,
+  purpose?: string
 ): boolean {
   const validator = getValidator();
-  const result = validator.validate({ action, amount, recipient });
+  const result = validator.validate({ action, amount, recipient, purpose });
   return result.shouldProceed;
 }
 
@@ -155,14 +175,20 @@ export function getSafetyStatus(_agent: SolanaAgentKit): {
  * Block an address from receiving transactions
  *
  * @param _agent - SolanaAgentKit instance (reserved for future use)
- * @param address - Wallet address to block
+ * @param address - Wallet address to block (must be valid Solana address)
+ * @throws Error if address format is invalid
  *
  * @example
  * ```typescript
- * await agent.methods.blockAddress("SCAM_ADDRESS_HERE");
+ * await agent.methods.blockAddress("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
  * ```
  */
 export function blockAddress(_agent: SolanaAgentKit, address: string): void {
+  if (!isValidSolanaAddress(address)) {
+    throw new Error(
+      `[Sentinel] Invalid address format: ${address?.slice(0, 16) || "empty"}... - must be valid Solana base58 address`
+    );
+  }
   const validator = getValidator();
   validator.blockAddress(address);
 }
@@ -171,9 +197,15 @@ export function blockAddress(_agent: SolanaAgentKit, address: string): void {
  * Remove an address from the blocklist
  *
  * @param _agent - SolanaAgentKit instance (reserved for future use)
- * @param address - Wallet address to unblock
+ * @param address - Wallet address to unblock (must be valid Solana address)
+ * @throws Error if address format is invalid
  */
 export function unblockAddress(_agent: SolanaAgentKit, address: string): void {
+  if (!isValidSolanaAddress(address)) {
+    throw new Error(
+      `[Sentinel] Invalid address format: ${address?.slice(0, 16) || "empty"}... - must be valid Solana base58 address`
+    );
+  }
   const validator = getValidator();
   validator.unblockAddress(address);
 }

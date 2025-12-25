@@ -60,7 +60,7 @@ export const checkSafetyAction: Action = {
     [
       {
         input: {
-          action: "transfer",
+          action: "query",
           amount: 5,
         },
         output: {
@@ -68,7 +68,22 @@ export const checkSafetyAction: Action = {
           canProceed: true,
           message: "Transaction is safe to proceed",
         },
-        explanation: "Quick check for a small transfer - passes all gates",
+        explanation: "Quick check for a query action - passes all gates",
+      },
+    ],
+    [
+      {
+        input: {
+          action: "transfer",
+          amount: 10,
+          purpose: "Payment for verified NFT from marketplace",
+        },
+        output: {
+          safe: true,
+          canProceed: true,
+          message: "Transaction is safe to proceed",
+        },
+        explanation: "Quick check for transfer with purpose - passes all gates",
       },
     ],
     [
@@ -104,6 +119,11 @@ export const checkSafetyAction: Action = {
       .max(44)
       .optional()
       .describe("Recipient address"),
+    purpose: z
+      .string()
+      .min(20)
+      .optional()
+      .describe("Purpose justification (required for some actions like transfer, swap)"),
   }),
 
   handler: async (
@@ -144,10 +164,22 @@ export const checkSafetyAction: Action = {
         };
       }
 
+      // Validate purpose is a string if provided
+      if (input.purpose !== undefined && typeof input.purpose !== "string") {
+        return {
+          safe: false,
+          canProceed: false,
+          riskLevel: RiskLevel.CRITICAL,
+          reason: "purpose must be a string",
+          message: "Safety check error: invalid purpose parameter",
+        };
+      }
+
       const result = getValidator().validate({
         action: input.action,
         amount: input.amount as number | undefined,
         recipient: input.recipient as string | undefined,
+        purpose: input.purpose as string | undefined,
       });
 
       if (result.shouldProceed) {

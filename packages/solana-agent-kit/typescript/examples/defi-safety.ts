@@ -9,6 +9,7 @@ import { SolanaAgentKit } from "solana-agent-kit";
 import TokenPlugin from "@solana-agent-kit/plugin-token";
 import DefiPlugin from "@solana-agent-kit/plugin-defi";
 import SentinelPlugin from "@sentinelseed/solana-agent-kit";
+import { RiskLevel } from "@sentinelseed/solana-agent-kit";
 
 async function main() {
   // Initialize with all plugins
@@ -38,19 +39,19 @@ async function main() {
           {
             name: "high_slippage",
             pattern: /slippage.*(?:[5-9]\d|100)%/i,
-            riskLevel: "high",
+            riskLevel: RiskLevel.HIGH,
             message: "High slippage tolerance detected",
           },
           {
             name: "unknown_token",
             pattern: /unknown.*token|unverified/i,
-            riskLevel: "medium",
+            riskLevel: RiskLevel.MEDIUM,
             message: "Trading unknown or unverified token",
           },
           {
             name: "max_leverage",
             pattern: /leverage.*(?:[5-9]|10)x|10x.*leverage/i,
-            riskLevel: "high",
+            riskLevel: RiskLevel.HIGH,
             message: "High leverage position requested",
           },
         ],

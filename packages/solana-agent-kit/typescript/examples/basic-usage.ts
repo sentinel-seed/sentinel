@@ -49,22 +49,30 @@ async function main() {
   // Example 2: Quick safety check
   console.log("\n=== Example 2: Quick Safety Check ===");
 
-  const isSafe = await agent.methods.checkSafety("swap", 25, undefined);
+  // Note: checkSafety accepts purpose as 4th parameter for actions that require it
+  const isSafe = await agent.methods.checkSafety(
+    "swap",
+    25,
+    undefined,
+    "Quick swap for portfolio rebalancing purposes"
+  );
   console.log("Is swap safe?", isSafe);
 
   // Example 3: Block a suspicious address
   console.log("\n=== Example 3: Block Suspicious Address ===");
 
-  await agent.methods.blockAddress(
-    "ScamWa11etAddress111111111111111111111111111"
-  );
+  // Using a valid Solana address for demonstration
+  // In production, this would be a known scam address
+  const suspiciousAddress = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+
+  await agent.methods.blockAddress(suspiciousAddress);
   console.log("Address blocked successfully");
 
   // Now try to validate a transfer to the blocked address
   const blockedResult = await agent.methods.validateTransaction({
     action: "transfer",
     amount: 10,
-    recipient: "ScamWa11etAddress111111111111111111111111111",
+    recipient: suspiciousAddress,
     purpose: "Testing transfer to blocked address for validation",
   });
 
