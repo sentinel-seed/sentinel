@@ -7,7 +7,9 @@ AI Safety validation for Neovim using the THSP protocol.
 - **THSP Protocol**: Four-gate safety validation (Truth, Harm, Scope, Purpose)
 - **Two Analysis Modes**:
   - Semantic (LLM-based): ~90% accuracy with OpenAI or Anthropic
-  - Heuristic (pattern-based): ~50% accuracy, works offline
+  - Heuristic (pattern-based): ~50-60% accuracy, works offline
+    - Best for: quick local checks, offline usage, cost savings
+    - Limitations: pattern-matching cannot catch all sophisticated attacks
 - **Native Diagnostics**: Violations appear as Neovim diagnostics
 - **Alignment Seeds**: Insert pre-built safety prompts directly into your files
 - **Health Check**: Built-in `:checkhealth sentinel` support
@@ -54,7 +56,7 @@ lua require('sentinel').setup({})
 
 ```bash
 git clone https://github.com/sentinel-seed/sentinel.nvim \
-  ~/.local/share/nvim/site/pack/plugins/start/sentinel.nvim
+  ~/.local/share/nvim/site/pack/plugins/start/sentinel
 ```
 
 ## Configuration
@@ -204,6 +206,20 @@ Insert alignment seeds to configure AI behavior:
 - Neovim >= 0.9.0
 - curl (for semantic analysis)
 - OpenAI or Anthropic API key (for semantic analysis)
+
+## Running Tests
+
+Tests require [plenary.nvim](https://github.com/nvim-lua/plenary.nvim).
+
+```bash
+# Install plenary.nvim for testing
+git clone https://github.com/nvim-lua/plenary.nvim \
+  ~/.local/share/nvim/site/pack/testing/start/plenary.nvim
+
+# Run all tests
+cd packages/neovim
+nvim --headless -c "PlenaryBustedDirectory tests/ {minimal_init = 'tests/minimal_init.lua'}"
+```
 
 ## License
 

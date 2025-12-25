@@ -40,13 +40,23 @@ function M.check()
   if config.options.semantic_mode then
     health.info('LLM Provider: ' .. config.options.llm_provider)
 
+    -- Helper to safely mask API keys (M003: handle short keys)
+    local function mask_key(key)
+      if not key or type(key) ~= 'string' then
+        return '(invalid)'
+      end
+      local len = #key
+      if len < 11 then
+        -- Key too short to mask properly, just show length
+        return string.format('(key with %d chars)', len)
+      end
+      return key:sub(1, 7) .. '...' .. key:sub(-4)
+    end
+
     -- Check API keys
     if config.options.llm_provider == 'openai' then
       if config.options.openai_api_key then
-        -- Mask the key
-        local key = config.options.openai_api_key
-        local masked = key:sub(1, 7) .. '...' .. key:sub(-4)
-        health.ok('OpenAI API key configured: ' .. masked)
+        health.ok('OpenAI API key configured: ' .. mask_key(config.options.openai_api_key))
       else
         health.warn('OpenAI API key not configured', {
           'Set OPENAI_API_KEY environment variable',
@@ -56,9 +66,7 @@ function M.check()
       end
     elseif config.options.llm_provider == 'anthropic' then
       if config.options.anthropic_api_key then
-        local key = config.options.anthropic_api_key
-        local masked = key:sub(1, 7) .. '...' .. key:sub(-4)
-        health.ok('Anthropic API key configured: ' .. masked)
+        health.ok('Anthropic API key configured: ' .. mask_key(config.options.anthropic_api_key))
       else
         health.warn('Anthropic API key not configured', {
           'Set ANTHROPIC_API_KEY environment variable',

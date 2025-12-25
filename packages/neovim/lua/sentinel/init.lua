@@ -14,6 +14,9 @@ M.ns = vim.api.nvim_create_namespace('sentinel')
 -- State
 M.enabled = true
 
+-- Debounce state (per buffer)
+local debounce_timers = {}
+
 ---Setup sentinel with user configuration
 ---@param opts table|nil User configuration options
 function M.setup(opts)
@@ -39,15 +42,39 @@ function M.setup_autocommands()
     pattern = config.options.filetypes,
     callback = function(args)
       if M.enabled and config.options.auto_analyze then
-        -- Debounce: only analyze after user stops typing
-        vim.defer_fn(function()
-          if vim.api.nvim_buf_is_valid(args.buf) then
-            M.analyze_buffer(args.buf)
-          end
-        end, config.options.debounce_ms)
+        local bufnr = args.buf
+
+        -- Cancel previous timer for this buffer if exists
+        if debounce_timers[bufnr] then
+          vim.fn.timer_stop(debounce_timers[bufnr])
+          debounce_timers[bufnr] = nil
+        end
+
+        -- Schedule new analysis with proper debounce
+        debounce_timers[bufnr] = vim.fn.timer_start(config.options.debounce_ms, function()
+          debounce_timers[bufnr] = nil
+          -- Schedule on main thread since timer callback runs async
+          vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(bufnr) and M.enabled then
+              M.analyze_buffer(bufnr)
+            end
+          end)
+        end)
       end
     end,
     desc = 'Sentinel auto-analyze on text change',
+  })
+
+  -- Clean up timers when buffer is deleted
+  vim.api.nvim_create_autocmd('BufDelete', {
+    group = group,
+    callback = function(args)
+      if debounce_timers[args.buf] then
+        vim.fn.timer_stop(debounce_timers[args.buf])
+        debounce_timers[args.buf] = nil
+      end
+    end,
+    desc = 'Sentinel cleanup debounce timer',
   })
 end
 
@@ -180,6 +207,12 @@ function M.toggle()
   if M.enabled then
     vim.notify('Sentinel enabled', vim.log.levels.INFO)
   else
+    -- Cancel all pending debounce timers
+    for bufnr, timer in pairs(debounce_timers) do
+      vim.fn.timer_stop(timer)
+      debounce_timers[bufnr] = nil
+    end
+
     -- Clear all diagnostics when disabled
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
       if vim.api.nvim_buf_is_valid(buf) then

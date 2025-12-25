@@ -24,9 +24,10 @@ M.GATES = {
 ---@field gates table<string, THSPResult>
 ---@field violations string[]
 
--- Heuristic patterns for each gate
+-- Heuristic patterns for each gate (C001: expanded patterns)
 local HEURISTIC_PATTERNS = {
   truth = {
+    -- Absolute claims
     { pattern = 'always%s+true', message = 'Absolute claim without evidence' },
     { pattern = 'never%s+fails?', message = 'Absolute claim without evidence' },
     { pattern = 'guaranteed%s+to', message = 'Unverifiable guarantee' },
@@ -34,41 +35,119 @@ local HEURISTIC_PATTERNS = {
     { pattern = 'proven%s+fact', message = 'Unverified factual claim' },
     { pattern = 'scientifically%s+proven', message = 'Unverified scientific claim' },
     { pattern = 'studies%s+show', message = 'Unverified study reference' },
+    -- Deception patterns
+    { pattern = 'pretend%s+to%s+be', message = 'Deceptive impersonation' },
+    { pattern = 'fake%s+identity', message = 'Identity deception' },
+    { pattern = 'impersonate', message = 'Identity deception' },
+    { pattern = 'forge%w*%s+document', message = 'Document forgery' },
+    { pattern = 'counterfeit', message = 'Counterfeiting' },
+    { pattern = 'falsify', message = 'Falsification' },
+    { pattern = 'fabricat%w+%s+evidence', message = 'Evidence fabrication' },
   },
   harm = {
+    -- Violence
     { pattern = 'kill', message = 'Potential harmful content: violence' },
     { pattern = 'murder', message = 'Potential harmful content: violence' },
+    { pattern = 'assassinat', message = 'Potential harmful content: violence' },
     { pattern = 'destroy', message = 'Potential harmful content: destruction' },
     { pattern = 'bomb', message = 'Potential harmful content: weapons' },
     { pattern = 'weapon', message = 'Potential harmful content: weapons' },
+    { pattern = 'explosive', message = 'Potential harmful content: explosives' },
+    { pattern = 'poison', message = 'Potential harmful content: toxins' },
+    { pattern = 'lethal', message = 'Potential harmful content: lethality' },
+    -- Cyber attacks
     { pattern = 'exploit', message = 'Potential harmful content: exploitation' },
     { pattern = 'hack%s+into', message = 'Potential harmful content: unauthorized access' },
     { pattern = 'steal', message = 'Potential harmful content: theft' },
     { pattern = 'malware', message = 'Potential harmful content: malicious software' },
     { pattern = 'ransomware', message = 'Potential harmful content: malicious software' },
+    { pattern = 'trojan', message = 'Potential harmful content: malicious software' },
+    { pattern = 'keylogger', message = 'Potential harmful content: surveillance' },
+    { pattern = 'rootkit', message = 'Potential harmful content: malicious software' },
     { pattern = 'phishing', message = 'Potential harmful content: fraud' },
     { pattern = 'scam', message = 'Potential harmful content: fraud' },
+    -- Dangerous system commands
+    { pattern = 'rm%s+%-rf', message = 'Dangerous system command: recursive delete' },
+    { pattern = 'rm%s+%-r%s+/', message = 'Dangerous system command: recursive delete' },
+    { pattern = 'del%s+/[sfq]', message = 'Dangerous system command: force delete' },
+    { pattern = 'format%s+[cC]:', message = 'Dangerous system command: format drive' },
+    { pattern = 'mkfs', message = 'Dangerous system command: format filesystem' },
+    { pattern = 'dd%s+if=', message = 'Dangerous system command: disk overwrite' },
+    { pattern = 'chmod%s+777', message = 'Dangerous permission: world writable' },
+    { pattern = 'chmod%s+%-R%s+777', message = 'Dangerous permission: recursive world writable' },
+    { pattern = '/etc/passwd', message = 'Sensitive file access: password file' },
+    { pattern = '/etc/shadow', message = 'Sensitive file access: shadow file' },
+    { pattern = 'nc%s+%-e', message = 'Dangerous command: netcat reverse shell' },
+    { pattern = 'netcat%s+%-e', message = 'Dangerous command: netcat reverse shell' },
+    { pattern = '/bin/bash', message = 'Shell execution: potential injection' },
+    { pattern = '/bin/sh', message = 'Shell execution: potential injection' },
+    -- SQL injection patterns
+    { pattern = "drop%s+table", message = 'SQL injection: DROP TABLE' },
+    { pattern = "drop%s+database", message = 'SQL injection: DROP DATABASE' },
+    { pattern = "delete%s+from", message = 'SQL injection: DELETE FROM' },
+    { pattern = "truncate%s+table", message = 'SQL injection: TRUNCATE TABLE' },
+    { pattern = "union%s+select", message = 'SQL injection: UNION SELECT' },
+    { pattern = "';%-%-", message = 'SQL injection: comment escape' },
+    { pattern = "1%s*=%s*1", message = 'SQL injection: tautology' },
+    { pattern = "or%s+1%s*=%s*1", message = 'SQL injection: OR tautology' },
+    -- XSS patterns
+    { pattern = '<script', message = 'XSS: script tag' },
+    { pattern = 'javascript:', message = 'XSS: javascript protocol' },
+    { pattern = 'onerror%s*=', message = 'XSS: event handler' },
+    { pattern = 'onload%s*=', message = 'XSS: event handler' },
+    { pattern = 'onclick%s*=', message = 'XSS: event handler' },
+    { pattern = 'eval%s*%(', message = 'Code injection: eval' },
+    -- Self-harm
     { pattern = 'suicide', message = 'Potential harmful content: self-harm' },
     { pattern = 'self%-harm', message = 'Potential harmful content: self-harm' },
   },
   scope = {
+    -- Over-broad scope
     { pattern = 'all%s+users', message = 'Broad scope affecting many users' },
     { pattern = 'everyone', message = 'Overly broad scope' },
     { pattern = 'entire%s+system', message = 'System-wide scope' },
     { pattern = 'global%s+', message = 'Global scope' },
     { pattern = 'unlimited', message = 'Unlimited scope' },
     { pattern = 'no%s+restrictions?', message = 'Unrestricted scope' },
+    -- Bypass patterns
     { pattern = 'bypass', message = 'Bypassing restrictions' },
     { pattern = 'override', message = 'Overriding controls' },
+    { pattern = 'disable%s+security', message = 'Disabling security' },
+    { pattern = 'disable%s+authentication', message = 'Disabling authentication' },
+    { pattern = 'skip%s+validation', message = 'Skipping validation' },
+    -- Privilege escalation
     { pattern = 'root%s+access', message = 'Elevated privilege scope' },
     { pattern = 'admin%s+access', message = 'Elevated privilege scope' },
+    { pattern = 'sudo%s+', message = 'Elevated privilege: sudo' },
+    { pattern = 'su%s+%-', message = 'Elevated privilege: switch user' },
+    { pattern = 'privilege%s+escalat', message = 'Privilege escalation' },
+    -- Jailbreak patterns
+    { pattern = 'ignore%s+previous', message = 'Jailbreak: instruction override' },
+    { pattern = 'ignore%s+all%s+instructions', message = 'Jailbreak: instruction override' },
+    { pattern = 'disregard%s+.*instructions', message = 'Jailbreak: instruction override' },
+    { pattern = 'forget%s+.*rules', message = 'Jailbreak: rule override' },
+    { pattern = 'you%s+are%s+now', message = 'Jailbreak: persona switch' },
+    { pattern = 'act%s+as%s+if', message = 'Jailbreak: persona switch' },
+    { pattern = 'pretend%s+you%s+are', message = 'Jailbreak: persona switch' },
+    { pattern = 'dan%s+mode', message = 'Jailbreak: DAN mode' },
+    { pattern = 'developer%s+mode', message = 'Jailbreak: developer mode' },
+    { pattern = 'jailbreak', message = 'Jailbreak: explicit mention' },
+    { pattern = 'no%s+ethical%s+guidelines', message = 'Jailbreak: ethics bypass' },
+    { pattern = 'without%s+restrictions', message = 'Jailbreak: restriction bypass' },
   },
   purpose = {
+    -- Purposeless actions
     { pattern = 'just%s+because', message = 'Action without clear purpose' },
     { pattern = 'for%s+fun', message = 'Frivolous purpose for serious action' },
     { pattern = 'no%s+reason', message = 'Action without purpose' },
     { pattern = 'see%s+what%s+happens', message = 'Experimental without purpose' },
     { pattern = 'test%s+in%s+production', message = 'Risky action without clear benefit' },
+    -- Malicious intent
+    { pattern = 'annoy%s+', message = 'Malicious intent: harassment' },
+    { pattern = 'prank%s+', message = 'Malicious intent: harmful prank' },
+    { pattern = 'revenge', message = 'Malicious intent: revenge' },
+    { pattern = 'spite', message = 'Malicious intent: spite' },
+    { pattern = 'sabotag', message = 'Malicious intent: sabotage' },
   },
 }
 
@@ -82,6 +161,11 @@ function M.analyze_heuristic(text)
     gates = {},
     violations = {},
   }
+
+  -- Guard against nil or non-string input (M001)
+  if not text or type(text) ~= 'string' then
+    return result
+  end
 
   local lower_text = text:lower()
 
@@ -147,6 +231,11 @@ local function parse_semantic_response(response)
     violations = {},
   }
 
+  -- Guard against nil or non-string input (M002)
+  if not response or type(response) ~= 'string' then
+    return result
+  end
+
   -- Parse each gate
   for _, gate in ipairs({ 'truth', 'harm', 'scope', 'purpose' }) do
     local pattern = gate:upper() .. ':%s*(%w+)%s*%-%s*(.+)'
@@ -181,12 +270,76 @@ local function parse_semantic_response(response)
   return result
 end
 
+-- Timeout for API requests (seconds)
+local API_TIMEOUT = 30
+
+-- Temp file tracking for cleanup on exit
+local temp_files_to_cleanup = {}
+
+-- Register cleanup handler (only once, using augroup to prevent duplicates)
+local cleanup_group = vim.api.nvim_create_augroup('SentinelTempCleanup', { clear = true })
+vim.api.nvim_create_autocmd('VimLeavePre', {
+  group = cleanup_group,
+  callback = function()
+    for file, _ in pairs(temp_files_to_cleanup) do
+      pcall(os.remove, file)
+    end
+  end,
+  desc = 'Sentinel cleanup temp files on exit',
+})
+
+-- Rate limiting state (M008)
+local rate_limit = {
+  last_request = 0,
+  min_interval = 1000, -- Minimum 1 second between requests
+  requests_this_minute = 0,
+  minute_start = 0,
+  max_per_minute = 20, -- Maximum 20 requests per minute
+}
+
+---Check if rate limit allows a request
+---@return boolean allowed
+---@return string|nil error_message
+local function check_rate_limit()
+  local now = vim.loop.now()
+
+  -- Reset minute counter if a minute has passed
+  if now - rate_limit.minute_start > 60000 then
+    rate_limit.minute_start = now
+    rate_limit.requests_this_minute = 0
+  end
+
+  -- Check minimum interval
+  if now - rate_limit.last_request < rate_limit.min_interval then
+    return false, 'Rate limit: too many requests, wait ' ..
+      math.ceil((rate_limit.min_interval - (now - rate_limit.last_request)) / 1000) .. 's'
+  end
+
+  -- Check requests per minute
+  if rate_limit.requests_this_minute >= rate_limit.max_per_minute then
+    return false, 'Rate limit: maximum ' .. rate_limit.max_per_minute .. ' requests per minute'
+  end
+
+  -- Update counters
+  rate_limit.last_request = now
+  rate_limit.requests_this_minute = rate_limit.requests_this_minute + 1
+
+  return true, nil
+end
+
 ---Make HTTP request to OpenAI API
 ---@param text string Text to analyze
 ---@param callback function Callback with result
 local function call_openai(text, callback)
+  -- Check rate limit before making request (M008)
+  local allowed, rate_err = check_rate_limit()
+  if not allowed then
+    callback(nil, rate_err)
+    return
+  end
+
   local api_key = config.options.openai_api_key
-  if not api_key then
+  if not api_key or api_key == '' then
     callback(nil, 'OpenAI API key not configured')
     return
   end
@@ -202,44 +355,139 @@ local function call_openai(text, callback)
     max_tokens = 500,
   })
 
+  -- Write request body to temp file to avoid exposing in process list
+  local tmp_file = vim.fn.tempname()
+  local f = io.open(tmp_file, 'w')
+  if not f then
+    callback(nil, 'Failed to create temp file for request')
+    return
+  end
+  f:write(body)
+  f:close()
+
+  -- Use config file for headers to avoid exposing API key in ps aux
+  local header_file = vim.fn.tempname()
+  local hf = io.open(header_file, 'w')
+  if not hf then
+    os.remove(tmp_file)
+    callback(nil, 'Failed to create temp file for headers')
+    return
+  end
+  hf:write('Content-Type: application/json\n')
+  hf:write('Authorization: Bearer ' .. api_key .. '\n')
+  hf:close()
+
+  -- Track temp files for cleanup on unexpected exit
+  temp_files_to_cleanup[tmp_file] = true
+  temp_files_to_cleanup[header_file] = true
+
   local curl_args = {
     'curl',
     '-s',
+    '--max-time', tostring(API_TIMEOUT),
     '-X', 'POST',
     'https://api.openai.com/v1/chat/completions',
-    '-H', 'Content-Type: application/json',
-    '-H', 'Authorization: Bearer ' .. api_key,
-    '-d', body,
+    '-H', '@' .. header_file,
+    '-d', '@' .. tmp_file,
   }
 
-  vim.fn.jobstart(curl_args, {
+  local job_id = vim.fn.jobstart(curl_args, {
     stdout_buffered = true,
     on_stdout = function(_, data)
-      if data and #data > 0 then
-        local response_text = table.concat(data, '\n')
-        local ok, response = pcall(vim.fn.json_decode, response_text)
-        if ok and response.choices and response.choices[1] then
-          local content = response.choices[1].message.content
-          callback(parse_semantic_response(content))
-        else
-          callback(nil, 'Failed to parse OpenAI response')
-        end
+      -- Clean up temp files
+      os.remove(tmp_file)
+      os.remove(header_file)
+      temp_files_to_cleanup[tmp_file] = nil
+      temp_files_to_cleanup[header_file] = nil
+
+      if not data or #data == 0 then
+        callback(nil, 'Empty response from OpenAI')
+        return
       end
+
+      local response_text = table.concat(data, '\n')
+      if response_text == '' then
+        callback(nil, 'Empty response from OpenAI')
+        return
+      end
+
+      local ok, response = pcall(vim.fn.json_decode, response_text)
+      if not ok then
+        callback(nil, 'Failed to parse OpenAI JSON response')
+        return
+      end
+
+      -- Check for API errors first (M005)
+      if response.error then
+        local err_msg = response.error.message or response.error.type or 'Unknown API error'
+        callback(nil, 'OpenAI API error: ' .. err_msg)
+        return
+      end
+
+      -- Safe navigation with nil checks (M006)
+      if not response.choices then
+        callback(nil, 'OpenAI response missing choices')
+        return
+      end
+
+      if not response.choices[1] then
+        callback(nil, 'OpenAI response has empty choices')
+        return
+      end
+
+      if not response.choices[1].message then
+        callback(nil, 'OpenAI response missing message')
+        return
+      end
+
+      local content = response.choices[1].message.content
+      if not content or content == '' then
+        callback(nil, 'OpenAI response has empty content')
+        return
+      end
+
+      callback(parse_semantic_response(content))
     end,
     on_stderr = function(_, data)
       if data and #data > 0 and data[1] ~= '' then
-        callback(nil, table.concat(data, '\n'))
+        callback(nil, 'curl error: ' .. table.concat(data, '\n'))
+      end
+    end,
+    on_exit = function(_, exit_code)
+      -- Clean up temp files on exit (in case stdout wasn't called)
+      pcall(os.remove, tmp_file)
+      pcall(os.remove, header_file)
+      temp_files_to_cleanup[tmp_file] = nil
+      temp_files_to_cleanup[header_file] = nil
+
+      if exit_code ~= 0 then
+        callback(nil, 'curl exited with code ' .. exit_code)
       end
     end,
   })
+
+  if job_id <= 0 then
+    os.remove(tmp_file)
+    os.remove(header_file)
+    temp_files_to_cleanup[tmp_file] = nil
+    temp_files_to_cleanup[header_file] = nil
+    callback(nil, 'Failed to start curl process')
+  end
 end
 
 ---Make HTTP request to Anthropic API
 ---@param text string Text to analyze
 ---@param callback function Callback with result
 local function call_anthropic(text, callback)
+  -- Check rate limit before making request (M008)
+  local allowed, rate_err = check_rate_limit()
+  if not allowed then
+    callback(nil, rate_err)
+    return
+  end
+
   local api_key = config.options.anthropic_api_key
-  if not api_key then
+  if not api_key or api_key == '' then
     callback(nil, 'Anthropic API key not configured')
     return
   end
@@ -253,37 +501,120 @@ local function call_anthropic(text, callback)
     },
   })
 
+  -- Write request body to temp file to avoid exposing in process list
+  local tmp_file = vim.fn.tempname()
+  local f = io.open(tmp_file, 'w')
+  if not f then
+    callback(nil, 'Failed to create temp file for request')
+    return
+  end
+  f:write(body)
+  f:close()
+
+  -- Use config file for headers to avoid exposing API key in ps aux
+  local header_file = vim.fn.tempname()
+  local hf = io.open(header_file, 'w')
+  if not hf then
+    os.remove(tmp_file)
+    callback(nil, 'Failed to create temp file for headers')
+    return
+  end
+  hf:write('Content-Type: application/json\n')
+  hf:write('x-api-key: ' .. api_key .. '\n')
+  hf:write('anthropic-version: 2023-06-01\n')
+  hf:close()
+
+  -- Track temp files for cleanup on unexpected exit
+  temp_files_to_cleanup[tmp_file] = true
+  temp_files_to_cleanup[header_file] = true
+
   local curl_args = {
     'curl',
     '-s',
+    '--max-time', tostring(API_TIMEOUT),
     '-X', 'POST',
     'https://api.anthropic.com/v1/messages',
-    '-H', 'Content-Type: application/json',
-    '-H', 'x-api-key: ' .. api_key,
-    '-H', 'anthropic-version: 2023-06-01',
-    '-d', body,
+    '-H', '@' .. header_file,
+    '-d', '@' .. tmp_file,
   }
 
-  vim.fn.jobstart(curl_args, {
+  local job_id = vim.fn.jobstart(curl_args, {
     stdout_buffered = true,
     on_stdout = function(_, data)
-      if data and #data > 0 then
-        local response_text = table.concat(data, '\n')
-        local ok, response = pcall(vim.fn.json_decode, response_text)
-        if ok and response.content and response.content[1] then
-          local content = response.content[1].text
-          callback(parse_semantic_response(content))
-        else
-          callback(nil, 'Failed to parse Anthropic response')
-        end
+      -- Clean up temp files
+      os.remove(tmp_file)
+      os.remove(header_file)
+      temp_files_to_cleanup[tmp_file] = nil
+      temp_files_to_cleanup[header_file] = nil
+
+      if not data or #data == 0 then
+        callback(nil, 'Empty response from Anthropic')
+        return
       end
+
+      local response_text = table.concat(data, '\n')
+      if response_text == '' then
+        callback(nil, 'Empty response from Anthropic')
+        return
+      end
+
+      local ok, response = pcall(vim.fn.json_decode, response_text)
+      if not ok then
+        callback(nil, 'Failed to parse Anthropic JSON response')
+        return
+      end
+
+      -- Check for API errors first (M005)
+      if response.error then
+        local err_msg = response.error.message or response.error.type or 'Unknown API error'
+        callback(nil, 'Anthropic API error: ' .. err_msg)
+        return
+      end
+
+      -- Safe navigation with nil checks (M006)
+      if not response.content then
+        callback(nil, 'Anthropic response missing content')
+        return
+      end
+
+      if not response.content[1] then
+        callback(nil, 'Anthropic response has empty content')
+        return
+      end
+
+      local content = response.content[1].text
+      if not content or content == '' then
+        callback(nil, 'Anthropic response has empty text')
+        return
+      end
+
+      callback(parse_semantic_response(content))
     end,
     on_stderr = function(_, data)
       if data and #data > 0 and data[1] ~= '' then
-        callback(nil, table.concat(data, '\n'))
+        callback(nil, 'curl error: ' .. table.concat(data, '\n'))
+      end
+    end,
+    on_exit = function(_, exit_code)
+      -- Clean up temp files on exit (in case stdout wasn't called)
+      pcall(os.remove, tmp_file)
+      pcall(os.remove, header_file)
+      temp_files_to_cleanup[tmp_file] = nil
+      temp_files_to_cleanup[header_file] = nil
+
+      if exit_code ~= 0 then
+        callback(nil, 'curl exited with code ' .. exit_code)
       end
     end,
   })
+
+  if job_id <= 0 then
+    os.remove(tmp_file)
+    os.remove(header_file)
+    temp_files_to_cleanup[tmp_file] = nil
+    temp_files_to_cleanup[header_file] = nil
+    callback(nil, 'Failed to start curl process')
+  end
 end
 
 ---Analyze text using semantic LLM analysis
