@@ -727,3 +727,78 @@ class TestBugFixVerification:
             purpose="Notify user of status"
         )
         assert "should_proceed" in result
+
+
+# ============================================================================
+# Additional Bug Fix Tests (Found during deep review)
+# ============================================================================
+
+class TestAdditionalBugFixes:
+    """Tests for additional bugs found during deep review."""
+
+    # validate_content type validation
+    def test_validate_content_int_raises(self):
+        """validate_content(123) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            validate_content(123)
+        assert "content" in str(exc_info.value)
+
+    def test_validate_content_int_fail_closed(self):
+        """validate_content(123, fail_closed=True) should return safe=False."""
+        result = validate_content(123, fail_closed=True)
+        assert result["safe"] is False
+        assert "error" in result
+
+    def test_validate_content_list_raises(self):
+        """validate_content([1,2,3]) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            validate_content([1, 2, 3])
+        assert "content" in str(exc_info.value)
+
+    def test_validate_content_list_fail_closed(self):
+        """validate_content([1,2,3], fail_closed=True) should return safe=False."""
+        result = validate_content([1, 2, 3], fail_closed=True)
+        assert result["safe"] is False
+
+    # get_seed type validation
+    def test_get_seed_none_raises(self):
+        """get_seed(None) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            get_seed(None)
+        assert "level" in str(exc_info.value)
+
+    def test_get_seed_int_raises(self):
+        """get_seed(123) should raise InvalidParameterError."""
+        with pytest.raises(InvalidParameterError) as exc_info:
+            get_seed(123)
+        assert "level" in str(exc_info.value)
+
+    # estimate_tokens type handling
+    def test_estimate_tokens_int_returns_zero(self):
+        """estimate_tokens(123) should return 0."""
+        assert estimate_tokens(123) == 0
+
+    def test_estimate_tokens_list_returns_zero(self):
+        """estimate_tokens([1,2,3]) should return 0."""
+        assert estimate_tokens([1, 2, 3]) == 0
+
+    def test_estimate_tokens_dict_returns_zero(self):
+        """estimate_tokens({}) should return 0."""
+        assert estimate_tokens({}) == 0
+
+    # Verify normal functionality still works
+    def test_validate_content_string_works(self):
+        """validate_content with valid string should work."""
+        result = validate_content("Hello world")
+        assert result["safe"] is True
+
+    def test_get_seed_string_works(self):
+        """get_seed with valid string should work."""
+        seed = get_seed("standard")
+        assert isinstance(seed, str)
+        assert len(seed) > 0
+
+    def test_estimate_tokens_string_works(self):
+        """estimate_tokens with valid string should work."""
+        tokens = estimate_tokens("Hello World")
+        assert tokens == 2  # 11 chars // 4

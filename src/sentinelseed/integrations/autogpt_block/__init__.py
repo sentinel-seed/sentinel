@@ -250,6 +250,21 @@ def validate_content(
         - Only harm reflects the actual validation result
         For accurate per-gate results, use use_semantic=True (requires API key).
     """
+    # Validate content type - must be string (can be empty)
+    if content is not None and not isinstance(content, str):
+        error_msg = "content must be a string or None"
+        logger.error(f"Parameter validation failed: {error_msg}")
+        if fail_closed:
+            return {
+                "safe": False,
+                "violations": [error_msg],
+                "risk_level": "high",
+                "gate_results": {"truth": False, "harm": False, "scope": False, "purpose": False},
+                "content": content,
+                "error": error_msg,
+            }
+        raise InvalidParameterError("content", type(content).__name__, ("string", "None"))
+
     # Validate parameters
     try:
         seed_level = _validate_seed_level(seed_level)
@@ -638,7 +653,11 @@ def get_seed(
         result = get_seed("standard", include_token_count=True)
         print(f"Seed has ~{result['token_count']} tokens")
     """
-    # Validate level
+    # Validate level type - must be string
+    if not isinstance(level, str):
+        raise InvalidParameterError("level", type(level).__name__, VALID_SEED_LEVELS)
+
+    # Validate level value
     level = _validate_seed_level(level)
 
     sentinel = Sentinel(seed_level=level)
@@ -669,9 +688,11 @@ def estimate_tokens(text: str) -> int:
         text: Text to estimate tokens for
 
     Returns:
-        Estimated token count
+        Estimated token count (0 for empty/None/invalid input)
     """
     if not text:
+        return 0
+    if not isinstance(text, str):
         return 0
     return len(text) // 4
 
