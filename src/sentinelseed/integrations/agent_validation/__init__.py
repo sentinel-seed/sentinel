@@ -147,7 +147,7 @@ class ValidationResult:
 
         return cls(
             safe=thsp_result.is_safe,
-            action=action[:100],
+            action=str(action)[:100] if action else "unknown",
             concerns=concerns,
             risk_level=risk_str,
             should_proceed=thsp_result.is_safe,
@@ -229,6 +229,12 @@ class SafetyValidator:
         if provider not in VALID_PROVIDERS:
             raise InvalidProviderError(provider)
 
+        # Validate parameters
+        if validation_timeout <= 0:
+            raise ValueError("validation_timeout must be positive")
+        if max_text_size <= 0:
+            raise ValueError("max_text_size must be positive")
+
         self.provider = provider
         self.model = model
         self.block_unsafe = block_unsafe
@@ -253,7 +259,11 @@ class SafetyValidator:
         self._check_history: deque = deque(maxlen=history_limit)
 
     def _validate_text_size(self, text: str, field_name: str = "text") -> None:
-        """Validate that text doesn't exceed maximum size."""
+        """Validate that text is a valid string and doesn't exceed maximum size."""
+        if text is None:
+            raise ValueError(f"{field_name} cannot be None")
+        if not isinstance(text, str):
+            raise TypeError(f"{field_name} must be a string, got {type(text).__name__}")
         size = len(text.encode("utf-8"))
         if size > self.max_text_size:
             raise TextTooLargeError(size, self.max_text_size)
@@ -296,8 +306,8 @@ class SafetyValidator:
 
             result = ValidationResult.from_thsp(thsp_result, action)
 
-        except (TextTooLargeError, ValidationTimeoutError):
-            # Re-raise size and timeout errors
+        except (TextTooLargeError, ValidationTimeoutError, ValueError, TypeError):
+            # Re-raise validation errors (input validation, size, timeout)
             raise
         except Exception as e:
             logger.error(f"[SENTINEL] Validation error: {e}")
@@ -342,7 +352,7 @@ class SafetyValidator:
             thsp_result = self._semantic.validate(f"Agent thought: {thought}")
             result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
 
-        except TextTooLargeError:
+        except (TextTooLargeError, ValueError, TypeError):
             raise
         except Exception as e:
             logger.error(f"[SENTINEL] Thought validation error: {e}")
@@ -383,7 +393,7 @@ class SafetyValidator:
             thsp_result = self._semantic.validate(f"Agent output to user: {output}")
             result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
 
-        except TextTooLargeError:
+        except (TextTooLargeError, ValueError, TypeError):
             raise
         except Exception as e:
             logger.error(f"[SENTINEL] Output validation error: {e}")
@@ -494,6 +504,12 @@ class AsyncSafetyValidator:
         if provider not in VALID_PROVIDERS:
             raise InvalidProviderError(provider)
 
+        # Validate parameters
+        if validation_timeout <= 0:
+            raise ValueError("validation_timeout must be positive")
+        if max_text_size <= 0:
+            raise ValueError("max_text_size must be positive")
+
         self.provider = provider
         self.model = model
         self.block_unsafe = block_unsafe
@@ -514,7 +530,11 @@ class AsyncSafetyValidator:
         self._check_history: deque = deque(maxlen=history_limit)
 
     def _validate_text_size(self, text: str, field_name: str = "text") -> None:
-        """Validate that text doesn't exceed maximum size."""
+        """Validate that text is a valid string and doesn't exceed maximum size."""
+        if text is None:
+            raise ValueError(f"{field_name} cannot be None")
+        if not isinstance(text, str):
+            raise TypeError(f"{field_name} must be a string, got {type(text).__name__}")
         size = len(text.encode("utf-8"))
         if size > self.max_text_size:
             raise TextTooLargeError(size, self.max_text_size)
@@ -541,7 +561,7 @@ class AsyncSafetyValidator:
 
             result = ValidationResult.from_thsp(thsp_result, action)
 
-        except TextTooLargeError:
+        except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
@@ -578,7 +598,7 @@ class AsyncSafetyValidator:
             )
             result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
 
-        except TextTooLargeError:
+        except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
@@ -613,7 +633,7 @@ class AsyncSafetyValidator:
             )
             result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
 
-        except TextTooLargeError:
+        except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
@@ -774,10 +794,26 @@ class ExecutionGuard:
             # Extract action using smart extraction
             action = self._extract_action(args, kwargs)
 
+            # Validate input type before validation
+            if action is None:
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "action cannot be None",
+                    "error_type": "ValueError",
+                }
+            if not isinstance(action, str):
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": f"action must be string, got {type(action).__name__}",
+                    "error_type": "TypeError",
+                }
+
             # Pre-validation
             try:
                 check = self.validator.validate_action(action)
-            except (TextTooLargeError, ValidationTimeoutError) as e:
+            except (TextTooLargeError, ValidationTimeoutError, ValueError, TypeError) as e:
                 return {
                     "success": False,
                     "blocked": True,
