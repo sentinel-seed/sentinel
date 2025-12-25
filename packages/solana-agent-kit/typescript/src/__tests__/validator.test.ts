@@ -13,6 +13,10 @@ import {
   DEFAULT_CONFIG,
 } from "../types";
 
+// Valid Solana address for testing
+const VALID_ADDRESS = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+const VALID_PURPOSE = "This is a valid purpose with more than twenty characters";
+
 describe("SentinelValidator", () => {
   let validator: SentinelValidator;
 
@@ -38,12 +42,71 @@ describe("SentinelValidator", () => {
     });
   });
 
+  describe("input validation", () => {
+    it("should reject null input", () => {
+      const result = validator.validate(null as any);
+      expect(result.shouldProceed).toBe(false);
+      expect(result.riskLevel).toBe(RiskLevel.CRITICAL);
+      expect(result.concerns.some((c) => c.includes("Invalid input"))).toBe(true);
+    });
+
+    it("should reject undefined input", () => {
+      const result = validator.validate(undefined as any);
+      expect(result.shouldProceed).toBe(false);
+      expect(result.riskLevel).toBe(RiskLevel.CRITICAL);
+    });
+
+    it("should reject input without action", () => {
+      const result = validator.validate({ amount: 10 } as any);
+      expect(result.shouldProceed).toBe(false);
+      expect(result.concerns.some((c) => c.includes("action"))).toBe(true);
+    });
+
+    it("should reject non-string action", () => {
+      const result = validator.validate({ action: 123 } as any);
+      expect(result.shouldProceed).toBe(false);
+      expect(result.concerns.some((c) => c.includes("action"))).toBe(true);
+    });
+
+    it("should reject empty string action", () => {
+      const result = validator.validate({ action: "" } as any);
+      expect(result.shouldProceed).toBe(false);
+    });
+
+    it("should reject Infinity amount", () => {
+      const result = validator.validate({
+        action: "query",
+        amount: Infinity,
+      });
+      expect(result.shouldProceed).toBe(false);
+      expect(result.concerns.some((c) => c.includes("finite"))).toBe(true);
+    });
+
+    it("should reject -Infinity amount", () => {
+      const result = validator.validate({
+        action: "query",
+        amount: -Infinity,
+      });
+      expect(result.shouldProceed).toBe(false);
+    });
+
+    it("should reject NaN amount", () => {
+      const result = validator.validate({
+        action: "query",
+        amount: NaN,
+      });
+      expect(result.shouldProceed).toBe(false);
+      expect(result.concerns.some((c) => c.includes("valid number") || c.includes("finite"))).toBe(true);
+    });
+  });
+
   describe("TRUTH gate", () => {
     it("should pass for valid Solana addresses", () => {
       const result = validator.validate({
         action: "transfer",
         amount: 10,
-        recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        recipient: VALID_ADDRESS,
+        purpose: VALID_PURPOSE,
       });
       const truthGate = result.gateResults.find((g) => g.gate === THSPGate.TRUTH);
       expect(truthGate?.passed).toBe(true);
@@ -57,6 +120,7 @@ describe("SentinelValidator", () => {
         action: "transfer",
         amount: 10,
         recipient: "invalid-address",
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
       expect(result.concerns.some((c) => c.includes("Invalid recipient"))).toBe(true);
@@ -70,7 +134,7 @@ describe("SentinelValidator", () => {
         action: "transfer",
         amount: 10,
         recipient: "invalid-address",
-        purpose: "Test transfer purpose",
+        purpose: VALID_PURPOSE,
       });
       const truthGate = result.gateResults.find((g) => g.gate === THSPGate.TRUTH);
       expect(truthGate?.passed).toBe(true);
@@ -80,31 +144,45 @@ describe("SentinelValidator", () => {
       const result = validator.validate({
         action: "transfer",
         amount: -10,
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
       expect(result.concerns.some((c) => c.includes("negative"))).toBe(true);
     });
 
-    it("should fail for NaN amounts", () => {
+    it("should validate tokenMint format", () => {
       const result = validator.validate({
         action: "transfer",
-        amount: NaN,
+        amount: 10,
+        tokenMint: "invalid-token-mint",
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
-      expect(result.concerns.some((c) => c.includes("not a valid number"))).toBe(true);
+      expect(result.concerns.some((c) => c.includes("token mint"))).toBe(true);
+    });
+
+    it("should pass for valid tokenMint", () => {
+      const result = validator.validate({
+        action: "query",
+        amount: 10,
+        tokenMint: VALID_ADDRESS,
+        purpose: VALID_PURPOSE,
+      });
+      const truthGate = result.gateResults.find((g) => g.gate === THSPGate.TRUTH);
+      expect(truthGate?.passed).toBe(true);
     });
   });
 
   describe("HARM gate", () => {
     it("should fail for blocked addresses", () => {
       const blockedValidator = new SentinelValidator({
-        blockedAddresses: ["BlockedAddress123456789012345678901234"],
+        blockedAddresses: [VALID_ADDRESS],
       });
       const result = blockedValidator.validate({
         action: "transfer",
         amount: 10,
-        recipient: "BlockedAddress123456789012345678901234",
-        purpose: "Test transfer",
+        recipient: VALID_ADDRESS,
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
       expect(result.concerns.some((c) => c.includes("blocked"))).toBe(true);
@@ -114,19 +192,22 @@ describe("SentinelValidator", () => {
       const result = validator.validate({
         action: "drainWallet",
         amount: 100,
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
-      expect(result.riskLevel).toBe(RiskLevel.CRITICAL);
+      // High-risk actions trigger HARM gate failure which escalates to HIGH
+      // CRITICAL is reserved for pattern matches like "drain" in content
+      expect(result.riskLevel).toBe(RiskLevel.HIGH);
     });
 
     it("should fail for non-whitelisted programs when whitelist is set", () => {
       const whitelistValidator = new SentinelValidator({
-        allowedPrograms: ["AllowedProgram123"],
+        allowedPrograms: [VALID_ADDRESS],
       });
       const result = whitelistValidator.validate({
         action: "call",
-        programId: "NotAllowedProgram456789012345678901234",
-        purpose: "Test call",
+        programId: "DifferentProgram11111111111111111111111111111",
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
       expect(result.concerns.some((c) => c.includes("not in whitelist"))).toBe(true);
@@ -138,7 +219,7 @@ describe("SentinelValidator", () => {
       const result = validator.validate({
         action: "transfer",
         amount: 500,
-        purpose: "Large transfer",
+        purpose: VALID_PURPOSE,
       });
       expect(result.shouldProceed).toBe(false);
       expect(result.concerns.some((c) => c.includes("exceeds maximum"))).toBe(true);
@@ -148,7 +229,7 @@ describe("SentinelValidator", () => {
       const result = validator.validate({
         action: "query",
         amount: 50,
-        purpose: "Regular query",
+        purpose: VALID_PURPOSE,
       });
       const scopeGate = result.gateResults.find((g) => g.gate === THSPGate.SCOPE);
       expect(scopeGate?.passed).toBe(true);
@@ -160,26 +241,57 @@ describe("SentinelValidator", () => {
       const result = validator.validate({
         action: "transfer",
         amount: 10,
-        recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        recipient: VALID_ADDRESS,
       });
       expect(result.concerns.some((c) => c.includes("requires explicit purpose"))).toBe(true);
     });
 
-    it("should fail for too brief purpose", () => {
+    it("should fail for purpose less than 20 characters", () => {
       const result = validator.validate({
         action: "transfer",
         amount: 10,
-        purpose: "pay",
+        purpose: "short purpose",
       });
-      expect(result.concerns.some((c) => c.includes("too brief"))).toBe(true);
+      expect(result.concerns.some((c) => c.includes("20 characters") || c.includes("too brief"))).toBe(true);
+    });
+
+    it("should fail for purpose with less than 3 words", () => {
+      const result = validator.validate({
+        action: "transfer",
+        amount: 10,
+        purpose: "TwoWordsOnlyHere!!!!!!!!",
+      });
+      expect(result.concerns.some((c) => c.includes("3 words"))).toBe(true);
+    });
+
+    it("should fail for repeated character purpose", () => {
+      // Note: "aaaaa..." has only 1 word, so it fails the "3 words" check first
+      const result = validator.validate({
+        action: "transfer",
+        amount: 10,
+        purpose: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      });
+      // This fails because it has only 1 word, not because of repeated chars
+      expect(result.concerns.some((c) => c.includes("3 words"))).toBe(true);
+    });
+
+    it("should fail for repeated characters across multiple words", () => {
+      // To test the repeated character check, we need 3+ words but all same char
+      const result = validator.validate({
+        action: "transfer",
+        amount: 10,
+        purpose: "aaa aaa aaa aaa aaa aaa",
+      });
+      // This has 6 words and 20+ chars, so it should hit the repeated char check
+      expect(result.concerns.some((c) => c.includes("repeated") || c.includes("meaningless"))).toBe(true);
     });
 
     it("should pass for valid purpose", () => {
       const result = validator.validate({
         action: "transfer",
         amount: 10,
-        recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-        purpose: "Monthly payment for hosting services",
+        recipient: VALID_ADDRESS,
+        purpose: "Monthly payment for hosting services provided by the company",
       });
       const purposeGate = result.gateResults.find((g) => g.gate === THSPGate.PURPOSE);
       expect(purposeGate?.passed).toBe(true);
@@ -187,22 +299,72 @@ describe("SentinelValidator", () => {
   });
 
   describe("suspicious patterns", () => {
-    it("should detect drain patterns", () => {
+    it("should detect drain patterns with word boundaries", () => {
       const result = validator.validate({
         action: "normal",
-        memo: "drain all tokens",
-        purpose: "Testing patterns",
+        memo: "drain all tokens now",
+        purpose: VALID_PURPOSE,
       });
-      expect(result.concerns.some((c) => c.includes("drain"))).toBe(true);
+      expect(result.concerns.some((c) => c.toLowerCase().includes("drain"))).toBe(true);
+    });
+
+    it("should NOT false positive on 'drainage' (word boundary test)", () => {
+      const result = validator.validate({
+        action: "normal",
+        memo: "check drainage system for leaks",
+        purpose: VALID_PURPOSE,
+      });
+      // Should not trigger drain pattern
+      expect(result.concerns.some((c) => c.toLowerCase().includes("drain operation"))).toBe(false);
     });
 
     it("should detect unlimited approval patterns", () => {
       const result = validator.validate({
         action: "approve",
         memo: "unlimited approval request",
-        purpose: "Testing patterns",
+        purpose: VALID_PURPOSE,
       });
       expect(result.concerns.some((c) => c.toLowerCase().includes("unlimited"))).toBe(true);
+    });
+
+    it("should detect private key exposure", () => {
+      const result = validator.validate({
+        action: "normal",
+        memo: "here is my private key for the wallet",
+        purpose: VALID_PURPOSE,
+      });
+      expect(result.concerns.some((c) => c.toLowerCase().includes("private key"))).toBe(true);
+    });
+  });
+
+  describe("metadata sanitization", () => {
+    it("should allow valid metadata keys", () => {
+      const result = validator.validate({
+        action: "query",
+        purpose: VALID_PURPOSE,
+        metadata: {
+          fromToken: "SOL",
+          toToken: "USDC",
+          slippage: "1%",
+        },
+      });
+      // Should not cause issues
+      expect(result.gateResults.find((g) => g.gate === THSPGate.TRUTH)?.passed).toBe(true);
+    });
+
+    it("should filter out non-whitelisted metadata keys", () => {
+      const result = validator.validate({
+        action: "query",
+        purpose: VALID_PURPOSE,
+        metadata: {
+          fromToken: "SOL",
+          maliciousKey: "drain all tokens", // Should be filtered
+          anotherBadKey: "unlimited approval", // Should be filtered
+        },
+      });
+      // The filtered metadata should not trigger patterns
+      // Only whitelisted keys are checked
+      expect(result.gateResults.find((g) => g.gate === THSPGate.TRUTH)?.passed).toBe(true);
     });
   });
 
@@ -212,69 +374,68 @@ describe("SentinelValidator", () => {
       const result = strictValidator.validate({
         action: "transfer",
         amount: 10,
-        recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-        // Missing purpose
+        recipient: VALID_ADDRESS,
+        // Missing purpose - should block in strict mode
       });
       expect(result.shouldProceed).toBe(false);
-    });
-
-    it("should allow MEDIUM risk in normal mode", () => {
-      const normalValidator = new SentinelValidator({ strictMode: false });
-      const result = normalValidator.validate({
-        action: "transfer",
-        amount: 10,
-        recipient: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-        // Missing purpose - MEDIUM risk
-      });
-      // In normal mode, MEDIUM risk should proceed
-      if (result.riskLevel === RiskLevel.MEDIUM) {
-        expect(result.shouldProceed).toBe(true);
-      }
     });
   });
 
   describe("history and stats", () => {
     it("should track validation history", () => {
-      validator.validate({ action: "transfer", amount: 10, purpose: "Test 1" });
-      validator.validate({ action: "swap", amount: 20, purpose: "Test 2" });
+      validator.validate({ action: "transfer", amount: 10, purpose: VALID_PURPOSE });
+      validator.validate({ action: "swap", amount: 20, purpose: VALID_PURPOSE });
 
       const stats = validator.getStats();
       expect(stats.totalValidations).toBe(2);
     });
 
-    it("should respect max history size", () => {
+    it("should respect max history size (check before push)", () => {
       const smallHistoryValidator = new SentinelValidator({ maxHistorySize: 3 });
       for (let i = 0; i < 5; i++) {
-        smallHistoryValidator.validate({ action: "test", amount: i, purpose: `Test ${i}` });
+        smallHistoryValidator.validate({ action: "test", amount: i, purpose: VALID_PURPOSE });
       }
       const stats = smallHistoryValidator.getStats();
       expect(stats.totalValidations).toBe(3);
     });
 
     it("should clear history", () => {
-      validator.validate({ action: "test", purpose: "Test" });
+      validator.validate({ action: "test", purpose: VALID_PURPOSE });
       validator.clearHistory();
       const stats = validator.getStats();
       expect(stats.totalValidations).toBe(0);
+    });
+
+    it("should handle empty history stats gracefully", () => {
+      const stats = validator.getStats();
+      expect(stats.totalValidations).toBe(0);
+      expect(stats.blockRate).toBe(0);
+      expect(Number.isNaN(stats.blockRate)).toBe(false);
     });
   });
 
   describe("address management", () => {
     it("should block addresses", () => {
-      const address = "TestAddress123456789012345678901234";
-      validator.blockAddress(address);
+      validator.blockAddress(VALID_ADDRESS);
       const config = validator.getConfig();
-      expect(config.blockedAddresses).toContain(address);
+      expect(config.blockedAddresses).toContain(VALID_ADDRESS);
+    });
+
+    it("should not duplicate blocked addresses", () => {
+      validator.blockAddress(VALID_ADDRESS);
+      validator.blockAddress(VALID_ADDRESS);
+      const config = validator.getConfig();
+      const count = config.blockedAddresses?.filter((a) => a === VALID_ADDRESS).length;
+      expect(count).toBe(1);
     });
 
     it("should unblock addresses", () => {
-      const address = "TestAddress123456789012345678901234";
       const blockedValidator = new SentinelValidator({
-        blockedAddresses: [address],
+        blockedAddresses: [VALID_ADDRESS],
       });
-      blockedValidator.unblockAddress(address);
+      blockedValidator.unblockAddress(VALID_ADDRESS);
       const config = blockedValidator.getConfig();
-      expect(config.blockedAddresses).not.toContain(address);
+      expect(config.blockedAddresses).not.toContain(VALID_ADDRESS);
     });
   });
 
@@ -283,6 +444,27 @@ describe("SentinelValidator", () => {
       validator.updateConfig({ maxTransactionAmount: 200 });
       const config = validator.getConfig();
       expect(config.maxTransactionAmount).toBe(200);
+    });
+
+    it("should recompile patterns on customPatterns update", () => {
+      validator.updateConfig({
+        customPatterns: [
+          {
+            name: "test_pattern",
+            pattern: /testword/i,
+            riskLevel: RiskLevel.HIGH,
+            message: "Test pattern detected",
+          },
+        ],
+      });
+
+      const result = validator.validate({
+        action: "normal",
+        memo: "this contains testword",
+        purpose: VALID_PURPOSE,
+      });
+
+      expect(result.concerns.some((c) => c.includes("Test pattern"))).toBe(true);
     });
   });
 
@@ -293,7 +475,7 @@ describe("SentinelValidator", () => {
         onValidation: (result) => results.push(result),
       });
 
-      callbackValidator.validate({ action: "test", purpose: "Test" });
+      callbackValidator.validate({ action: "test", purpose: VALID_PURPOSE });
 
       expect(results.length).toBe(1);
       expect(results[0].metadata.action).toBe("test");

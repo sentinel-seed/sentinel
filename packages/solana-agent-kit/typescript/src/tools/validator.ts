@@ -6,12 +6,14 @@
  */
 
 import type { SolanaAgentKit } from "solana-agent-kit";
+import { PublicKey } from "@solana/web3.js";
 import {
   type SafetyValidationResult,
   type ValidationInput,
   type SentinelPluginConfig,
   type GateResult,
   type ValidationStats,
+  type SuspiciousPattern,
   RiskLevel,
   THSPGate,
   AddressValidationMode,
@@ -20,14 +22,60 @@ import {
   HIGH_RISK_ACTIONS,
 } from "../types";
 
-// Solana address validation regex (base58, 32-44 chars)
-const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+// Allowed metadata keys to prevent injection via arbitrary metadata
+const ALLOWED_METADATA_KEYS = new Set([
+  "fromToken",
+  "toToken",
+  "slippage",
+  "protocol",
+  "expectedAPY",
+  "bridge",
+  "fromChain",
+  "toChain",
+  "tokenSymbol",
+  "tokenName",
+  "decimals",
+]);
 
 /**
- * Validate Solana address format
+ * Validate Solana address using PublicKey
+ * This properly validates base58 encoding and checksum
  */
 function isValidSolanaAddress(address: string): boolean {
-  return SOLANA_ADDRESS_REGEX.test(address);
+  if (!address || typeof address !== "string") {
+    return false;
+  }
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Filter metadata to only allowed keys
+ */
+function sanitizeMetadata(
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!metadata || typeof metadata !== "object") {
+    return {};
+  }
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (ALLOWED_METADATA_KEYS.has(key)) {
+      // Only allow primitive values
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        sanitized[key] = value;
+      }
+    }
+  }
+  return sanitized;
 }
 
 /**
@@ -36,6 +84,14 @@ function isValidSolanaAddress(address: string): boolean {
  * Validates transactions against the THSP protocol before execution.
  * Each transaction must pass all four gates to be approved.
  */
+/** Compiled pattern with cached regex */
+interface CompiledPattern {
+  name: string;
+  regex: RegExp;
+  riskLevel: RiskLevel;
+  message: string;
+}
+
 export class SentinelValidator {
   private config: Required<
     Omit<SentinelPluginConfig, "customPatterns" | "onValidation" | "blockedAddresses" | "allowedPrograms">
@@ -43,6 +99,7 @@ export class SentinelValidator {
     Pick<SentinelPluginConfig, "customPatterns" | "blockedAddresses" | "allowedPrograms" | "onValidation">;
   private history: SafetyValidationResult[] = [];
   private agent: SolanaAgentKit | null = null;
+  private compiledPatterns: CompiledPattern[] = [];
 
   constructor(config: SentinelPluginConfig = {}) {
     this.config = {
@@ -52,6 +109,47 @@ export class SentinelValidator {
         ...DEFAULT_SUSPICIOUS_PATTERNS,
         ...(config.customPatterns || []),
       ],
+    };
+    // Pre-compile all patterns for performance
+    this.compilePatterns();
+  }
+
+  /**
+   * Compile regex patterns once for performance
+   */
+  private compilePatterns(): void {
+    this.compiledPatterns = (this.config.customPatterns || []).map(
+      (pattern: SuspiciousPattern) => ({
+        name: pattern.name,
+        regex:
+          typeof pattern.pattern === "string"
+            ? new RegExp(pattern.pattern, "i")
+            : pattern.pattern,
+        riskLevel: pattern.riskLevel,
+        message: pattern.message,
+      })
+    );
+  }
+
+  /**
+   * Create a failed validation result for early returns
+   */
+  private createFailedResult(reason: string, startTime: number): SafetyValidationResult {
+    return {
+      safe: false,
+      riskLevel: RiskLevel.CRITICAL,
+      shouldProceed: false,
+      requiresConfirmation: false,
+      gateResults: [
+        { gate: THSPGate.TRUTH, passed: false, reason },
+      ],
+      concerns: [reason],
+      recommendations: ["Fix the input parameters before retrying"],
+      metadata: {
+        action: "invalid",
+        timestamp: Date.now(),
+        validationDurationMs: Date.now() - startTime,
+      },
     };
   }
 
@@ -71,6 +169,26 @@ export class SentinelValidator {
    */
   validate(input: ValidationInput): SafetyValidationResult {
     const startTime = Date.now();
+
+    // Input validation - fail fast for invalid input
+    if (!input || typeof input !== "object") {
+      return this.createFailedResult("Invalid input: must be an object", startTime);
+    }
+
+    if (!input.action || typeof input.action !== "string") {
+      return this.createFailedResult("Invalid input: action must be a non-empty string", startTime);
+    }
+
+    // Check for Infinity and other edge cases in amount
+    if (input.amount !== undefined) {
+      if (!Number.isFinite(input.amount)) {
+        return this.createFailedResult(
+          `Invalid amount: ${input.amount} is not a valid finite number`,
+          startTime
+        );
+      }
+    }
+
     const gateResults: GateResult[] = [];
     const concerns: string[] = [];
     const recommendations: string[] = [];
@@ -140,11 +258,11 @@ export class SentinelValidator {
       },
     };
 
-    // Store in history (with size limit to prevent memory growth)
-    this.history.push(result);
-    if (this.history.length > this.config.maxHistorySize) {
+    // Store in history (check size BEFORE push to prevent exceeding limit)
+    if (this.history.length >= this.config.maxHistorySize) {
       this.history.shift();
     }
+    this.history.push(result);
 
     // Call optional callback
     if (this.config.onValidation) {
@@ -211,6 +329,17 @@ export class SentinelValidator {
       }
     }
 
+    // Validate tokenMint if provided
+    if (input.tokenMint) {
+      if (!isValidSolanaAddress(input.tokenMint)) {
+        return {
+          gate: THSPGate.TRUTH,
+          passed: false,
+          reason: `Invalid token mint address: ${input.tokenMint.slice(0, 16)}...`,
+        };
+      }
+    }
+
     return {
       gate: THSPGate.TRUTH,
       passed: true,
@@ -221,10 +350,11 @@ export class SentinelValidator {
    * HARM GATE: Assess potential for damage to users or systems
    */
   private checkHarmGate(input: ValidationInput): GateResult {
-    // Check against blocked addresses
+    // Check against blocked addresses with proper type guard
     if (
       input.recipient &&
-      this.config.blockedAddresses?.includes(input.recipient)
+      Array.isArray(this.config.blockedAddresses) &&
+      this.config.blockedAddresses.includes(input.recipient)
     ) {
       return {
         gate: THSPGate.HARM,
@@ -233,7 +363,7 @@ export class SentinelValidator {
       };
     }
 
-    // Check for high-risk action patterns
+    // Check for high-risk action patterns (action already validated as string)
     const actionLower = input.action.toLowerCase();
     const isHighRisk = HIGH_RISK_ACTIONS.some((pattern) =>
       actionLower.includes(pattern.toLowerCase())
@@ -310,13 +440,33 @@ export class SentinelValidator {
 
     // Validate purpose content if provided
     if (input.purpose) {
-      // Purpose should be meaningful (not just whitespace or very short)
       const trimmedPurpose = input.purpose.trim();
-      if (trimmedPurpose.length < 10) {
+
+      // Purpose must be at least 20 characters for meaningful justification
+      if (trimmedPurpose.length < 20) {
         return {
           gate: THSPGate.PURPOSE,
           passed: false,
-          reason: "Purpose explanation is too brief - provide meaningful justification",
+          reason: "Purpose explanation is too brief - provide at least 20 characters",
+        };
+      }
+
+      // Purpose should have at least 3 words
+      const words = trimmedPurpose.split(/\s+/).filter((w) => w.length > 0);
+      if (words.length < 3) {
+        return {
+          gate: THSPGate.PURPOSE,
+          passed: false,
+          reason: "Purpose should contain at least 3 words to be meaningful",
+        };
+      }
+
+      // Reject if purpose is mostly repeated characters (e.g., "aaaaaaaaaaaaaaaaaaaaa")
+      if (/^(.)\1{9,}$/.test(trimmedPurpose.replace(/\s/g, ""))) {
+        return {
+          gate: THSPGate.PURPOSE,
+          passed: false,
+          reason: "Purpose appears to be meaningless repeated characters",
         };
       }
     }
@@ -337,24 +487,24 @@ export class SentinelValidator {
     const concerns: string[] = [];
     let maxRisk = RiskLevel.LOW;
 
+    // Sanitize metadata to prevent injection attacks
+    const safeMetadata = sanitizeMetadata(input.metadata);
+
+    // Build text to check from validated fields
     const textToCheck = [
       input.action,
       input.memo,
       input.purpose,
-      JSON.stringify(input.metadata || {}),
+      Object.keys(safeMetadata).length > 0 ? JSON.stringify(safeMetadata) : "",
     ]
       .filter(Boolean)
       .join(" ");
 
-    for (const pattern of this.config.customPatterns || []) {
-      const regex =
-        typeof pattern.pattern === "string"
-          ? new RegExp(pattern.pattern, "i")
-          : pattern.pattern;
-
-      if (regex.test(textToCheck)) {
-        concerns.push(pattern.message);
-        maxRisk = this.escalateRisk(maxRisk, pattern.riskLevel);
+    // Use pre-compiled patterns for performance
+    for (const compiled of this.compiledPatterns) {
+      if (compiled.regex.test(textToCheck)) {
+        concerns.push(compiled.message);
+        maxRisk = this.escalateRisk(maxRisk, compiled.riskLevel);
       }
     }
 
@@ -458,10 +608,17 @@ export class SentinelValidator {
    * Update configuration
    */
   updateConfig(updates: Partial<SentinelPluginConfig>): void {
+    const hadPatternUpdate = updates.customPatterns !== undefined;
+
     this.config = {
       ...this.config,
       ...updates,
     };
+
+    // Recompile patterns if customPatterns was updated
+    if (hadPatternUpdate) {
+      this.compilePatterns();
+    }
   }
 
   /**

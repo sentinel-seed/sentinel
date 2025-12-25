@@ -9,24 +9,26 @@ import type { Action, SolanaAgentKit } from "solana-agent-kit";
 import { z } from "zod";
 import { SentinelValidator } from "../tools/validator";
 
-// Shared validator instance
+// Shared validator instance - set by plugin during initialization
 let validator: SentinelValidator | null = null;
-
-/**
- * Get or create validator instance
- */
-function getValidator(): SentinelValidator {
-  if (!validator) {
-    validator = new SentinelValidator();
-  }
-  return validator;
-}
 
 /**
  * Set the validator instance (called during plugin initialization)
  */
 export function setValidator(v: SentinelValidator): void {
   validator = v;
+}
+
+/**
+ * Get the validator, throwing if not initialized
+ */
+function getValidator(): SentinelValidator {
+  if (!validator) {
+    throw new Error(
+      "[Sentinel] Validator not initialized. Ensure SentinelPlugin is registered."
+    );
+  }
+  return validator;
 }
 
 /**
@@ -88,7 +90,11 @@ export const getSafetyStatsAction: Action = {
       const stats = getValidator().getStats();
       const config = getValidator().getConfig();
 
-      const blockRatePercent = (stats.blockRate * 100).toFixed(1);
+      // Handle potential NaN in blockRate
+      const blockRateValue = Number.isFinite(stats.blockRate)
+        ? stats.blockRate
+        : 0;
+      const blockRatePercent = (blockRateValue * 100).toFixed(1);
 
       return {
         status: "success",
@@ -97,7 +103,7 @@ export const getSafetyStatsAction: Action = {
           blocked: stats.blocked,
           approved: stats.approved,
           highRisk: stats.highRisk,
-          blockRate: stats.blockRate,
+          blockRate: blockRateValue,
           blockRatePercent: `${blockRatePercent}%`,
           byAction: stats.byAction,
         },
@@ -105,7 +111,9 @@ export const getSafetyStatsAction: Action = {
           maxTransactionAmount: config.maxTransactionAmount,
           confirmationThreshold: config.confirmationThreshold,
           strictMode: config.strictMode,
-          blockedAddressCount: config.blockedAddresses?.length || 0,
+          blockedAddressCount: Array.isArray(config.blockedAddresses)
+            ? config.blockedAddresses.length
+            : 0,
         },
         message:
           stats.totalValidations > 0

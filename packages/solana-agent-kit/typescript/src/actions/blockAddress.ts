@@ -6,26 +6,44 @@
 
 import type { Action, SolanaAgentKit } from "solana-agent-kit";
 import { z } from "zod";
+import { PublicKey } from "@solana/web3.js";
 import { SentinelValidator } from "../tools/validator";
 
-// Shared validator instance
+// Shared validator instance - set by plugin during initialization
 let validator: SentinelValidator | null = null;
-
-/**
- * Get or create validator instance
- */
-function getValidator(): SentinelValidator {
-  if (!validator) {
-    validator = new SentinelValidator();
-  }
-  return validator;
-}
 
 /**
  * Set the validator instance (called during plugin initialization)
  */
 export function setValidator(v: SentinelValidator): void {
   validator = v;
+}
+
+/**
+ * Get the validator, throwing if not initialized
+ */
+function getValidator(): SentinelValidator {
+  if (!validator) {
+    throw new Error(
+      "[Sentinel] Validator not initialized. Ensure SentinelPlugin is registered."
+    );
+  }
+  return validator;
+}
+
+/**
+ * Validate Solana address using PublicKey
+ */
+function isValidSolanaAddress(address: string): boolean {
+  if (!address || typeof address !== "string") {
+    return false;
+  }
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -80,15 +98,39 @@ export const blockAddressAction: Action = {
     input: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
     try {
-      const address = input.address as string;
+      // Validate address is a string
+      if (!input.address || typeof input.address !== "string") {
+        return {
+          status: "error",
+          blocked: false,
+          message: "Invalid input: address must be a non-empty string",
+        };
+      }
 
-      // Validate address format
-      const isValidAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
-      if (!isValidAddress) {
+      const address = input.address;
+
+      // Validate address format using PublicKey
+      if (!isValidSolanaAddress(address)) {
         return {
           status: "error",
           blocked: false,
           message: "Invalid address format - must be valid Solana base58 address",
+        };
+      }
+
+      // Check if already blocked
+      const config = getValidator().getConfig();
+      const alreadyBlocked =
+        Array.isArray(config.blockedAddresses) &&
+        config.blockedAddresses.includes(address);
+
+      if (alreadyBlocked) {
+        return {
+          status: "success",
+          blocked: true,
+          alreadyBlocked: true,
+          address,
+          message: `Address ${address.slice(0, 8)}... is already blocked`,
         };
       }
 
@@ -97,6 +139,7 @@ export const blockAddressAction: Action = {
       return {
         status: "success",
         blocked: true,
+        newlyBlocked: true,
         address,
         message: `Address ${address.slice(0, 8)}... added to blocklist`,
       };
@@ -162,13 +205,48 @@ export const unblockAddressAction: Action = {
     input: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
     try {
-      const address = input.address as string;
+      // Validate address is a string
+      if (!input.address || typeof input.address !== "string") {
+        return {
+          status: "error",
+          unblocked: false,
+          message: "Invalid input: address must be a non-empty string",
+        };
+      }
+
+      const address = input.address;
+
+      // Validate address format using PublicKey
+      if (!isValidSolanaAddress(address)) {
+        return {
+          status: "error",
+          unblocked: false,
+          message: "Invalid address format - must be valid Solana base58 address",
+        };
+      }
+
+      // Check if address is in blocklist
+      const config = getValidator().getConfig();
+      const isBlocked =
+        Array.isArray(config.blockedAddresses) &&
+        config.blockedAddresses.includes(address);
+
+      if (!isBlocked) {
+        return {
+          status: "success",
+          unblocked: true,
+          wasBlocked: false,
+          address,
+          message: `Address ${address.slice(0, 8)}... was not in blocklist`,
+        };
+      }
 
       getValidator().unblockAddress(address);
 
       return {
         status: "success",
         unblocked: true,
+        wasBlocked: true,
         address,
         message: `Address ${address.slice(0, 8)}... removed from blocklist`,
       };

@@ -8,25 +8,28 @@
 import type { Action, SolanaAgentKit } from "solana-agent-kit";
 import { z } from "zod";
 import { SentinelValidator } from "../tools/validator";
+import { RiskLevel } from "../types";
 
-// Shared validator instance
+// Shared validator instance - set by plugin during initialization
 let validator: SentinelValidator | null = null;
-
-/**
- * Get or create validator instance
- */
-function getValidator(): SentinelValidator {
-  if (!validator) {
-    validator = new SentinelValidator();
-  }
-  return validator;
-}
 
 /**
  * Set the validator instance (called during plugin initialization)
  */
 export function setValidator(v: SentinelValidator): void {
   validator = v;
+}
+
+/**
+ * Get the validator, throwing if not initialized
+ */
+function getValidator(): SentinelValidator {
+  if (!validator) {
+    throw new Error(
+      "[Sentinel] Validator not initialized. Ensure SentinelPlugin is registered."
+    );
+  }
+  return validator;
 }
 
 /**
@@ -108,8 +111,41 @@ export const checkSafetyAction: Action = {
     input: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
     try {
+      // Validate action is a string
+      if (!input.action || typeof input.action !== "string") {
+        return {
+          safe: false,
+          canProceed: false,
+          riskLevel: RiskLevel.CRITICAL,
+          reason: "action must be a non-empty string",
+          message: "Safety check error: invalid action parameter",
+        };
+      }
+
+      // Validate amount is a number if provided
+      if (input.amount !== undefined && typeof input.amount !== "number") {
+        return {
+          safe: false,
+          canProceed: false,
+          riskLevel: RiskLevel.CRITICAL,
+          reason: "amount must be a number",
+          message: "Safety check error: invalid amount parameter",
+        };
+      }
+
+      // Validate recipient is a string if provided
+      if (input.recipient !== undefined && typeof input.recipient !== "string") {
+        return {
+          safe: false,
+          canProceed: false,
+          riskLevel: RiskLevel.CRITICAL,
+          reason: "recipient must be a string",
+          message: "Safety check error: invalid recipient parameter",
+        };
+      }
+
       const result = getValidator().validate({
-        action: input.action as string,
+        action: input.action,
         amount: input.amount as number | undefined,
         recipient: input.recipient as string | undefined,
       });
@@ -128,8 +164,8 @@ export const checkSafetyAction: Action = {
           safe: false,
           canProceed: false,
           riskLevel: result.riskLevel,
-          reason: result.concerns[0] || "Safety check failed",
-          message: `Transaction blocked: ${result.concerns[0] || "safety check failed"}`,
+          reason: result.concerns[0] ?? "Safety check failed",
+          message: `Transaction blocked: ${result.concerns[0] ?? "safety check failed"}`,
         };
       }
     } catch (error) {
@@ -138,7 +174,7 @@ export const checkSafetyAction: Action = {
       return {
         safe: false,
         canProceed: false,
-        riskLevel: "critical",
+        riskLevel: RiskLevel.CRITICAL,
         reason: errorMessage,
         message: `Safety check error: ${errorMessage}`,
       };

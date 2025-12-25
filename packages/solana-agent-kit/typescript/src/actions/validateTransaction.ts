@@ -8,26 +8,101 @@
 import type { Action, SolanaAgentKit } from "solana-agent-kit";
 import { z } from "zod";
 import { SentinelValidator } from "../tools/validator";
-import type { ValidationInput } from "../types";
+import type { ValidationInput, SafetyValidationResult } from "../types";
+import { RiskLevel, THSPGate } from "../types";
 
-// Shared validator instance
+// Shared validator instance - set by plugin during initialization
 let validator: SentinelValidator | null = null;
-
-/**
- * Get or create validator instance
- */
-function getValidator(): SentinelValidator {
-  if (!validator) {
-    validator = new SentinelValidator();
-  }
-  return validator;
-}
 
 /**
  * Set the validator instance (called during plugin initialization)
  */
 export function setValidator(v: SentinelValidator): void {
   validator = v;
+}
+
+/**
+ * Get the validator, throwing if not initialized
+ */
+function getValidator(): SentinelValidator {
+  if (!validator) {
+    throw new Error(
+      "[Sentinel] Validator not initialized. Ensure SentinelPlugin is registered."
+    );
+  }
+  return validator;
+}
+
+/**
+ * Create a failed result for invalid input
+ */
+function createErrorResult(message: string): Record<string, unknown> {
+  return {
+    status: "error",
+    safe: false,
+    shouldProceed: false,
+    riskLevel: RiskLevel.CRITICAL,
+    concerns: [message],
+    recommendations: ["Fix the input parameters before retrying"],
+    gateResults: [{ gate: THSPGate.TRUTH, passed: false, reason: message }],
+    message: `Validation failed: ${message}`,
+  };
+}
+
+/**
+ * Validate input types before processing
+ */
+function validateInputTypes(
+  input: Record<string, unknown>
+): { valid: true; data: ValidationInput } | { valid: false; error: string } {
+  // Action is required and must be a non-empty string
+  if (!input.action || typeof input.action !== "string") {
+    return { valid: false, error: "action must be a non-empty string" };
+  }
+
+  // Amount must be a number if provided
+  if (input.amount !== undefined && typeof input.amount !== "number") {
+    return { valid: false, error: "amount must be a number" };
+  }
+
+  // Recipient must be a string if provided
+  if (input.recipient !== undefined && typeof input.recipient !== "string") {
+    return { valid: false, error: "recipient must be a string" };
+  }
+
+  // ProgramId must be a string if provided
+  if (input.programId !== undefined && typeof input.programId !== "string") {
+    return { valid: false, error: "programId must be a string" };
+  }
+
+  // Memo must be a string if provided
+  if (input.memo !== undefined && typeof input.memo !== "string") {
+    return { valid: false, error: "memo must be a string" };
+  }
+
+  // Purpose must be a string if provided
+  if (input.purpose !== undefined && typeof input.purpose !== "string") {
+    return { valid: false, error: "purpose must be a string" };
+  }
+
+  // TokenMint must be a string if provided
+  if (input.tokenMint !== undefined && typeof input.tokenMint !== "string") {
+    return { valid: false, error: "tokenMint must be a string" };
+  }
+
+  return {
+    valid: true,
+    data: {
+      action: input.action,
+      amount: input.amount as number | undefined,
+      recipient: input.recipient as string | undefined,
+      programId: input.programId as string | undefined,
+      memo: input.memo as string | undefined,
+      purpose: input.purpose as string | undefined,
+      tokenMint: input.tokenMint as string | undefined,
+      metadata: input.metadata as Record<string, unknown> | undefined,
+    },
+  };
 }
 
 /**
@@ -112,26 +187,6 @@ export const validateTransactionAction: Action = {
           "Validating a swap operation with explicit purpose justification",
       },
     ],
-    [
-      {
-        input: {
-          action: "transfer",
-          amount: 25,
-          recipient: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-        },
-        output: {
-          status: "warning",
-          safe: false,
-          shouldProceed: true,
-          requiresConfirmation: true,
-          riskLevel: "medium",
-          concerns: ["Action 'transfer' requires explicit purpose/justification"],
-          message: "Transaction requires purpose - provide justification",
-        },
-        explanation:
-          "Transfer requires explicit purpose but can proceed with confirmation",
-      },
-    ],
   ],
 
   schema: z.object({
@@ -177,17 +232,14 @@ export const validateTransactionAction: Action = {
     input: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
     try {
-      const validationInput: ValidationInput = {
-        action: input.action as string,
-        amount: input.amount as number | undefined,
-        recipient: input.recipient as string | undefined,
-        programId: input.programId as string | undefined,
-        memo: input.memo as string | undefined,
-        purpose: input.purpose as string | undefined,
-        tokenMint: input.tokenMint as string | undefined,
-      };
+      // Validate input types before processing
+      const validation = validateInputTypes(input);
+      if (!validation.valid) {
+        return createErrorResult(validation.error);
+      }
 
-      const result = getValidator().validate(validationInput);
+      const validatorInstance = getValidator();
+      const result = validatorInstance.validate(validation.data);
 
       // Determine status string for LLM interpretation
       let status: string;
@@ -228,15 +280,7 @@ export const validateTransactionAction: Action = {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown validation error";
-      return {
-        status: "error",
-        safe: false,
-        shouldProceed: false,
-        riskLevel: "critical",
-        concerns: [`Validation error: ${errorMessage}`],
-        recommendations: ["Review transaction parameters and retry"],
-        message: `Validation failed: ${errorMessage}`,
-      };
+      return createErrorResult(errorMessage);
     }
   },
 };

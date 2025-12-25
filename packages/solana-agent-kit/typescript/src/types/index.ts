@@ -207,35 +207,43 @@ export const HIGH_RISK_ACTIONS = [
 
 /**
  * Default suspicious patterns for crypto transactions
+ *
+ * Patterns use word boundaries (\b) to avoid false positives on partial matches.
+ * Avoid using .* which can cause catastrophic backtracking (ReDoS).
  */
 export const DEFAULT_SUSPICIOUS_PATTERNS: SuspiciousPattern[] = [
   {
     name: "drain_operation",
-    pattern: /drain|sweep|empty/i,
+    // Use word boundaries to avoid matching "drainage" or "sweeper"
+    pattern: /\b(?:drain|sweep|empty)\b/i,
     riskLevel: RiskLevel.CRITICAL,
     message: "Potential drain operation detected",
   },
   {
     name: "unlimited_approval",
-    pattern: /unlimited|infinite|max.*approv/i,
+    // Match specific phrases for unlimited approvals
+    pattern: /\b(?:unlimited|infinite)\s+(?:approv|access|permission)/i,
     riskLevel: RiskLevel.HIGH,
     message: "Unlimited approval request detected",
   },
   {
     name: "bulk_transfer",
-    pattern: /(?:send|transfer).*(?:all|entire|whole)|(?:all|entire|whole).*(?:send|transfer)/i,
+    // Match "transfer all", "send all", "send entire", etc.
+    pattern: /\b(?:send|transfer)\s+(?:all|entire|whole)\b/i,
     riskLevel: RiskLevel.HIGH,
     message: "Bulk transfer operation detected",
   },
   {
     name: "private_key_exposure",
-    pattern: /private.*key|secret.*key|seed.*phrase|mnemonic/i,
+    // Match phrases about private keys or seed phrases
+    pattern: /\b(?:private\s+key|secret\s+key|seed\s+phrase|mnemonic)\b/i,
     riskLevel: RiskLevel.CRITICAL,
     message: "Potential private key exposure in transaction data",
   },
   {
     name: "suspicious_urgency",
-    pattern: /urgent|immediately|right.*now|asap/i,
+    // Match urgency language that may indicate social engineering
+    pattern: /\b(?:urgent|immediately|right\s+now|asap)\b/i,
     riskLevel: RiskLevel.MEDIUM,
     message: "Suspicious urgency language detected",
   },

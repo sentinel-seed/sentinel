@@ -6,4 +6,15 @@
  */
 
 export { SentinelValidator, createValidator } from "./validator";
-export { validateTransaction, checkSafety, getSafetyStatus } from "./functions";
+export {
+  validateTransaction,
+  checkSafety,
+  getSafetyStatus,
+  blockAddress,
+  unblockAddress,
+  clearValidationHistory,
+  updateSafetyConfig,
+  initializeValidator,
+  setSharedValidator,
+  isValidatorInitialized,
+} from "./functions";

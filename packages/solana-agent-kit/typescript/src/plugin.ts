@@ -35,7 +35,7 @@ import {
   unblockAddress,
   clearValidationHistory,
   updateSafetyConfig,
-  initializeValidator,
+  setSharedValidator,
 } from "./tools/functions";
 import {
   sentinelActions,
@@ -77,7 +77,7 @@ export interface SentinelMethods {
  * ```
  */
 export function SentinelPlugin(config: SentinelPluginConfig = {}): Plugin {
-  // Create validator instance with config
+  // Create single validator instance for the entire plugin
   const validator = new SentinelValidator(config);
 
   return {
@@ -99,10 +99,9 @@ export function SentinelPlugin(config: SentinelPluginConfig = {}): Plugin {
       // Initialize validator with agent instance
       validator.initialize(agent);
 
-      // Initialize the shared validator used by methods (fixes config propagation)
-      initializeValidator(agent, config);
-
-      // Share validator instance with all actions
+      // Share the SAME validator instance with all functions and actions
+      // This ensures consistent state across the entire plugin
+      setSharedValidator(validator);
       setValidatorForValidate(validator);
       setValidatorForCheck(validator);
       setValidatorForStats(validator);
