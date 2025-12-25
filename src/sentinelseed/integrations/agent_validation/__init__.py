@@ -791,24 +791,27 @@ class ExecutionGuard:
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            # Validate original input before extraction
+            if args:
+                first_arg = args[0]
+                if first_arg is None:
+                    return {
+                        "success": False,
+                        "blocked": True,
+                        "reason": "action cannot be None",
+                        "error_type": "ValueError",
+                    }
+                # Only reject if not a supported type (string, dict, or object with action attr)
+                if not isinstance(first_arg, (str, dict)) and not hasattr(first_arg, 'action'):
+                    return {
+                        "success": False,
+                        "blocked": True,
+                        "reason": f"action must be string, dict, or object with action attribute, got {type(first_arg).__name__}",
+                        "error_type": "TypeError",
+                    }
+
             # Extract action using smart extraction
             action = self._extract_action(args, kwargs)
-
-            # Validate input type before validation
-            if action is None:
-                return {
-                    "success": False,
-                    "blocked": True,
-                    "reason": "action cannot be None",
-                    "error_type": "ValueError",
-                }
-            if not isinstance(action, str):
-                return {
-                    "success": False,
-                    "blocked": True,
-                    "reason": f"action must be string, got {type(action).__name__}",
-                    "error_type": "TypeError",
-                }
 
             # Pre-validation
             try:

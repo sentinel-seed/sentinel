@@ -72,6 +72,14 @@ def mock_semantic_validator(mock_thsp_safe):
 
 
 @pytest.fixture
+def mock_sentinel():
+    """Create a mock Sentinel."""
+    mock = Mock()
+    mock.get_seed.return_value = "test seed content"
+    return mock
+
+
+@pytest.fixture
 def mock_async_semantic_validator(mock_thsp_safe):
     """Create a mock AsyncSemanticValidator."""
     mock = AsyncMock()
@@ -859,6 +867,111 @@ class TestIntegration:
 
                 stats = guard.get_stats()
                 assert stats["blocked"] == 1
+
+
+class TestInputValidationBugs:
+    """Tests for input validation bugs fixed in correction #055"""
+
+    def test_validate_action_none_raises_valueerror(self, mock_semantic_validator, mock_sentinel):
+        """C001: None input should raise ValueError, not crash"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        with pytest.raises(ValueError, match="cannot be None"):
+            validator.validate_action(None)
+
+    def test_validate_action_int_raises_typeerror(self, mock_semantic_validator, mock_sentinel):
+        """C001: Integer input should raise TypeError, not crash"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        with pytest.raises(TypeError, match="must be a string"):
+            validator.validate_action(123)
+
+    def test_validate_action_list_raises_typeerror(self, mock_semantic_validator, mock_sentinel):
+        """C001: List input should raise TypeError, not pass with safe=True"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        with pytest.raises(TypeError, match="must be a string"):
+            validator.validate_action(["malicious", "list"])
+
+    def test_validate_thought_none_raises_valueerror(self, mock_semantic_validator, mock_sentinel):
+        """C001: None input to validate_thought should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        with pytest.raises(ValueError, match="cannot be None"):
+            validator.validate_thought(None)
+
+    def test_validate_output_none_raises_valueerror(self, mock_semantic_validator, mock_sentinel):
+        """C001: None input to validate_output should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        with pytest.raises(ValueError, match="cannot be None"):
+            validator.validate_output(None)
+
+    def test_negative_timeout_raises(self, mock_semantic_validator, mock_sentinel):
+        """M001: Negative timeout should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="positive"):
+                    SafetyValidator(validation_timeout=-1)
+
+    def test_zero_timeout_raises(self, mock_semantic_validator, mock_sentinel):
+        """M001: Zero timeout should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="positive"):
+                    SafetyValidator(validation_timeout=0)
+
+    def test_negative_max_text_size_raises(self, mock_semantic_validator, mock_sentinel):
+        """M002: Negative max_text_size should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="positive"):
+                    SafetyValidator(max_text_size=-1)
+
+    def test_zero_max_text_size_raises(self, mock_semantic_validator, mock_sentinel):
+        """M002: Zero max_text_size should raise ValueError"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="positive"):
+                    SafetyValidator(max_text_size=0)
+
+    def test_execution_guard_none_returns_blocked(self, mock_semantic_validator, mock_sentinel):
+        """C002: ExecutionGuard with None input should return blocked"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                guard = ExecutionGuard()
+
+                @guard.protected
+                def my_func(action):
+                    return f"executed: {action}"
+
+        result = my_func(None)
+        assert result["blocked"] is True
+        assert result["error_type"] == "ValueError"
+
+    def test_execution_guard_int_returns_blocked(self, mock_semantic_validator, mock_sentinel):
+        """C002: ExecutionGuard with int input should return blocked"""
+        with patch("sentinelseed.integrations.agent_validation.SemanticValidator", mock_semantic_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                guard = ExecutionGuard()
+
+                @guard.protected
+                def my_func(action):
+                    return f"executed: {action}"
+
+        result = my_func(123)
+        assert result["blocked"] is True
+        assert result["error_type"] == "TypeError"
 
 
 if __name__ == "__main__":
