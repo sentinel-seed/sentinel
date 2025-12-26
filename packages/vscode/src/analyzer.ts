@@ -40,20 +40,6 @@ export interface AnalyzerConfig {
     openaiCompatibleKey?: string;
 }
 
-// Type for API response validation
-interface SentinelApiResponse {
-    safe: boolean;
-    gates: {
-        truth: string;
-        harm: string;
-        scope: string;
-        purpose: string;
-    };
-    issues?: string[];
-    confidence?: number;
-    reasoning?: string;
-}
-
 // Cache entry type
 interface CacheEntry {
     result: AnalysisResult;
@@ -279,23 +265,6 @@ export class SentinelAnalyzer {
             }
         }
 
-        // Try Sentinel API as second option (if configured)
-        const config = vscode.workspace.getConfiguration('sentinel');
-        const apiEndpoint = config.get<string>('apiEndpoint');
-        const useApi = config.get<boolean>('useSentinelApi');
-
-        if (useApi && apiEndpoint) {
-            try {
-                const apiResult = await this.analyzeViaApi(content, apiEndpoint);
-                if (apiResult) {
-                    this.cacheResult(content, apiResult);
-                    return apiResult;
-                }
-            } catch (error) {
-                console.warn('Sentinel API unavailable, using heuristic analysis');
-            }
-        }
-
         // Fall back to local heuristic analysis
         result = this.analyzeLocally(content);
         this.cacheResult(content, result);
@@ -360,84 +329,6 @@ export class SentinelAnalyzer {
         };
     }
 
-    /**
-     * Validate API response structure
-     */
-    private isValidApiResponse(data: unknown): data is SentinelApiResponse {
-        if (typeof data !== 'object' || data === null) {
-            return false;
-        }
-
-        const obj = data as Record<string, unknown>;
-
-        if (typeof obj.safe !== 'boolean') {
-            return false;
-        }
-
-        if (typeof obj.gates !== 'object' || obj.gates === null) {
-            return false;
-        }
-
-        const gates = obj.gates as Record<string, unknown>;
-        const requiredGates = ['truth', 'harm', 'scope', 'purpose'];
-
-        for (const gate of requiredGates) {
-            if (typeof gates[gate] !== 'string') {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Analyze via Sentinel API
-     */
-    private async analyzeViaApi(content: string, endpoint: string): Promise<AnalysisResult | null> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-
-        try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ content }),
-                signal: controller.signal
-            });
-
-            if (!response.ok) {
-                console.warn(`Sentinel API returned ${response.status}`);
-                return null;
-            }
-
-            const data = await response.json() as unknown;
-
-            // Validate response structure
-            if (!this.isValidApiResponse(data)) {
-                console.warn('Sentinel API returned invalid response structure');
-                return null;
-            }
-
-            return {
-                safe: data.safe,
-                gates: data.gates,
-                issues: data.issues || [],
-                confidence: typeof data.confidence === 'number' ? data.confidence : 0.9,
-                method: 'semantic',
-                reasoning: data.reasoning
-            };
-        } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
-                console.warn('Sentinel API request timed out');
-            }
-            return null;
-        } finally {
-            clearTimeout(timeoutId);
-        }
-    }
 
     /**
      * Local heuristic-based analysis following THSP protocol

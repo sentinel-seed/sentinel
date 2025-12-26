@@ -170,16 +170,6 @@
           "default": true,
           "description": "Highlight potentially unsafe patterns in prompts"
         },
-        "sentinel.useSentinelApi": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use Sentinel API for analysis (requires API endpoint)"
-        },
-        "sentinel.apiEndpoint": {
-          "type": "string",
-          "default": "https://api.sentinelseed.dev/api/v1/guard",
-          "description": "Sentinel API endpoint for analysis (only used if useSentinelApi is enabled)"
-        },
         "sentinel.llmProvider": {
           "type": "string",
           "default": "openai",
