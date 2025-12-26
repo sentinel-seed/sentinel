@@ -1,27 +1,69 @@
 import React, { useState, useEffect } from 'react';
 // M009: Import types from centralized location instead of duplicating
-import { Settings, Stats, Alert } from '../types';
+import { Settings, Stats, Alert, Language } from '../types';
+import { setLanguage, t, getAvailableLanguages, detectBrowserLanguage, Language as LangType } from '../lib/i18n';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'alerts' | 'settings'>('dashboard');
+  const [, forceUpdate] = useState({});
 
   useEffect(() => {
-    loadData();
+    // Try to load data, with retry if service worker is waking up
+    const tryLoad = async (retries = 3) => {
+      try {
+        await loadData();
+      } catch (err) {
+        if (retries > 0) {
+          // Wait a bit for service worker to wake up and retry
+          setTimeout(() => tryLoad(retries - 1), 100);
+        }
+      }
+    };
+    tryLoad();
   }, []);
 
   const loadData = async () => {
-    const [settingsRes, statsRes, alertsRes] = await Promise.all([
-      chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }),
-      chrome.runtime.sendMessage({ type: 'GET_STATS' }),
-      chrome.runtime.sendMessage({ type: 'GET_ALERTS' }),
-    ]);
+    try {
+      const [settingsRes, statsRes, alertsRes] = await Promise.all([
+        chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }),
+        chrome.runtime.sendMessage({ type: 'GET_STATS' }),
+        chrome.runtime.sendMessage({ type: 'GET_ALERTS' }),
+      ]);
 
-    setSettings(settingsRes);
-    setStats(statsRes);
-    setAlerts(alertsRes || []);
+      setSettings(settingsRes);
+      setStats(statsRes);
+      setAlerts(alertsRes || []);
+      // Set language from settings
+      if (settingsRes?.language) {
+        setLanguage(settingsRes.language);
+      }
+    } catch (err) {
+      // Background script may not be ready, use defaults
+      console.warn('[Sentinel Guard] Could not connect to background:', err);
+      const defaultLang = detectBrowserLanguage();
+      setLanguage(defaultLang);
+      setSettings({
+        enabled: true,
+        protectionLevel: 'recommended',
+        platforms: ['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'],
+        notifications: true,
+        language: defaultLang,
+      });
+      setStats({
+        threatsBlocked: 0,
+        secretsCaught: 0,
+        sessionsProtected: 0,
+        botsDetected: 0,
+        piiBlocked: 0,
+        clipboardScans: 0,
+        walletThreats: 0,
+        lastUpdated: Date.now(),
+      });
+      setAlerts([]);
+    }
   };
 
   const toggleEnabled = async () => {
@@ -52,7 +94,7 @@ const App: React.FC = () => {
             color: settings?.enabled ? '#fff' : '#ef4444',
           }}
         >
-          {settings?.enabled ? '🟢 Protected' : '🔴 Disabled'}
+          {settings?.enabled ? `🟢 ${t('protected')}` : `🔴 ${t('disabled')}`}
         </div>
       </div>
 
@@ -70,7 +112,7 @@ const App: React.FC = () => {
             {tab === 'dashboard' && '📊'}
             {tab === 'alerts' && `🔔 ${unacknowledgedAlerts.length > 0 ? `(${unacknowledgedAlerts.length})` : ''}`}
             {tab === 'settings' && '⚙️'}
-            <span style={{ marginLeft: 4 }}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+            <span style={{ marginLeft: 4 }}>{t(tab)}</span>
           </button>
         ))}
       </div>
@@ -79,7 +121,7 @@ const App: React.FC = () => {
       <div style={styles.content}>
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
-        {activeTab === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} />}
+        {activeTab === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
       </div>
 
       {/* Footer */}
@@ -107,17 +149,17 @@ const handleCheckClipboard = async () => {
     if (text) {
       const response = await chrome.runtime.sendMessage({ type: 'SCAN_TEXT', payload: text });
       if (response?.hasCritical) {
-        alert(`Warning: ${response.matches.length} sensitive item(s) found in clipboard!`);
+        alert(`${response.matches.length} ${t('clipboardWarning')}`);
       } else if (response?.matches?.length > 0) {
-        alert(`Found ${response.matches.length} item(s) to review in clipboard.`);
+        alert(`${response.matches.length} ${t('itemsToReview')}`);
       } else {
-        alert('Clipboard is clean!');
+        alert(t('clipboardSafe'));
       }
     } else {
-      alert('Clipboard is empty.');
+      alert(t('clipboardSafe'));
     }
   } catch {
-    alert('Unable to read clipboard. Please grant permission.');
+    alert(t('clipboardSafe'));
   }
 };
 
@@ -125,41 +167,29 @@ const handleCheckClipboard = async () => {
 const Dashboard: React.FC<{ stats: Stats | null; settings: Settings | null }> = ({ stats, settings }) => (
   <div>
     <div style={styles.statsGrid}>
-      <StatCard icon="🛑" label="Threats Blocked" value={stats?.threatsBlocked || 0} color="#ef4444" />
-      <StatCard icon="🔑" label="Secrets Caught" value={stats?.secretsCaught || 0} color="#f59e0b" />
-      <StatCard icon="💬" label="Sessions Protected" value={stats?.sessionsProtected || 0} color="#10b981" />
+      <StatCard icon="🛑" label={t('threatsBlocked')} value={stats?.threatsBlocked || 0} color="#ef4444" />
+      <StatCard icon="🔑" label={t('secretsCaught')} value={stats?.secretsCaught || 0} color="#f59e0b" />
+      <StatCard icon="💬" label={t('sessionsProtected')} value={stats?.sessionsProtected || 0} color="#10b981" />
+    </div>
+
+    <div style={styles.currentLevel}>
+      <span style={styles.shieldIcon}>🛡️</span>
+      <span style={styles.levelText}>
+        {settings?.protectionLevel === 'basic' && `🔓 ${t('basic')}`}
+        {settings?.protectionLevel === 'recommended' && `🔐 ${t('recommended')}`}
+        {settings?.protectionLevel === 'maximum' && `🔒 ${t('maximum')}`}
+      </span>
+      <span style={styles.levelSubtext}>{t('protection')}</span>
     </div>
 
     <div style={styles.section}>
-      <h3 style={styles.sectionTitle}>Protection Level</h3>
-      <div style={styles.protectionLevels}>
-        {(['basic', 'recommended', 'maximum'] as const).map((level) => (
-          <div
-            key={level}
-            style={{
-              ...styles.levelCard,
-              ...(settings?.protectionLevel === level ? styles.levelCardActive : {}),
-            }}
-          >
-            <span style={styles.levelIcon}>
-              {level === 'basic' && '🔓'}
-              {level === 'recommended' && '🔐'}
-              {level === 'maximum' && '🔒'}
-            </span>
-            <span style={styles.levelName}>{level.charAt(0).toUpperCase() + level.slice(1)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div style={styles.section}>
-      <h3 style={styles.sectionTitle}>Quick Actions</h3>
+      <h3 style={styles.sectionTitle}>{t('quickActions')}</h3>
       <div style={styles.actions}>
         <button style={styles.actionButton} onClick={handleScanPage}>
-          🔍 Scan Page
+          🔍 {t('scanPage')}
         </button>
         <button style={styles.actionButton} onClick={handleCheckClipboard}>
-          📋 Check Clipboard
+          📋 {t('checkClipboard')}
         </button>
       </div>
     </div>
@@ -191,8 +221,8 @@ const Alerts: React.FC<{ alerts: Alert[]; onRefresh: () => void }> = ({ alerts, 
     return (
       <div style={styles.emptyState}>
         <span style={{ fontSize: 48 }}>✅</span>
-        <p>No alerts</p>
-        <p style={{ color: '#666', fontSize: 12 }}>You're all clear!</p>
+        <p>{t('noAlerts')}</p>
+        <p style={{ color: '#666', fontSize: 12 }}>{t('noAlertsDesc')}</p>
       </div>
     );
   }
@@ -224,7 +254,7 @@ const Alerts: React.FC<{ alerts: Alert[]; onRefresh: () => void }> = ({ alerts, 
               onClick={() => acknowledgeAlert(alert.id)}
               style={styles.acknowledgeButton}
             >
-              Dismiss
+              {t('acknowledge')}
             </button>
           )}
         </div>
@@ -237,23 +267,32 @@ const Alerts: React.FC<{ alerts: Alert[]; onRefresh: () => void }> = ({ alerts, 
 const SettingsPanel: React.FC<{
   settings: Settings | null;
   onUpdate: (s: Settings) => void;
-}> = ({ settings, onUpdate }) => {
+  onLanguageChange: () => void;
+}> = ({ settings, onUpdate, onLanguageChange }) => {
   const updateSetting = async (key: keyof Settings, value: unknown) => {
     const updated = await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
       payload: { [key]: value },
     });
     onUpdate(updated);
+
+    // If language changed, update the i18n system and trigger re-render
+    if (key === 'language') {
+      setLanguage(value as LangType);
+      onLanguageChange();
+    }
   };
 
   if (!settings) return null;
+
+  const availableLanguages = getAvailableLanguages();
 
   return (
     <div>
       <div style={styles.settingRow}>
         <div>
-          <div style={styles.settingLabel}>Protection Enabled</div>
-          <div style={styles.settingDesc}>Enable or disable all protection</div>
+          <div style={styles.settingLabel}>{t('enabled')}</div>
+          <div style={styles.settingDesc}>{t('enableProtection')}</div>
         </div>
         <button
           onClick={() => updateSetting('enabled', !settings.enabled)}
@@ -270,24 +309,24 @@ const SettingsPanel: React.FC<{
 
       <div style={styles.settingRow}>
         <div>
-          <div style={styles.settingLabel}>Protection Level</div>
-          <div style={styles.settingDesc}>How aggressive should protection be?</div>
+          <div style={styles.settingLabel}>{t('protectionLevel')}</div>
+          <div style={styles.settingDesc}>{t('howAggressive')}</div>
         </div>
         <select
           value={settings.protectionLevel}
           onChange={(e) => updateSetting('protectionLevel', e.target.value)}
           style={styles.select}
         >
-          <option value="basic">Basic</option>
-          <option value="recommended">Recommended</option>
-          <option value="maximum">Maximum</option>
+          <option value="basic">{t('basic')}</option>
+          <option value="recommended">{t('recommended')}</option>
+          <option value="maximum">{t('maximum')}</option>
         </select>
       </div>
 
       <div style={styles.settingRow}>
         <div>
-          <div style={styles.settingLabel}>Notifications</div>
-          <div style={styles.settingDesc}>Show desktop notifications</div>
+          <div style={styles.settingLabel}>{t('notifications')}</div>
+          <div style={styles.settingDesc}>{t('showNotifications')}</div>
         </div>
         <button
           onClick={() => updateSetting('notifications', !settings.notifications)}
@@ -302,8 +341,26 @@ const SettingsPanel: React.FC<{
         </button>
       </div>
 
+      <div style={styles.settingRow}>
+        <div>
+          <div style={styles.settingLabel}>{t('language')}</div>
+          <div style={styles.settingDesc}>{t('selectLanguage')}</div>
+        </div>
+        <select
+          value={settings.language}
+          onChange={(e) => updateSetting('language', e.target.value)}
+          style={styles.select}
+        >
+          {availableLanguages.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div style={{ ...styles.section, marginTop: 20 }}>
-        <h3 style={styles.sectionTitle}>Protected Platforms</h3>
+        <h3 style={styles.sectionTitle}>{t('protectedPlatforms')}</h3>
         <div style={styles.platforms}>
           {['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'].map((platform) => (
             <div
@@ -443,33 +500,6 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  protectionLevels: {
-    display: 'flex',
-    gap: 8,
-  },
-  levelCard: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
-    padding: 12,
-    background: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 8,
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    cursor: 'pointer',
-  },
-  levelCardActive: {
-    background: 'rgba(99, 102, 241, 0.1)',
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-  },
-  levelIcon: {
-    fontSize: 20,
-  },
-  levelName: {
-    fontSize: 11,
-    color: '#aaa',
-  },
   actions: {
     display: 'flex',
     gap: 8,
@@ -552,11 +582,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     padding: '6px 12px',
-    background: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: '#1a1a2e',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
     borderRadius: 6,
     color: '#fff',
     fontSize: 12,
+    cursor: 'pointer',
   },
   platforms: {
     display: 'flex',
@@ -565,16 +596,39 @@ const styles: Record<string, React.CSSProperties> = {
   },
   platformChip: {
     padding: '6px 12px',
-    background: 'rgba(255, 255, 255, 0.05)',
+    background: '#1a1a2e',
     borderRadius: 16,
     fontSize: 11,
-    color: '#888',
-    border: '1px solid transparent',
+    color: '#aaa',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
   },
   platformChipActive: {
+    background: 'rgba(99, 102, 241, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.5)',
+    color: '#a5b4fc',
+  },
+  currentLevel: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '12px 16px',
+    marginBottom: 16,
     background: 'rgba(99, 102, 241, 0.1)',
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-    color: '#818cf8',
+    borderRadius: 8,
+    border: '1px solid rgba(99, 102, 241, 0.2)',
+  },
+  shieldIcon: {
+    fontSize: 18,
+  },
+  levelText: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#a5b4fc',
+  },
+  levelSubtext: {
+    fontSize: 12,
+    color: '#888',
   },
 };
 

@@ -8,6 +8,11 @@
  */
 
 import { scanAll, maskSensitiveData, PatternMatch } from '../lib/patterns';
+import { setupBotDetectionListeners, detectBot } from '../lib/bot-detector';
+import { scanForPII, scanForHighConfidencePII, maskAllPII } from '../lib/pii-guard';
+import { setupClipboardGuard, handleCopyEvent, handlePasteEvent } from '../lib/clipboard-guard';
+import { scanForWalletThreats, detectPrivateKeys, detectSeedPhrases } from '../lib/wallet-guard';
+import { setLanguage, t, Language } from '../lib/i18n';
 
 /**
  * Escape HTML to prevent XSS attacks
@@ -62,12 +67,12 @@ function detectPlatform(): string {
   return 'unknown';
 }
 
-// Input selectors for each platform
+// Input selectors for each platform (updated Dec 2024)
 const INPUT_SELECTORS: Record<string, string> = {
-  chatgpt: 'textarea[data-id="root"], #prompt-textarea',
-  claude: 'div[contenteditable="true"]',
-  gemini: 'rich-textarea textarea',
-  perplexity: 'textarea',
+  chatgpt: '#prompt-textarea, textarea[data-id="root"], textarea[placeholder*="Message"], div[contenteditable="true"][data-placeholder]',
+  claude: 'div[contenteditable="true"], div.ProseMirror',
+  gemini: 'rich-textarea textarea, textarea[aria-label*="prompt"]',
+  perplexity: 'textarea[placeholder*="Ask"]',
   deepseek: 'textarea',
   grok: 'textarea',
   copilot: 'textarea, [contenteditable="true"]',
@@ -91,20 +96,22 @@ const SEND_SELECTORS: Record<string, string> = {
 const platform = detectPlatform();
 let isEnabled = true;
 let protectionLevel: 'basic' | 'recommended' | 'maximum' = 'recommended';
+let currentLanguage: Language = 'en';
 
 // Initialize
 async function init() {
-  console.log(`[Sentinel Guard] Initializing on ${platform}`);
+  // Initialize protection on detected platform
 
   // Load settings
   const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
   if (response) {
     isEnabled = response.enabled;
     protectionLevel = response.protectionLevel;
+    currentLanguage = response.language || 'en';
+    setLanguage(currentLanguage);
   }
 
   if (!isEnabled) {
-    console.log('[Sentinel Guard] Extension disabled');
     return;
   }
 
@@ -112,10 +119,61 @@ async function init() {
   setupInputProtection();
   setupConversationShield();
 
+  // Setup bot detection listeners (tracks timing patterns)
+  setupBotDetectionListeners();
+
+  // Setup clipboard guard
+  setupClipboardGuard(
+    (result) => {
+      if (result.hasSensitiveData) {
+        chrome.runtime.sendMessage({
+          type: 'REPORT_THREAT',
+          payload: {
+            type: 'clipboard',
+            message: `Clipboard copy: ${result.summary}`,
+            details: { riskLevel: result.riskLevel },
+          },
+        }).catch(() => {});
+      }
+    },
+    (result) => {
+      if (result.hasSensitiveData) {
+        chrome.runtime.sendMessage({
+          type: 'REPORT_THREAT',
+          payload: {
+            type: 'clipboard',
+            message: `Clipboard paste: ${result.summary}`,
+            details: { riskLevel: result.riskLevel },
+          },
+        }).catch(() => {});
+      }
+    }
+  );
+
+  // Run initial bot check
+  runBotCheck();
+
   // Report session start
   chrome.runtime.sendMessage({ type: 'INCREMENT_STAT', payload: 'sessionsProtected' });
+}
 
-  console.log('[Sentinel Guard] Protection active');
+// Run bot detection check
+async function runBotCheck() {
+  try {
+    const result = await detectBot();
+    if (result.isBot) {
+      chrome.runtime.sendMessage({
+        type: 'REPORT_THREAT',
+        payload: {
+          type: 'bot',
+          message: result.summary,
+          details: { confidence: result.confidence, indicators: result.indicators.length },
+        },
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[Sentinel Guard] Bot check failed:', err);
+  }
 }
 
 // Input protection - scan before sending
@@ -142,7 +200,8 @@ function setupInputProtection() {
   observer.observe(document.body, { childList: true, subtree: true });
 
   // Also check existing inputs
-  document.querySelectorAll(inputSelector).forEach((input) => {
+  const existingInputs = document.querySelectorAll(inputSelector);
+  existingInputs.forEach((input) => {
     attachInputListener(input as HTMLElement);
   });
 }
@@ -171,10 +230,38 @@ function attachInputListener(input: HTMLElement) {
       if (text && shouldBlockSubmission(text)) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         showWarning(text, input);
+        return false;
       }
     }
   }, true);
+
+  // Also intercept send button clicks
+  const sendSelector = SEND_SELECTORS[platform] || SEND_SELECTORS.unknown;
+  const setupSendButtonInterceptor = () => {
+    document.querySelectorAll(sendSelector).forEach((btn) => {
+      if ((btn as HTMLElement).dataset.sentinelProtected) return;
+      (btn as HTMLElement).dataset.sentinelProtected = 'true';
+
+      btn.addEventListener('click', (e) => {
+        if (input.dataset.sentinelBypass === 'true') return;
+
+        const text = getInputText(input);
+        if (text && shouldBlockSubmission(text)) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          showWarning(text, input);
+        }
+      }, true);
+    });
+  };
+
+  // Setup now and watch for button changes
+  setupSendButtonInterceptor();
+  const btnObserver = new MutationObserver(setupSendButtonInterceptor);
+  btnObserver.observe(document.body, { childList: true, subtree: true });
 
   // Real-time scanning (debounced)
   let scanTimeout: number | undefined;
@@ -214,22 +301,32 @@ function handleSubmit(e: Event) {
 }
 
 function shouldBlockSubmission(text: string): boolean {
-  const matches = scanAll(text);
+  const secretMatches = scanAll(text);
+  const piiMatches = scanForHighConfidencePII(text, 80);
+  const walletThreats = scanForWalletThreats(text);
 
   if (protectionLevel === 'maximum') {
-    return matches.length > 0;
+    // Block on any detection
+    return secretMatches.length > 0 || piiMatches.length > 0 || walletThreats.hasRisk;
   }
 
   if (protectionLevel === 'recommended') {
-    return matches.some((m) => m.severity === 'critical' || m.severity === 'high');
+    // Block on high severity secrets, high-risk PII, or wallet threats
+    const hasCriticalSecrets = secretMatches.some((m) => m.severity === 'critical' || m.severity === 'high');
+    const hasHighRiskPII = piiMatches.some((p) => p.category === 'auth' || p.category === 'financial' || p.category === 'identity');
+    return hasCriticalSecrets || hasHighRiskPII || walletThreats.hasRisk;
   }
 
-  // Basic: only critical
-  return matches.some((m) => m.severity === 'critical');
+  // Basic: only critical secrets and wallet threats
+  const hasCriticalSecrets = secretMatches.some((m) => m.severity === 'critical');
+  return hasCriticalSecrets || walletThreats.riskLevel === 'critical';
 }
 
 function scanAndIndicate(text: string, input: HTMLElement) {
-  const matches = scanAll(text);
+  const secretMatches = scanAll(text);
+  const piiMatches = scanForHighConfidencePII(text, 70);
+  const walletThreats = scanForWalletThreats(text);
+
   const indicator = getOrCreateIndicator(input);
 
   // N002: Handle case where indicator creation failed
@@ -237,20 +334,32 @@ function scanAndIndicate(text: string, input: HTMLElement) {
     return;
   }
 
-  if (matches.length > 0) {
-    const critical = matches.filter((m) => m.severity === 'critical').length;
-    const high = matches.filter((m) => m.severity === 'high').length;
+  const totalIssues = secretMatches.length + piiMatches.length + walletThreats.threats.length;
+
+  if (totalIssues > 0 || walletThreats.hasRisk) {
+    const criticalSecrets = secretMatches.filter((m) => m.severity === 'critical').length;
+    const highSecrets = secretMatches.filter((m) => m.severity === 'high').length;
+    const walletCritical = walletThreats.riskLevel === 'critical';
 
     indicator.className = 'sentinel-indicator';
-    if (critical > 0) {
+
+    if (walletCritical || criticalSecrets > 0) {
       indicator.classList.add('sentinel-critical');
-      indicator.textContent = `⚠️ ${critical} critical issue${critical > 1 ? 's' : ''}`;
-    } else if (high > 0) {
+      if (walletCritical) {
+        indicator.textContent = `🔐 ${t('walletThreat')}`;
+      } else {
+        indicator.textContent = `⚠️ ${criticalSecrets} ${t('criticalIssues')}`;
+      }
+    } else if (highSecrets > 0 || walletThreats.hasRisk) {
       indicator.classList.add('sentinel-warning');
-      indicator.textContent = `⚠️ ${high} sensitive item${high > 1 ? 's' : ''} detected`;
+      const issues = highSecrets + walletThreats.threats.length;
+      indicator.textContent = `⚠️ ${issues} ${t('sensitiveItems')}`;
+    } else if (piiMatches.length > 0) {
+      indicator.classList.add('sentinel-warning');
+      indicator.textContent = `👤 ${piiMatches.length} ${t('piiDetected')}`;
     } else {
       indicator.classList.add('sentinel-info');
-      indicator.textContent = `ℹ️ ${matches.length} item${matches.length > 1 ? 's' : ''} to review`;
+      indicator.textContent = `ℹ️ ${totalIssues} ${t('itemsToReview')}`;
     }
     indicator.style.display = 'block';
   } else {
@@ -315,9 +424,9 @@ function showWarning(text: string, input: HTMLElement) {
   const body = document.createElement('div');
   body.className = 'sentinel-modal-body';
   const h3 = document.createElement('h3');
-  h3.textContent = '⚠️ Sensitive Data Detected';
+  h3.textContent = `⚠️ ${t('warningTitle')}`;
   const p = document.createElement('p');
-  p.textContent = 'The following items were found in your message:';
+  p.textContent = t('sensitiveDataDetected');
   const ul = document.createElement('ul');
   ul.className = 'sentinel-matches';
 
@@ -343,15 +452,15 @@ function showWarning(text: string, input: HTMLElement) {
   const btnRemove = document.createElement('button');
   btnRemove.className = 'sentinel-btn sentinel-btn-primary';
   btnRemove.dataset.action = 'remove';
-  btnRemove.textContent = 'Remove All';
+  btnRemove.textContent = t('removeAll');
   const btnMask = document.createElement('button');
   btnMask.className = 'sentinel-btn sentinel-btn-secondary';
   btnMask.dataset.action = 'mask';
-  btnMask.textContent = 'Mask Data';
+  btnMask.textContent = t('maskData');
   const btnSend = document.createElement('button');
   btnSend.className = 'sentinel-btn sentinel-btn-danger';
   btnSend.dataset.action = 'send';
-  btnSend.textContent = 'Send Anyway';
+  btnSend.textContent = t('sendAnyway');
   actions.append(btnRemove, btnMask, btnSend);
 
   modalContent.append(header, body, actions);
@@ -545,7 +654,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       // C001: Create toast safely without innerHTML
       const toast = createToast(
-        `Page scan: ${matches.length} item(s) found (${critical} critical, ${high} high)`,
+        `${t('pageScanComplete')}: ${matches.length} ${t('sensitiveItems')} (${critical} ${t('criticalIssues')})`,
         'warning'
       );
       document.body.appendChild(toast);
@@ -554,7 +663,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ matches, count: matches.length });
     } else {
       // C001: Create toast safely without innerHTML
-      const toast = createToast('Page scan complete: No sensitive data found', 'success');
+      const toast = createToast(`${t('pageScanComplete')}: ${t('noSensitiveData')}`, 'success');
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 3000);
 
@@ -564,5 +673,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Start
-init();
+// Wait for DOM to be ready before initializing
+function waitForBody(): Promise<void> {
+  return new Promise((resolve) => {
+    if (document.body) {
+      resolve();
+    } else {
+      // Wait for DOMContentLoaded
+      document.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
+    }
+  });
+}
+
+// Start with error handling
+waitForBody()
+  .then(() => init())
+  .catch((err) => {
+    console.error('[Sentinel Guard] Failed to initialize:', err);
+  });

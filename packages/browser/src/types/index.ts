@@ -3,11 +3,14 @@
  */
 
 // Settings
+export type Language = 'en' | 'es' | 'pt';
+
 export interface Settings {
   enabled: boolean;
   protectionLevel: 'basic' | 'recommended' | 'maximum';
   platforms: string[];
   notifications: boolean;
+  language: Language;
 }
 
 // Statistics
@@ -15,13 +18,27 @@ export interface Stats {
   threatsBlocked: number;
   secretsCaught: number;
   sessionsProtected: number;
+  botsDetected: number;
+  piiBlocked: number;
+  clipboardScans: number;
+  walletThreats: number;
   lastUpdated: number;
 }
 
 // Alerts
+export type AlertType =
+  | 'harvest'       // Data harvesting attempt
+  | 'secret'        // Secret/API key detected
+  | 'bot'           // Bot/automation detected
+  | 'phishing'      // Phishing attempt
+  | 'pii'           // PII exposure
+  | 'clipboard'     // Clipboard threat
+  | 'wallet'        // Wallet/crypto threat
+  | 'dapp';         // dApp security alert
+
 export interface Alert {
   id: string;
-  type: 'harvest' | 'secret' | 'bot' | 'phishing';
+  type: AlertType;
   message: string;
   timestamp: number;
   acknowledged: boolean;
@@ -73,7 +90,13 @@ export type MessageType =
   | 'REPORT_THREAT'
   | 'INCREMENT_STAT'
   | 'GET_EXTENSIONS'
-  | 'SCAN_PAGE';
+  | 'SCAN_PAGE'
+  | 'DETECT_BOT'
+  | 'SCAN_PII'
+  | 'SCAN_CLIPBOARD'
+  | 'SCAN_WALLET'
+  | 'ANALYZE_DAPP'
+  | 'PREVIEW_TRANSACTION';
 
 export interface Message {
   type: MessageType;

@@ -10,6 +10,10 @@
 
 import { validateTHSP, ValidationContext } from '../lib/thsp';
 import { scanAll, PatternMatch } from '../lib/patterns';
+import { detectBot, BotDetectionResult } from '../lib/bot-detector';
+import { scanForPII, getPIISummary, PIIMatch, PIISummary } from '../lib/pii-guard';
+import { scanCurrentClipboard, scanClipboardContent, ClipboardScanResult } from '../lib/clipboard-guard';
+import { scanForWalletThreats, analyzeDApp, analyzeTransaction, WalletScanResult, dAppSecurityInfo, TransactionPreview, TransactionType } from '../lib/wallet-guard';
 // M009: Import types from centralized location instead of duplicating
 import { Settings, Stats, Alert } from '../types';
 
@@ -26,12 +30,17 @@ const DEFAULT_SETTINGS: Settings = {
   protectionLevel: 'recommended',
   platforms: ['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'],
   notifications: true,
+  language: 'en',
 };
 
 const DEFAULT_STATS: Stats = {
   threatsBlocked: 0,
   secretsCaught: 0,
   sessionsProtected: 0,
+  botsDetected: 0,
+  piiBlocked: 0,
+  clipboardScans: 0,
+  walletThreats: 0,
   lastUpdated: Date.now(),
 };
 
@@ -111,6 +120,33 @@ async function handleMessage(
 
     case 'GET_EXTENSIONS':
       return analyzeExtensions();
+
+    case 'DETECT_BOT':
+      return handleBotDetection();
+
+    case 'SCAN_PII':
+      return handlePIIScan(message.payload as string);
+
+    case 'SCAN_CLIPBOARD':
+      return handleClipboardScan();
+
+    case 'SCAN_WALLET':
+      return handleWalletScan(message.payload as string);
+
+    case 'ANALYZE_DAPP':
+      return handleDAppAnalysis(message.payload as string);
+
+    case 'PREVIEW_TRANSACTION':
+      return handleTransactionPreview(
+        message.payload as {
+          type: TransactionType;
+          from: string;
+          to: string;
+          value?: string;
+          token?: string;
+          data?: string;
+        }
+      );
 
     default:
       throw new Error(`Unknown message type: ${message.type}`);
@@ -309,6 +345,72 @@ async function analyzeExtensions(): Promise<ExtensionTrustInfo[]> {
         issues,
       };
     });
+}
+
+// Bot detection handler
+async function handleBotDetection(): Promise<BotDetectionResult> {
+  const result = await detectBot();
+
+  if (result.isBot) {
+    await incrementStat('botsDetected');
+  }
+
+  return result;
+}
+
+// PII scan handler
+async function handlePIIScan(
+  text: string
+): Promise<{ matches: PIIMatch[]; summary: PIISummary }> {
+  const matches = scanForPII(text);
+  const summary = getPIISummary(text);
+
+  if (summary.highRisk > 0) {
+    await incrementStat('piiBlocked');
+  }
+
+  return { matches, summary };
+}
+
+// Clipboard scan handler
+async function handleClipboardScan(): Promise<ClipboardScanResult> {
+  await incrementStat('clipboardScans');
+  return scanCurrentClipboard();
+}
+
+// Wallet scan handler
+async function handleWalletScan(text: string): Promise<WalletScanResult> {
+  const result = scanForWalletThreats(text);
+
+  if (result.hasRisk) {
+    await incrementStat('walletThreats');
+  }
+
+  return result;
+}
+
+// dApp analysis handler
+async function handleDAppAnalysis(url: string): Promise<dAppSecurityInfo> {
+  return analyzeDApp(url);
+}
+
+// Transaction preview handler
+async function handleTransactionPreview(payload: {
+  type: TransactionType;
+  from: string;
+  to: string;
+  value?: string;
+  token?: string;
+  data?: string;
+}): Promise<TransactionPreview> {
+  return analyzeTransaction(
+    payload.type,
+    payload.from,
+    payload.to,
+    payload.value,
+    payload.token,
+    payload.data
+  );
 }
 
 console.log('[Sentinel Guard] Background service worker started');
