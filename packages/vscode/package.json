@@ -23,17 +23,24 @@
   ],
   "keywords": [
     "ai",
-    "safety",
-    "llm",
-    "prompt",
     "alignment",
-    "sentinel",
-    "thsp",
-    "guardrails",
+    "anthropic",
     "compliance",
+    "csa",
+    "dashboard",
     "eu-ai-act",
+    "guardrails",
+    "llm",
+    "metrics",
+    "ollama",
+    "openai",
     "owasp",
-    "csa"
+    "prompt",
+    "safety",
+    "security",
+    "sentinel",
+    "sql-injection",
+    "thsp"
   ],
   "activationEvents": [
     "onLanguage:markdown",
@@ -178,7 +185,10 @@
         "sentinel.seedVariant": {
           "type": "string",
           "default": "standard",
-          "enum": ["minimal", "standard"],
+          "enum": [
+            "minimal",
+            "standard"
+          ],
           "description": "Default seed variant to insert"
         },
         "sentinel.highlightUnsafePatterns": {
@@ -189,7 +199,12 @@
         "sentinel.llmProvider": {
           "type": "string",
           "default": "openai",
-          "enum": ["openai", "anthropic", "ollama", "openai-compatible"],
+          "enum": [
+            "openai",
+            "anthropic",
+            "ollama",
+            "openai-compatible"
+          ],
           "enumDescriptions": [
             "OpenAI API (requires API key)",
             "Anthropic API (requires API key)",
@@ -269,5 +284,12 @@
     "glob": "^10.x",
     "mocha": "^10.x",
     "typescript": "^5.x"
+  },
+  "author": {
+    "name": "Sentinel Team",
+    "url": "https://sentinelseed.dev"
+  },
+  "sponsor": {
+    "url": "https://github.com/sponsors/sentinel-seed"
   }
 }
