@@ -2,7 +2,7 @@
   "name": "sentinel-ai-safety",
   "displayName": "Sentinel AI Safety",
   "description": "AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose)",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "sentinelseed",
   "icon": "sentinel-logo-128.png",
   "repository": {
@@ -287,9 +287,27 @@
   },
   "author": {
     "name": "Sentinel Team",
+    "email": "team@sentinelseed.dev",
     "url": "https://sentinelseed.dev"
   },
   "sponsor": {
     "url": "https://github.com/sponsors/sentinel-seed"
-  }
+  },
+  "badges": [
+    {
+      "url": "https://img.shields.io/badge/Twitter-@sentinelseed-1DA1F2?logo=twitter&logoColor=white",
+      "href": "https://x.com/sentinelseed",
+      "description": "Follow us on Twitter"
+    },
+    {
+      "url": "https://img.shields.io/badge/GitHub-sentinel--seed-181717?logo=github",
+      "href": "https://github.com/sentinel-seed/sentinel",
+      "description": "Star us on GitHub"
+    }
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "qna": "marketplace"
 }

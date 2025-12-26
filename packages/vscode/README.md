@@ -23,10 +23,10 @@ AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope
 
 | Mode | Method | Accuracy | Requires |
 |------|--------|----------|----------|
-| **Semantic** (recommended) | LLM-based analysis | High (~90%) | API key (OpenAI or Anthropic) |
+| **Semantic** (recommended) | LLM-based analysis | High (~90%) | LLM provider (OpenAI, Anthropic, Ollama, Groq) |
 | **Heuristic** (fallback) | Pattern matching | Limited (~50%) | Nothing |
 
-> **For accurate results, configure an LLM API key.** Heuristic mode uses pattern matching which has significant false positives/negatives.
+> **For accurate results, configure an LLM provider.** Heuristic mode uses pattern matching which has significant false positives/negatives.
 
 ### Real-time Safety Linting
 
@@ -83,7 +83,7 @@ For accurate analysis, configure an LLM API key using the secure method:
 2. Run `Sentinel: Set OpenAI Key` or `Sentinel: Set Anthropic Key`
 3. Enter your API key (stored encrypted in VS Code's SecretStorage)
 
-Alternatively, you can set keys in VS Code Settings, less secure (stored in plaintext).
+Alternatively, you can set keys in VS Code Settings (less secure, stored in plaintext).
 
 ### Supported Providers
 
@@ -145,7 +145,7 @@ Use any OpenAI-compatible API:
 ### Checking Prompts for Safety Issues
 
 1. Select the text you want to analyze
-2. Right-click and choose "Sentinel: Analyze Selection for Safety"
+2. Right-click and choose "Sentinel: Analyze"
 3. View the THSP gate results with confidence level
 
 ### Understanding Analysis Results
@@ -250,7 +250,7 @@ Cursor uses the OpenVSX registry. To install:
 
 If the extension doesn't appear, you can install manually:
 1. Download `.vsix` from [OpenVSX](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety)
-2. In Cursor: `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
+2. In Cursor: `Ctrl+Shift+P`, then "Extensions: Install from VSIX..."
 
 ### Windsurf
 
@@ -271,7 +271,7 @@ For any VS Code-compatible IDE:
 
 ## MCP Server Alternative
 
-For deeper integration with AI assistants in Cursor or Windsurf, you can also use the Sentinel MCP Server. See [MCP Server documentation](../../../src/sentinelseed/integrations/mcp_server/README.md).
+For deeper integration with AI assistants in Cursor or Windsurf, you can also use the Sentinel MCP Server. See [MCP Server documentation](https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/mcp_server).
 
 ## Links
 
@@ -283,7 +283,7 @@ For deeper integration with AI assistants in Cursor or Windsurf, you can also us
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
