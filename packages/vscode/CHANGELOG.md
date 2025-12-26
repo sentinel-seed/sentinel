@@ -2,7 +2,30 @@
 
 All notable changes to the Sentinel AI Safety extension will be documented in this file.
 
-## [0.6.0] - 2025-12-24
+## [0.7.0] - 2025-12-26
+
+### Added
+
+- **Metrics Dashboard**: Track and visualize analysis statistics
+  - Total analyses, safe rate, semantic vs heuristic breakdown
+  - Gate failure tracking (Truth, Harm, Scope, Purpose)
+  - Provider usage statistics (OpenAI, Anthropic, Ollama)
+  - Recent analyses history with timestamps
+  - New command: `Sentinel: Metrics Dashboard`
+  - New command: `Sentinel: Clear Metrics`
+
+- **Database Guard (SQL Injection Detection)**: Comprehensive SQL injection pattern detection
+  - 30+ SQL injection patterns across 8 categories
+  - Categories: Destructive, UNION attacks, Auth bypass, Data extraction,
+    Stacked queries, Comment injection, Blind injection, Error-based
+  - Severity levels: Critical, High, Medium, Low
+  - New command: `Sentinel: SQL Injection Scan`
+
+### Changed
+
+- Removed external Sentinel API dependency for complete local operation
+- All analysis now runs 100% locally (no data sent to Sentinel servers)
+
 
 ### Added
 

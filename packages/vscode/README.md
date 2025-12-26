@@ -1,4 +1,4 @@
-# Sentinel AI Safety - IDE Extension
+# Sentinel AI Safety: IDE Extension
 
 AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose).
 
@@ -56,6 +56,9 @@ The extension automatically detects potentially unsafe patterns in your prompts:
 | `Sentinel: Scan Secrets` | Scan for API keys and credentials |
 | `Sentinel: Sanitize` | Check for prompt injection patterns |
 | `Sentinel: Validate` | Validate LLM output for security issues |
+| `Sentinel: SQL Injection Scan` | Detect SQL injection patterns in prompts |
+| `Sentinel: Metrics Dashboard` | View analysis statistics and history |
+| `Sentinel: Clear Metrics` | Clear all stored metrics |
 
 ## The THSP Protocol
 
@@ -80,7 +83,7 @@ For accurate analysis, configure an LLM API key using the secure method:
 2. Run `Sentinel: Set OpenAI Key` or `Sentinel: Set Anthropic Key`
 3. Enter your API key (stored encrypted in VS Code's SecretStorage)
 
-Alternatively, you can set keys in VS Code Settings (less secure - stored in plaintext).
+Alternatively, you can set keys in VS Code Settings, less secure (stored in plaintext).
 
 ### Supported Providers
 
@@ -208,10 +211,10 @@ The extension includes regulatory compliance checking against three major framew
 
 The following vulnerabilities require infrastructure-level controls and are outside THSP's behavioral scope:
 
-- **LLM03: Supply Chain** - Use verified dependencies and model provenance
-- **LLM04: Data/Model Poisoning** - Requires training pipeline controls
-- **LLM08: Vector/Embedding Weaknesses** - RAG pipeline security
-- **LLM10: Unbounded Consumption** - Rate limiting and quotas
+- **LLM03: Supply Chain**: Use verified dependencies and model provenance
+- **LLM04: Data/Model Poisoning**: Requires training pipeline controls
+- **LLM08: Vector/Embedding Weaknesses**: RAG pipeline security
+- **LLM10: Unbounded Consumption**: Rate limiting and quotas
 
 ## Supported Languages
 

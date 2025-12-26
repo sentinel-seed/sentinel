@@ -2,7 +2,7 @@
   "name": "sentinel-ai-safety",
   "displayName": "Sentinel AI Safety",
   "description": "AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose)",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "sentinelseed",
   "icon": "sentinel-logo-128.png",
   "repository": {
@@ -106,6 +106,18 @@
       {
         "command": "sentinel.validateOutput",
         "title": "Sentinel: Validate"
+      },
+      {
+        "command": "sentinel.showMetrics",
+        "title": "Sentinel: Metrics Dashboard"
+      },
+      {
+        "command": "sentinel.scanDatabase",
+        "title": "Sentinel: SQL Injection Scan"
+      },
+      {
+        "command": "sentinel.clearMetrics",
+        "title": "Sentinel: Clear Metrics"
       }
     ],
     "menus": {
@@ -142,6 +154,10 @@
         {
           "command": "sentinel.validateOutput",
           "group": "sentinel@8"
+        },
+        {
+          "command": "sentinel.scanDatabase",
+          "group": "sentinel@9"
         }
       ]
     },

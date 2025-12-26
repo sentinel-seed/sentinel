@@ -5,6 +5,9 @@ import { SEED_MINIMAL, SEED_STANDARD, estimateTokenCount } from './seeds';
 import { SecretManager, promptForApiKey } from './secrets';
 import { ComplianceChecker, ComplianceFramework } from './compliance';
 import { showComplianceResult } from './compliance/resultPanel';
+import { MetricsTracker } from './metrics';
+import { MetricsPanel } from './metricsPanel';
+import { databaseGuard } from './databaseGuard';
 
 let linter: SentinelLinter;
 let analyzer: SentinelAnalyzer;
@@ -12,6 +15,7 @@ let complianceChecker: ComplianceChecker;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let statusBarItem: vscode.StatusBarItem;
 let secretManager: SecretManager;
+let metricsTracker: MetricsTracker;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Sentinel AI Safety extension activated');
@@ -22,6 +26,7 @@ export async function activate(context: vscode.ExtensionContext) {
     analyzer = new SentinelAnalyzer();
     complianceChecker = new ComplianceChecker();
     secretManager = new SecretManager(context);
+    metricsTracker = new MetricsTracker(context);
 
     // Load API keys from SecretStorage
     await loadSecretKeys();
@@ -135,6 +140,23 @@ export async function activate(context: vscode.ExtensionContext) {
         validateOutput
     );
 
+    // Metrics Dashboard command
+    const showMetricsCmd = vscode.commands.registerCommand(
+        'sentinel.showMetrics',
+        () => showMetricsDashboard(context)
+    );
+
+    // Database Guard command
+    const scanDatabaseCmd = vscode.commands.registerCommand(
+        'sentinel.scanDatabase',
+        scanForSqlInjection
+    );
+
+    // Clear metrics command
+    const clearMetricsCmd = vscode.commands.registerCommand(
+        'sentinel.clearMetrics',
+        clearMetrics
+    );
     // Listen for configuration changes
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('sentinel')) {
@@ -185,6 +207,9 @@ export async function activate(context: vscode.ExtensionContext) {
         scanSecretsCmd,
         sanitizePromptCmd,
         validateOutputCmd,
+        showMetricsCmd,
+        scanDatabaseCmd,
+        clearMetricsCmd,
         configChangeDisposable
     );
 
@@ -275,6 +300,16 @@ async function analyzeSelection() {
         async () => {
             const result = await analyzer.analyze(text);
             showAnalysisResult(result);
+
+            // Record metrics
+            const status = analyzer.getStatus();
+            await metricsTracker.recordAnalysis(
+                result.method,
+                result.safe,
+                result.gates,
+                result.issues.length,
+                status.provider || undefined
+            );
         }
     );
 }
@@ -303,6 +338,16 @@ async function analyzeFile() {
         async () => {
             const result = await analyzer.analyze(text);
             showAnalysisResult(result);
+
+            // Record metrics
+            const status = analyzer.getStatus();
+            await metricsTracker.recordAnalysis(
+                result.method,
+                result.safe,
+                result.gates,
+                result.issues.length,
+                status.provider || undefined
+            );
         }
     );
 }
@@ -563,4 +608,98 @@ async function checkComplianceHandler(
             }
         }
     );
+}
+
+// ============================================================================
+// METRICS DASHBOARD FUNCTIONS
+// ============================================================================
+
+/**
+ * Shows the metrics dashboard with analysis statistics.
+ */
+function showMetricsDashboard(context: vscode.ExtensionContext): void {
+    const summary = metricsTracker.getSummary();
+    const recentMetrics = metricsTracker.getRecentMetrics(20);
+    MetricsPanel.show(context.extensionUri, summary, recentMetrics);
+}
+
+/**
+ * Clears all stored metrics.
+ */
+async function clearMetrics(): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+        'Clear all Sentinel metrics? This action cannot be undone.',
+        { modal: true },
+        'Clear'
+    );
+
+    if (confirm === 'Clear') {
+        await metricsTracker.clearMetrics();
+        vscode.window.showInformationMessage('Sentinel metrics cleared.');
+    }
+}
+
+// ============================================================================
+// DATABASE GUARD FUNCTIONS
+// ============================================================================
+
+/**
+ * Scans content for SQL injection patterns.
+ * Detects destructive queries, UNION attacks, auth bypass, etc.
+ */
+async function scanForSqlInjection(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('No active editor');
+        return;
+    }
+
+    const selection = editor.selection;
+    const text = selection.isEmpty
+        ? editor.document.getText()
+        : editor.document.getText(selection);
+
+    if (!text || text.trim() === '') {
+        vscode.window.showWarningMessage('No content to scan');
+        return;
+    }
+
+    const result = databaseGuard.scan(text);
+
+    if (result.hasSqlInjection) {
+        let message = `⚠️ SQL INJECTION DETECTED\n\nSeverity: ${result.severity.toUpperCase()}\n\nFindings:\n`;
+
+        const grouped = databaseGuard.scanByCategory(text);
+        const categories = [
+            { key: 'destructive', label: 'Destructive' },
+            { key: 'union_attack', label: 'UNION Attack' },
+            { key: 'authentication_bypass', label: 'Auth Bypass' },
+            { key: 'data_extraction', label: 'Data Extraction' },
+            { key: 'stacked_queries', label: 'Stacked Queries' },
+            { key: 'comment_injection', label: 'Comment Injection' },
+            { key: 'blind_injection', label: 'Blind Injection' },
+            { key: 'error_based', label: 'Error-Based' }
+        ] as const;
+
+        for (const cat of categories) {
+            const findings = grouped[cat.key];
+            if (findings.length > 0) {
+                message += `\n${cat.label}:\n`;
+                for (const f of findings.slice(0, 3)) {
+                    message += `  • ${f.matchedText.substring(0, 50)}${f.matchedText.length > 50 ? '...' : ''}\n`;
+                }
+                if (findings.length > 3) {
+                    message += `  ... and ${findings.length - 3} more\n`;
+                }
+            }
+        }
+
+        message += '\n🛡️ Review and sanitize this content before use.';
+        vscode.window.showWarningMessage(message, { modal: true });
+    } else {
+        vscode.window.showInformationMessage(
+            '✅ No SQL Injection Detected\n\nNo dangerous SQL patterns found.',
+            { modal: true }
+        );
+    }
 }
