@@ -1,0 +1,365 @@
+/**
+ * Sentinel Guard - Animation System
+ *
+ * Reusable CSS animations for consistent motion throughout the UI.
+ * Respects prefers-reduced-motion for accessibility.
+ *
+ * @author Sentinel Team
+ * @license MIT
+ */
+
+/* ============================================================================
+   KEYFRAME DEFINITIONS
+   ============================================================================ */
+
+/* Fade animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Slide animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Scale animations */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Modal specific */
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalExit {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9) translateY(10px);
+  }
+}
+
+/* Overlay */
+@keyframes overlayEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Spinner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Bounce (for attention) */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Shake (for errors) */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+/* ============================================================================
+   ANIMATION UTILITY CLASSES
+   ============================================================================ */
+
+/* Fade */
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-fadeOut {
+  animation: fadeOut 0.2s ease-out forwards;
+}
+
+/* Slide */
+.animate-slideUp {
+  animation: slideUp 0.25s ease-out forwards;
+}
+
+.animate-slideDown {
+  animation: slideDown 0.25s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.25s ease-out forwards;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.25s ease-out forwards;
+}
+
+/* Scale */
+.animate-scaleIn {
+  animation: scaleIn 0.2s ease-out forwards;
+}
+
+.animate-scaleOut {
+  animation: scaleOut 0.2s ease-out forwards;
+}
+
+/* Modal */
+.animate-modalEnter {
+  animation: modalEnter 0.25s ease-out forwards;
+}
+
+.animate-modalExit {
+  animation: modalExit 0.2s ease-out forwards;
+}
+
+.animate-overlayEnter {
+  animation: overlayEnter 0.15s ease-out forwards;
+}
+
+/* Loading */
+.animate-shimmer {
+  animation: shimmer 1.5s infinite linear;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Attention */
+.animate-bounce {
+  animation: bounce 0.5s ease-in-out;
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+/* ============================================================================
+   TRANSITION UTILITIES
+   ============================================================================ */
+
+.transition-all {
+  transition: all 0.2s ease;
+}
+
+.transition-colors {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.transition-opacity {
+  transition: opacity 0.15s ease;
+}
+
+.transition-transform {
+  transition: transform 0.15s ease;
+}
+
+/* ============================================================================
+   STAGGERED ANIMATION (for lists)
+   ============================================================================ */
+
+.stagger-item {
+  opacity: 0;
+  animation: slideUp 0.25s ease-out forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-item:nth-child(6) { animation-delay: 250ms; }
+.stagger-item:nth-child(7) { animation-delay: 300ms; }
+.stagger-item:nth-child(8) { animation-delay: 350ms; }
+.stagger-item:nth-child(9) { animation-delay: 400ms; }
+.stagger-item:nth-child(10) { animation-delay: 450ms; }
+
+/* ============================================================================
+   HOVER EFFECTS
+   ============================================================================ */
+
+.hover-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.hover-glow {
+  transition: box-shadow 0.2s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+/* ============================================================================
+   FOCUS STYLES (Accessibility)
+   ============================================================================ */
+
+.focus-visible:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 2px;
+}
+
+.focus-ring:focus {
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.3);
+}
+
+/* ============================================================================
+   REDUCED MOTION
+
+   Respects user's system preference for reduced motion.
+   Disables animations for users who have enabled this setting.
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-shimmer {
+    animation: none;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .animate-spin {
+    animation: none;
+  }
+
+  .animate-pulse {
+    animation: none;
+  }
+}

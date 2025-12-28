@@ -15,6 +15,9 @@ export interface Translations {
   dashboard: string;
   alerts: string;
   settings: string;
+  agentMonitor: string;
+  approvals: string;
+  rules: string;
 
   // Dashboard
   threatsBlocked: string;
@@ -65,6 +68,128 @@ export interface Translations {
   noSensitiveData: string;
   clipboardWarning: string;
   clipboardSafe: string;
+
+  // Agent Shield
+  agentShield: string;
+  connectedAgents: string;
+  noAgentsConnected: string;
+  noAgentsConnectedDesc: string;
+  agentConnected: string;
+  agentDisconnected: string;
+  trustLevel: string;
+  actionsApproved: string;
+  actionsRejected: string;
+  memoryInjectionDetected: string;
+  disconnectAgent: string;
+
+  // MCP Gateway
+  mcpGateway: string;
+  registeredServers: string;
+  noServersRegistered: string;
+  noServersRegisteredDesc: string;
+  serverRegistered: string;
+  serverRemoved: string;
+  trustedServer: string;
+  untrustedServer: string;
+  toolsAvailable: string;
+
+  // Approval System
+  approvalSystem: string;
+  pendingApprovals: string;
+  noPendingApprovals: string;
+  noPendingApprovalsDesc: string;
+  approve: string;
+  reject: string;
+  modify: string;
+  riskLevel: string;
+  riskLow: string;
+  riskMedium: string;
+  riskHigh: string;
+  riskCritical: string;
+  actionType: string;
+  source: string;
+  requestedBy: string;
+  expiresIn: string;
+  expired: string;
+  autoApproved: string;
+  autoRejected: string;
+  manuallyApproved: string;
+  manuallyRejected: string;
+
+  // Approval Rules
+  approvalRules: string;
+  createRule: string;
+  editRule: string;
+  deleteRule: string;
+  ruleName: string;
+  ruleDescription: string;
+  rulePriority: string;
+  ruleConditions: string;
+  ruleAction: string;
+  ruleEnabled: string;
+  noRules: string;
+  noRulesDesc: string;
+  autoApprove: string;
+  autoReject: string;
+  requireApproval: string;
+
+  // Action History
+  actionHistory: string;
+  noHistory: string;
+  noHistoryDesc: string;
+  clearHistory: string;
+  viewDetails: string;
+
+  // New UI Components (Phase 2)
+  loading: string;
+  agents: string;
+  mcp: string;
+  agentsConnected: string;
+  history: string;
+  noAgentsDesc: string;
+  actionsIntercepted: string;
+  approved: string;
+  rejected: string;
+  disconnect: string;
+  noPendingDesc: string;
+  reviewAction: string;
+  overview: string;
+  thspGates: string;
+  parameters: string;
+  description: string;
+  estimatedValue: string;
+  thspOverall: string;
+  passed: string;
+  failed: string;
+  summary: string;
+  score: string;
+  decisionReason: string;
+  enterReason: string;
+  reasonRequired: string;
+  servers: string;
+  tools: string;
+  noMCPServers: string;
+  noMCPServersDesc: string;
+  clickToToggleTrust: string;
+  trusted: string;
+  untrusted: string;
+  toolCalls: string;
+  unregister: string;
+  noTools: string;
+  noToolsDesc: string;
+  noToolHistory: string;
+  noToolHistoryDesc: string;
+
+  // Error handling & confirmations
+  confirm: string;
+  confirmDisconnect: string;
+  confirmUnregister: string;
+  errorOccurred: string;
+  unexpectedError: string;
+  tryAgain: string;
+  errorDetails: string;
+  retry: string;
+  dismiss: string;
 }
 
 const translations: Record<Language, Translations> = {
@@ -78,6 +203,9 @@ const translations: Record<Language, Translations> = {
     dashboard: 'Dashboard',
     alerts: 'Alerts',
     settings: 'Settings',
+    agentMonitor: 'Agents',
+    approvals: 'Approvals',
+    rules: 'Rules',
 
     // Dashboard
     threatsBlocked: 'Threats Blocked',
@@ -128,6 +256,128 @@ const translations: Record<Language, Translations> = {
     noSensitiveData: 'No sensitive data found',
     clipboardWarning: 'sensitive item(s) found in clipboard!',
     clipboardSafe: 'Clipboard is safe',
+
+    // Agent Shield
+    agentShield: 'Agent Shield',
+    connectedAgents: 'Connected Agents',
+    noAgentsConnected: 'No Agents Connected',
+    noAgentsConnectedDesc: 'Connect an AI agent to monitor its actions.',
+    agentConnected: 'Agent Connected',
+    agentDisconnected: 'Agent Disconnected',
+    trustLevel: 'Trust Level',
+    actionsApproved: 'Actions Approved',
+    actionsRejected: 'Actions Rejected',
+    memoryInjectionDetected: 'Memory Injection Detected',
+    disconnectAgent: 'Disconnect Agent',
+
+    // MCP Gateway
+    mcpGateway: 'MCP Gateway',
+    registeredServers: 'Registered Servers',
+    noServersRegistered: 'No Servers Registered',
+    noServersRegisteredDesc: 'Register an MCP server to monitor tool calls.',
+    serverRegistered: 'Server Registered',
+    serverRemoved: 'Server Removed',
+    trustedServer: 'Trusted Server',
+    untrustedServer: 'Untrusted Server',
+    toolsAvailable: 'Tools Available',
+
+    // Approval System
+    approvalSystem: 'Approval System',
+    pendingApprovals: 'Pending Approvals',
+    noPendingApprovals: 'No Pending Approvals',
+    noPendingApprovalsDesc: 'All actions have been processed.',
+    approve: 'Approve',
+    reject: 'Reject',
+    modify: 'Modify',
+    riskLevel: 'Risk Level',
+    riskLow: 'Low',
+    riskMedium: 'Medium',
+    riskHigh: 'High',
+    riskCritical: 'Critical',
+    actionType: 'Action Type',
+    source: 'Source',
+    requestedBy: 'Requested by',
+    expiresIn: 'Expires in',
+    expired: 'Expired',
+    autoApproved: 'Auto-approved',
+    autoRejected: 'Auto-rejected',
+    manuallyApproved: 'Manually approved',
+    manuallyRejected: 'Manually rejected',
+
+    // Approval Rules
+    approvalRules: 'Approval Rules',
+    createRule: 'Create Rule',
+    editRule: 'Edit Rule',
+    deleteRule: 'Delete Rule',
+    ruleName: 'Rule Name',
+    ruleDescription: 'Description',
+    rulePriority: 'Priority',
+    ruleConditions: 'Conditions',
+    ruleAction: 'Action',
+    ruleEnabled: 'Enabled',
+    noRules: 'No Rules',
+    noRulesDesc: 'Create rules to automate approval decisions.',
+    autoApprove: 'Auto-approve',
+    autoReject: 'Auto-reject',
+    requireApproval: 'Require Approval',
+
+    // Action History
+    actionHistory: 'Action History',
+    noHistory: 'No History',
+    noHistoryDesc: 'No actions have been processed yet.',
+    clearHistory: 'Clear History',
+    viewDetails: 'View Details',
+
+    // New UI Components (Phase 2)
+    loading: 'Loading...',
+    agents: 'Agents',
+    mcp: 'MCP',
+    agentsConnected: 'Agents Connected',
+    history: 'History',
+    noAgentsDesc: 'Connect an AI agent to start monitoring.',
+    actionsIntercepted: 'Intercepted',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    disconnect: 'Disconnect',
+    noPendingDesc: 'All actions have been processed.',
+    reviewAction: 'Review Action',
+    overview: 'Overview',
+    thspGates: 'THSP Gates',
+    parameters: 'Parameters',
+    description: 'Description',
+    estimatedValue: 'Estimated Value',
+    thspOverall: 'THSP Overall',
+    passed: 'Passed',
+    failed: 'Failed',
+    summary: 'Summary',
+    score: 'Score',
+    decisionReason: 'Decision Reason',
+    enterReason: 'Enter your reason for this decision...',
+    reasonRequired: 'Please provide a reason for your decision.',
+    servers: 'Servers',
+    tools: 'Tools',
+    noMCPServers: 'No MCP Servers',
+    noMCPServersDesc: 'Register an MCP server to start monitoring.',
+    clickToToggleTrust: 'Click to toggle trust status',
+    trusted: 'Trusted',
+    untrusted: 'Untrusted',
+    toolCalls: 'Tool Calls',
+    unregister: 'Unregister',
+    noTools: 'No Tools',
+    noToolsDesc: 'Register MCP servers to see available tools.',
+    noToolHistory: 'No Tool History',
+    noToolHistoryDesc: 'Tool calls will appear here.',
+
+    // Error handling & confirmations
+    confirm: 'Confirm',
+    confirmDisconnect: 'Are you sure you want to disconnect',
+    confirmUnregister: 'Are you sure you want to unregister',
+    errorOccurred: 'Something went wrong',
+    unexpectedError: 'An unexpected error occurred',
+    tryAgain: 'Try Again',
+    errorDetails: 'Error Details',
+    retry: 'Retry',
+    dismiss: 'Dismiss',
   },
 
   es: {
@@ -140,6 +390,9 @@ const translations: Record<Language, Translations> = {
     dashboard: 'Panel',
     alerts: 'Alertas',
     settings: 'Ajustes',
+    agentMonitor: 'Agentes',
+    approvals: 'Aprobaciones',
+    rules: 'Reglas',
 
     // Dashboard
     threatsBlocked: 'Amenazas Bloqueadas',
@@ -190,6 +443,128 @@ const translations: Record<Language, Translations> = {
     noSensitiveData: 'No se encontraron datos sensibles',
     clipboardWarning: '¡elemento(s) sensible(s) encontrado(s) en el portapapeles!',
     clipboardSafe: 'El portapapeles está seguro',
+
+    // Agent Shield
+    agentShield: 'Agent Shield',
+    connectedAgents: 'Agentes Conectados',
+    noAgentsConnected: 'Sin Agentes Conectados',
+    noAgentsConnectedDesc: 'Conecta un agente de IA para monitorear sus acciones.',
+    agentConnected: 'Agente Conectado',
+    agentDisconnected: 'Agente Desconectado',
+    trustLevel: 'Nivel de Confianza',
+    actionsApproved: 'Acciones Aprobadas',
+    actionsRejected: 'Acciones Rechazadas',
+    memoryInjectionDetected: 'Inyección de Memoria Detectada',
+    disconnectAgent: 'Desconectar Agente',
+
+    // MCP Gateway
+    mcpGateway: 'MCP Gateway',
+    registeredServers: 'Servidores Registrados',
+    noServersRegistered: 'Sin Servidores Registrados',
+    noServersRegisteredDesc: 'Registra un servidor MCP para monitorear llamadas de herramientas.',
+    serverRegistered: 'Servidor Registrado',
+    serverRemoved: 'Servidor Eliminado',
+    trustedServer: 'Servidor Confiable',
+    untrustedServer: 'Servidor No Confiable',
+    toolsAvailable: 'Herramientas Disponibles',
+
+    // Approval System
+    approvalSystem: 'Sistema de Aprobación',
+    pendingApprovals: 'Aprobaciones Pendientes',
+    noPendingApprovals: 'Sin Aprobaciones Pendientes',
+    noPendingApprovalsDesc: 'Todas las acciones han sido procesadas.',
+    approve: 'Aprobar',
+    reject: 'Rechazar',
+    modify: 'Modificar',
+    riskLevel: 'Nivel de Riesgo',
+    riskLow: 'Bajo',
+    riskMedium: 'Medio',
+    riskHigh: 'Alto',
+    riskCritical: 'Crítico',
+    actionType: 'Tipo de Acción',
+    source: 'Origen',
+    requestedBy: 'Solicitado por',
+    expiresIn: 'Expira en',
+    expired: 'Expirado',
+    autoApproved: 'Auto-aprobado',
+    autoRejected: 'Auto-rechazado',
+    manuallyApproved: 'Aprobado manualmente',
+    manuallyRejected: 'Rechazado manualmente',
+
+    // Approval Rules
+    approvalRules: 'Reglas de Aprobación',
+    createRule: 'Crear Regla',
+    editRule: 'Editar Regla',
+    deleteRule: 'Eliminar Regla',
+    ruleName: 'Nombre de Regla',
+    ruleDescription: 'Descripción',
+    rulePriority: 'Prioridad',
+    ruleConditions: 'Condiciones',
+    ruleAction: 'Acción',
+    ruleEnabled: 'Activado',
+    noRules: 'Sin Reglas',
+    noRulesDesc: 'Crea reglas para automatizar decisiones de aprobación.',
+    autoApprove: 'Auto-aprobar',
+    autoReject: 'Auto-rechazar',
+    requireApproval: 'Requiere Aprobación',
+
+    // Action History
+    actionHistory: 'Historial de Acciones',
+    noHistory: 'Sin Historial',
+    noHistoryDesc: 'Aún no se han procesado acciones.',
+    clearHistory: 'Limpiar Historial',
+    viewDetails: 'Ver Detalles',
+
+    // New UI Components (Phase 2)
+    loading: 'Cargando...',
+    agents: 'Agentes',
+    mcp: 'MCP',
+    agentsConnected: 'Agentes Conectados',
+    history: 'Historial',
+    noAgentsDesc: 'Conecta un agente de IA para comenzar a monitorear.',
+    actionsIntercepted: 'Interceptadas',
+    approved: 'Aprobadas',
+    rejected: 'Rechazadas',
+    disconnect: 'Desconectar',
+    noPendingDesc: 'Todas las acciones han sido procesadas.',
+    reviewAction: 'Revisar Acción',
+    overview: 'Resumen',
+    thspGates: 'Puertas THSP',
+    parameters: 'Parámetros',
+    description: 'Descripción',
+    estimatedValue: 'Valor Estimado',
+    thspOverall: 'THSP General',
+    passed: 'Aprobado',
+    failed: 'Fallido',
+    summary: 'Resumen',
+    score: 'Puntuación',
+    decisionReason: 'Razón de la Decisión',
+    enterReason: 'Ingresa tu razón para esta decisión...',
+    reasonRequired: 'Por favor proporciona una razón para tu decisión.',
+    servers: 'Servidores',
+    tools: 'Herramientas',
+    noMCPServers: 'Sin Servidores MCP',
+    noMCPServersDesc: 'Registra un servidor MCP para comenzar a monitorear.',
+    clickToToggleTrust: 'Clic para cambiar estado de confianza',
+    trusted: 'Confiable',
+    untrusted: 'No Confiable',
+    toolCalls: 'Llamadas de Herramientas',
+    unregister: 'Desregistrar',
+    noTools: 'Sin Herramientas',
+    noToolsDesc: 'Registra servidores MCP para ver herramientas disponibles.',
+    noToolHistory: 'Sin Historial de Herramientas',
+    noToolHistoryDesc: 'Las llamadas de herramientas aparecerán aquí.',
+
+    // Error handling & confirmations
+    confirm: 'Confirmar',
+    confirmDisconnect: '¿Estás seguro de que deseas desconectar',
+    confirmUnregister: '¿Estás seguro de que deseas desregistrar',
+    errorOccurred: 'Algo salió mal',
+    unexpectedError: 'Ocurrió un error inesperado',
+    tryAgain: 'Reintentar',
+    errorDetails: 'Detalles del Error',
+    retry: 'Reintentar',
+    dismiss: 'Descartar',
   },
 
   pt: {
@@ -202,6 +577,9 @@ const translations: Record<Language, Translations> = {
     dashboard: 'Painel',
     alerts: 'Alertas',
     settings: 'Configurações',
+    agentMonitor: 'Agentes',
+    approvals: 'Aprovações',
+    rules: 'Regras',
 
     // Dashboard
     threatsBlocked: 'Ameaças Bloqueadas',
@@ -252,6 +630,128 @@ const translations: Record<Language, Translations> = {
     noSensitiveData: 'Nenhum dado sensível encontrado',
     clipboardWarning: 'item(ns) sensível(is) encontrado(s) na área de transferência!',
     clipboardSafe: 'Área de transferência segura',
+
+    // Agent Shield
+    agentShield: 'Agent Shield',
+    connectedAgents: 'Agentes Conectados',
+    noAgentsConnected: 'Nenhum Agente Conectado',
+    noAgentsConnectedDesc: 'Conecte um agente de IA para monitorar suas ações.',
+    agentConnected: 'Agente Conectado',
+    agentDisconnected: 'Agente Desconectado',
+    trustLevel: 'Nível de Confiança',
+    actionsApproved: 'Ações Aprovadas',
+    actionsRejected: 'Ações Rejeitadas',
+    memoryInjectionDetected: 'Injeção de Memória Detectada',
+    disconnectAgent: 'Desconectar Agente',
+
+    // MCP Gateway
+    mcpGateway: 'MCP Gateway',
+    registeredServers: 'Servidores Registrados',
+    noServersRegistered: 'Nenhum Servidor Registrado',
+    noServersRegisteredDesc: 'Registre um servidor MCP para monitorar chamadas de ferramentas.',
+    serverRegistered: 'Servidor Registrado',
+    serverRemoved: 'Servidor Removido',
+    trustedServer: 'Servidor Confiável',
+    untrustedServer: 'Servidor Não Confiável',
+    toolsAvailable: 'Ferramentas Disponíveis',
+
+    // Approval System
+    approvalSystem: 'Sistema de Aprovação',
+    pendingApprovals: 'Aprovações Pendentes',
+    noPendingApprovals: 'Nenhuma Aprovação Pendente',
+    noPendingApprovalsDesc: 'Todas as ações foram processadas.',
+    approve: 'Aprovar',
+    reject: 'Rejeitar',
+    modify: 'Modificar',
+    riskLevel: 'Nível de Risco',
+    riskLow: 'Baixo',
+    riskMedium: 'Médio',
+    riskHigh: 'Alto',
+    riskCritical: 'Crítico',
+    actionType: 'Tipo de Ação',
+    source: 'Origem',
+    requestedBy: 'Solicitado por',
+    expiresIn: 'Expira em',
+    expired: 'Expirado',
+    autoApproved: 'Auto-aprovado',
+    autoRejected: 'Auto-rejeitado',
+    manuallyApproved: 'Aprovado manualmente',
+    manuallyRejected: 'Rejeitado manualmente',
+
+    // Approval Rules
+    approvalRules: 'Regras de Aprovação',
+    createRule: 'Criar Regra',
+    editRule: 'Editar Regra',
+    deleteRule: 'Excluir Regra',
+    ruleName: 'Nome da Regra',
+    ruleDescription: 'Descrição',
+    rulePriority: 'Prioridade',
+    ruleConditions: 'Condições',
+    ruleAction: 'Ação',
+    ruleEnabled: 'Ativado',
+    noRules: 'Sem Regras',
+    noRulesDesc: 'Crie regras para automatizar decisões de aprovação.',
+    autoApprove: 'Auto-aprovar',
+    autoReject: 'Auto-rejeitar',
+    requireApproval: 'Requer Aprovação',
+
+    // Action History
+    actionHistory: 'Histórico de Ações',
+    noHistory: 'Sem Histórico',
+    noHistoryDesc: 'Nenhuma ação foi processada ainda.',
+    clearHistory: 'Limpar Histórico',
+    viewDetails: 'Ver Detalhes',
+
+    // New UI Components (Phase 2)
+    loading: 'Carregando...',
+    agents: 'Agentes',
+    mcp: 'MCP',
+    agentsConnected: 'Agentes Conectados',
+    history: 'Histórico',
+    noAgentsDesc: 'Conecte um agente de IA para começar a monitorar.',
+    actionsIntercepted: 'Interceptadas',
+    approved: 'Aprovadas',
+    rejected: 'Rejeitadas',
+    disconnect: 'Desconectar',
+    noPendingDesc: 'Todas as ações foram processadas.',
+    reviewAction: 'Revisar Ação',
+    overview: 'Visão Geral',
+    thspGates: 'Portões THSP',
+    parameters: 'Parâmetros',
+    description: 'Descrição',
+    estimatedValue: 'Valor Estimado',
+    thspOverall: 'THSP Geral',
+    passed: 'Aprovado',
+    failed: 'Falhou',
+    summary: 'Resumo',
+    score: 'Pontuação',
+    decisionReason: 'Razão da Decisão',
+    enterReason: 'Digite sua razão para esta decisão...',
+    reasonRequired: 'Por favor forneça uma razão para sua decisão.',
+    servers: 'Servidores',
+    tools: 'Ferramentas',
+    noMCPServers: 'Sem Servidores MCP',
+    noMCPServersDesc: 'Registre um servidor MCP para começar a monitorar.',
+    clickToToggleTrust: 'Clique para alternar status de confiança',
+    trusted: 'Confiável',
+    untrusted: 'Não Confiável',
+    toolCalls: 'Chamadas de Ferramentas',
+    unregister: 'Remover Registro',
+    noTools: 'Sem Ferramentas',
+    noToolsDesc: 'Registre servidores MCP para ver ferramentas disponíveis.',
+    noToolHistory: 'Sem Histórico de Ferramentas',
+    noToolHistoryDesc: 'Chamadas de ferramentas aparecerão aqui.',
+
+    // Error handling & confirmations
+    confirm: 'Confirmar',
+    confirmDisconnect: 'Tem certeza que deseja desconectar',
+    confirmUnregister: 'Tem certeza que deseja remover o registro de',
+    errorOccurred: 'Algo deu errado',
+    unexpectedError: 'Ocorreu um erro inesperado',
+    tryAgain: 'Tentar Novamente',
+    errorDetails: 'Detalhes do Erro',
+    retry: 'Tentar novamente',
+    dismiss: 'Dispensar',
   },
 };
 

@@ -1,21 +1,68 @@
 /**
- * Sentinel Guard - Background Service Worker
+ * @fileoverview Sentinel Guard - Background Service Worker
  *
  * Handles:
  * - Message routing between popup and content scripts
  * - Storage management
  * - Notifications
  * - Extension monitoring
+ * - Agent Shield operations
+ * - MCP Gateway operations
+ * - Approval system
+ *
+ * @author Sentinel Team
+ * @license MIT
  */
 
 import { validateTHSP, ValidationContext } from '../lib/thsp';
 import { scanAll, PatternMatch } from '../lib/patterns';
 import { detectBot, BotDetectionResult } from '../lib/bot-detector';
 import { scanForPII, getPIISummary, PIIMatch, PIISummary } from '../lib/pii-guard';
-import { scanCurrentClipboard, scanClipboardContent, ClipboardScanResult } from '../lib/clipboard-guard';
+import { scanCurrentClipboard, ClipboardScanResult } from '../lib/clipboard-guard';
 import { scanForWalletThreats, analyzeDApp, analyzeTransaction, WalletScanResult, dAppSecurityInfo, TransactionPreview, TransactionType } from '../lib/wallet-guard';
-// M009: Import types from centralized location instead of duplicating
-import { Settings, Stats, Alert } from '../types';
+
+// Agent Shield imports
+import * as agentRegistry from '../agent-shield/agent-registry';
+import { interceptAction as agentInterceptAction } from '../agent-shield/action-interceptor';
+import { scanMemory } from '../agent-shield/memory-scanner';
+
+// MCP Gateway imports
+import * as mcpRegistry from '../mcp-gateway/server-registry';
+import { interceptToolCall } from '../mcp-gateway/tool-interceptor';
+
+// Approval System imports
+import * as approvalStore from '../approval/approval-store';
+import * as approvalEngine from '../approval/approval-engine';
+import * as approvalQueue from '../approval/approval-queue';
+
+// Types
+import {
+  Settings,
+  Stats,
+  Alert,
+  AgentType,
+  AgentActionType,
+  ApprovalRule,
+  MCPClientSource,
+  DEFAULT_AGENT_SHIELD_SETTINGS,
+  DEFAULT_MCP_GATEWAY_SETTINGS,
+  DEFAULT_APPROVAL_SETTINGS,
+} from '../types';
+
+// Validation
+import {
+  validateOrThrow,
+  AgentConnectPayloadSchema,
+  AgentInterceptActionPayloadSchema,
+  AgentUpdateTrustPayloadSchema,
+  MCPRegisterServerPayloadSchema,
+  MCPInterceptToolCallPayloadSchema,
+  MCPUpdateTrustPayloadSchema,
+  ApprovalDecidePayloadSchema,
+  ApprovalCreateRulePayloadSchema,
+  ApprovalRuleSchema,
+  GetHistoryPayloadSchema,
+} from '../validation';
 
 // Types - only StorageData is unique to this file
 interface StorageData {
@@ -31,9 +78,13 @@ const DEFAULT_SETTINGS: Settings = {
   platforms: ['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'],
   notifications: true,
   language: 'en',
+  agentShield: DEFAULT_AGENT_SHIELD_SETTINGS,
+  mcpGateway: DEFAULT_MCP_GATEWAY_SETTINGS,
+  approval: DEFAULT_APPROVAL_SETTINGS,
 };
 
 const DEFAULT_STATS: Stats = {
+  // Core stats
   threatsBlocked: 0,
   secretsCaught: 0,
   sessionsProtected: 0,
@@ -41,6 +92,24 @@ const DEFAULT_STATS: Stats = {
   piiBlocked: 0,
   clipboardScans: 0,
   walletThreats: 0,
+  // Agent Shield stats
+  agentConnections: 0,
+  agentActionsIntercepted: 0,
+  agentActionsApproved: 0,
+  agentActionsRejected: 0,
+  memoryInjectionAttempts: 0,
+  // MCP Gateway stats
+  mcpServersRegistered: 0,
+  mcpToolCallsIntercepted: 0,
+  mcpToolCallsApproved: 0,
+  mcpToolCallsRejected: 0,
+  // Approval stats
+  approvalsPending: 0,
+  approvalsAuto: 0,
+  approvalsManual: 0,
+  rejectionsAuto: 0,
+  rejectionsManual: 0,
+  // Timestamp
   lastUpdated: Date.now(),
 };
 
@@ -53,11 +122,17 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       alerts: [],
     });
 
+    // Create default approval rules
+    await approvalEngine.createDefaultRules();
+
     console.log('[Sentinel Guard] Extension installed');
   }
 
   // Setup health check alarm (runs every minute)
   chrome.alarms.create('healthCheck', { periodInMinutes: 1 });
+
+  // Setup approval expiry check alarm
+  approvalQueue.setupExpiryCheckAlarm(1);
 });
 
 // Handle alarms
@@ -68,6 +143,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const stats = await getStats();
       stats.lastUpdated = Date.now();
       await chrome.storage.local.set({ stats });
+    }
+  }
+
+  // Handle approval expiry check
+  if (alarm.name === 'sentinel-approval-expiry-check') {
+    const expired = await approvalEngine.processExpiredApprovals();
+    if (expired > 0) {
+      console.log(`[Sentinel Guard] Processed ${expired} expired approvals`);
     }
   }
 });
@@ -147,6 +230,93 @@ async function handleMessage(
           data?: string;
         }
       );
+
+    // =========================================================================
+    // AGENT SHIELD HANDLERS
+    // =========================================================================
+
+    case 'AGENT_CONNECT':
+      return handleAgentConnect(message.payload);
+
+    case 'AGENT_DISCONNECT':
+      return handleAgentDisconnect(message.payload as string);
+
+    case 'AGENT_GET_CONNECTIONS':
+      return agentRegistry.getAgentConnections();
+
+    case 'AGENT_GET_CONNECTION':
+      return agentRegistry.getAgentConnection(message.payload as string);
+
+    case 'AGENT_INTERCEPT_ACTION':
+      return handleAgentInterceptAction(message.payload);
+
+    case 'AGENT_SCAN_MEMORY':
+      return scanMemory(message.payload as string[]);
+
+    case 'AGENT_UPDATE_TRUST':
+      return agentRegistry.updateAgentTrustLevel(
+        (message.payload as { agentId: string; trustLevel: number }).agentId,
+        (message.payload as { agentId: string; trustLevel: number }).trustLevel
+      );
+
+    // =========================================================================
+    // MCP GATEWAY HANDLERS
+    // =========================================================================
+
+    case 'MCP_REGISTER_SERVER':
+      return handleMCPRegisterServer(message.payload);
+
+    case 'MCP_UNREGISTER_SERVER':
+      return mcpRegistry.unregisterServer(message.payload as string);
+
+    case 'MCP_GET_SERVERS':
+      return mcpRegistry.getMCPServers();
+
+    case 'MCP_GET_SERVER':
+      return mcpRegistry.getMCPServer(message.payload as string);
+
+    case 'MCP_INTERCEPT_TOOL_CALL':
+      return handleMCPInterceptToolCall(message.payload);
+
+    case 'MCP_UPDATE_TRUST':
+      return mcpRegistry.updateServerTrust(
+        (message.payload as { serverId: string; trustLevel: number }).serverId,
+        (message.payload as { serverId: string; trustLevel: number }).trustLevel
+      );
+
+    // =========================================================================
+    // APPROVAL HANDLERS
+    // =========================================================================
+
+    case 'APPROVAL_GET_QUEUE':
+      return approvalQueue.getPendingByPriority();
+
+    case 'APPROVAL_GET_PENDING':
+      return approvalStore.getPendingApproval(message.payload as string);
+
+    case 'APPROVAL_DECIDE':
+      return handleApprovalDecide(message.payload);
+
+    case 'APPROVAL_GET_RULES':
+      return approvalStore.getAllRules();
+
+    case 'APPROVAL_CREATE_RULE':
+      return handleApprovalCreateRule(message.payload);
+
+    case 'APPROVAL_UPDATE_RULE':
+      return approvalStore.updateRule(message.payload as ApprovalRule);
+
+    case 'APPROVAL_DELETE_RULE':
+      return approvalStore.deleteRule(message.payload as string);
+
+    case 'APPROVAL_GET_HISTORY':
+      return approvalStore.getActionHistory(
+        (message.payload as { limit?: number; offset?: number })?.limit,
+        (message.payload as { limit?: number; offset?: number })?.offset
+      );
+
+    case 'APPROVAL_CLEAR_HISTORY':
+      return approvalStore.clearActionHistory();
 
     default:
       throw new Error(`Unknown message type: ${message.type}`);
@@ -411,6 +581,244 @@ async function handleTransactionPreview(payload: {
     payload.token,
     payload.data
   );
+}
+
+// =============================================================================
+// AGENT SHIELD HANDLERS
+// =============================================================================
+
+async function handleAgentConnect(
+  rawPayload: unknown
+): Promise<ReturnType<typeof agentRegistry.registerAgent>> {
+  const payload = validateOrThrow(
+    AgentConnectPayloadSchema,
+    rawPayload,
+    'AGENT_CONNECT'
+  );
+
+  const agent = await agentRegistry.registerAgent(
+    payload.name,
+    payload.type,
+    payload.endpoint,
+    payload.metadata
+  );
+
+  await incrementStat('agentConnections');
+
+  // Report alert
+  await reportThreat({
+    type: 'agent_connected',
+    severity: 'info',
+    message: `Agent connected: ${payload.name} (${payload.type})`,
+    acknowledged: false,
+    source: 'agent_shield',
+    relatedEntityId: agent.id,
+  });
+
+  return agent;
+}
+
+async function handleAgentDisconnect(agentId: string): Promise<boolean> {
+  const agent = await agentRegistry.getAgentConnection(agentId);
+  if (!agent) {
+    return false;
+  }
+
+  const result = await agentRegistry.unregisterAgent(agentId);
+
+  if (result) {
+    await reportThreat({
+      type: 'agent_disconnected',
+      severity: 'info',
+      message: `Agent disconnected: ${agent.name}`,
+      acknowledged: false,
+      source: 'agent_shield',
+      relatedEntityId: agentId,
+    });
+  }
+
+  return result;
+}
+
+async function handleAgentInterceptAction(
+  rawPayload: unknown
+): Promise<ReturnType<typeof agentInterceptAction>> {
+  const payload = validateOrThrow(
+    AgentInterceptActionPayloadSchema,
+    rawPayload,
+    'AGENT_INTERCEPT_ACTION'
+  );
+
+  await incrementStat('agentActionsIntercepted');
+
+  const settings = await getSettings();
+  const result = await agentInterceptAction(
+    payload.agentId,
+    payload.type,
+    payload.description,
+    payload.params,
+    {
+      estimatedValueUsd: payload.estimatedValueUsd,
+      memoryEntries: payload.memoryEntries,
+      showNotification: settings.approval.showNotifications,
+      autoRejectTimeoutMs: settings.approval.autoRejectTimeoutMs,
+    }
+  );
+
+  // Update stats based on decision
+  if (result.decision === 'approved') {
+    await incrementStat('agentActionsApproved');
+  } else if (result.decision === 'rejected') {
+    await incrementStat('agentActionsRejected');
+
+    // Check for memory injection
+    if (result.action.memoryContext?.isCompromised) {
+      await incrementStat('memoryInjectionAttempts');
+    }
+  } else if (result.decision === 'pending') {
+    await incrementStat('approvalsPending');
+  }
+
+  return result;
+}
+
+// =============================================================================
+// MCP GATEWAY HANDLERS
+// =============================================================================
+
+async function handleMCPRegisterServer(
+  rawPayload: unknown
+): Promise<ReturnType<typeof mcpRegistry.registerServer>> {
+  const payload = validateOrThrow(
+    MCPRegisterServerPayloadSchema,
+    rawPayload,
+    'MCP_REGISTER_SERVER'
+  );
+
+  const server = await mcpRegistry.registerServer(
+    payload.name,
+    payload.endpoint,
+    payload.transport,
+    payload.tools?.map((t) => ({
+      ...t,
+      riskLevel: 'medium' as const,
+      requiresApproval: true,
+    })) || [],
+    {
+      description: payload.description,
+      trustLevel: payload.trustLevel,
+      isTrusted: payload.isTrusted,
+    }
+  );
+
+  await incrementStat('mcpServersRegistered');
+
+  await reportThreat({
+    type: 'mcp_server_registered',
+    severity: 'info',
+    message: `MCP Server registered: ${payload.name}`,
+    acknowledged: false,
+    source: 'mcp_gateway',
+    relatedEntityId: server.id,
+  });
+
+  return server;
+}
+
+async function handleMCPInterceptToolCall(
+  rawPayload: unknown
+): Promise<ReturnType<typeof interceptToolCall>> {
+  const payload = validateOrThrow(
+    MCPInterceptToolCallPayloadSchema,
+    rawPayload,
+    'MCP_INTERCEPT_TOOL_CALL'
+  );
+
+  await incrementStat('mcpToolCallsIntercepted');
+
+  const settings = await getSettings();
+  const result = await interceptToolCall(
+    payload.serverId,
+    payload.toolName,
+    payload.args,
+    payload.source,
+    {
+      showNotification: settings.approval.showNotifications,
+      autoRejectTimeoutMs: settings.approval.autoRejectTimeoutMs,
+    }
+  );
+
+  // Update stats based on decision
+  if (result.decision === 'approved') {
+    await incrementStat('mcpToolCallsApproved');
+  } else if (result.decision === 'rejected') {
+    await incrementStat('mcpToolCallsRejected');
+  } else if (result.decision === 'pending') {
+    await incrementStat('approvalsPending');
+  }
+
+  return result;
+}
+
+// =============================================================================
+// APPROVAL HANDLERS
+// =============================================================================
+
+async function handleApprovalDecide(
+  rawPayload: unknown
+): Promise<ReturnType<typeof approvalEngine.decidePending>> {
+  const payload = validateOrThrow(
+    ApprovalDecidePayloadSchema,
+    rawPayload,
+    'APPROVAL_DECIDE'
+  );
+
+  const decision = await approvalEngine.decidePending(
+    payload.pendingId,
+    payload.action,
+    payload.reason,
+    payload.modifiedParams
+  );
+
+  if (decision) {
+    // Update stats
+    if (decision.action === 'approve') {
+      await incrementStat('approvalsManual');
+    } else {
+      await incrementStat('rejectionsManual');
+    }
+
+    // Decrement pending count
+    const stats = await getStats();
+    if (stats.approvalsPending > 0) {
+      stats.approvalsPending--;
+      await chrome.storage.local.set({ stats });
+    }
+
+    // Update badge
+    await approvalQueue.updateBadge();
+  }
+
+  return decision;
+}
+
+async function handleApprovalCreateRule(
+  rawPayload: unknown
+): Promise<ApprovalRule> {
+  const payload = validateOrThrow(
+    ApprovalCreateRulePayloadSchema,
+    rawPayload,
+    'APPROVAL_CREATE_RULE'
+  );
+
+  const rule: ApprovalRule = {
+    ...payload,
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  return approvalStore.createRule(rule);
 }
 
 console.log('[Sentinel Guard] Background service worker started');

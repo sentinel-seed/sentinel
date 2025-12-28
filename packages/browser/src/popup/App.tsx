@@ -1,13 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 // M009: Import types from centralized location instead of duplicating
-import { Settings, Stats, Alert, Language } from '../types';
+import {
+  Settings,
+  Stats,
+  Alert,
+  Language,
+  DEFAULT_AGENT_SHIELD_SETTINGS,
+  DEFAULT_MCP_GATEWAY_SETTINGS,
+  DEFAULT_APPROVAL_SETTINGS,
+} from '../types';
 import { setLanguage, t, getAvailableLanguages, detectBrowserLanguage, Language as LangType } from '../lib/i18n';
+import { AgentsTab, MCPTab } from './components';
+
+type TabType = 'dashboard' | 'agents' | 'mcp' | 'alerts' | 'settings';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'alerts' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [, forceUpdate] = useState({});
 
   useEffect(() => {
@@ -51,8 +62,12 @@ const App: React.FC = () => {
         platforms: ['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'],
         notifications: true,
         language: defaultLang,
+        agentShield: DEFAULT_AGENT_SHIELD_SETTINGS,
+        mcpGateway: DEFAULT_MCP_GATEWAY_SETTINGS,
+        approval: DEFAULT_APPROVAL_SETTINGS,
       });
       setStats({
+        // Core stats
         threatsBlocked: 0,
         secretsCaught: 0,
         sessionsProtected: 0,
@@ -60,6 +75,24 @@ const App: React.FC = () => {
         piiBlocked: 0,
         clipboardScans: 0,
         walletThreats: 0,
+        // Agent Shield stats
+        agentConnections: 0,
+        agentActionsIntercepted: 0,
+        agentActionsApproved: 0,
+        agentActionsRejected: 0,
+        memoryInjectionAttempts: 0,
+        // MCP Gateway stats
+        mcpServersRegistered: 0,
+        mcpToolCallsIntercepted: 0,
+        mcpToolCallsApproved: 0,
+        mcpToolCallsRejected: 0,
+        // Approval stats
+        approvalsPending: 0,
+        approvalsAuto: 0,
+        approvalsManual: 0,
+        rejectionsAuto: 0,
+        rejectionsManual: 0,
+        // Timestamp
         lastUpdated: Date.now(),
       });
       setAlerts([]);
@@ -100,7 +133,7 @@ const App: React.FC = () => {
 
       {/* Navigation */}
       <div style={styles.nav}>
-        {(['dashboard', 'alerts', 'settings'] as const).map((tab) => (
+        {(['dashboard', 'agents', 'mcp', 'alerts', 'settings'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -110,6 +143,8 @@ const App: React.FC = () => {
             }}
           >
             {tab === 'dashboard' && '📊'}
+            {tab === 'agents' && '🤖'}
+            {tab === 'mcp' && '🔌'}
             {tab === 'alerts' && `🔔 ${unacknowledgedAlerts.length > 0 ? `(${unacknowledgedAlerts.length})` : ''}`}
             {tab === 'settings' && '⚙️'}
             <span style={{ marginLeft: 4 }}>{t(tab)}</span>
@@ -120,6 +155,8 @@ const App: React.FC = () => {
       {/* Content */}
       <div style={styles.content}>
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
+        {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
+        {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
         {activeTab === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
       </div>
@@ -166,10 +203,33 @@ const handleCheckClipboard = async () => {
 // Dashboard Component
 const Dashboard: React.FC<{ stats: Stats | null; settings: Settings | null }> = ({ stats, settings }) => (
   <div>
+    {/* Core Protection Stats */}
     <div style={styles.statsGrid}>
       <StatCard icon="🛑" label={t('threatsBlocked')} value={stats?.threatsBlocked || 0} color="#ef4444" />
       <StatCard icon="🔑" label={t('secretsCaught')} value={stats?.secretsCaught || 0} color="#f59e0b" />
       <StatCard icon="💬" label={t('sessionsProtected')} value={stats?.sessionsProtected || 0} color="#10b981" />
+    </div>
+
+    {/* Agent & MCP Stats */}
+    <div style={styles.statsGrid}>
+      <StatCard
+        icon="🤖"
+        label={t('agentsConnected')}
+        value={stats?.agentConnections || 0}
+        color="#6366f1"
+      />
+      <StatCard
+        icon="🔌"
+        label={t('servers')}
+        value={stats?.mcpServersRegistered || 0}
+        color="#8b5cf6"
+      />
+      <StatCard
+        icon="⏳"
+        label={t('pendingApprovals')}
+        value={stats?.approvalsPending || 0}
+        color="#f59e0b"
+      />
     </div>
 
     <div style={styles.currentLevel}>
@@ -181,6 +241,29 @@ const Dashboard: React.FC<{ stats: Stats | null; settings: Settings | null }> = 
       </span>
       <span style={styles.levelSubtext}>{t('protection')}</span>
     </div>
+
+    {/* Activity Summary */}
+    {(stats?.agentActionsIntercepted || 0) > 0 || (stats?.mcpToolCallsIntercepted || 0) > 0 ? (
+      <div style={styles.activitySummary}>
+        <h3 style={styles.sectionTitle}>{t('actionHistory')}</h3>
+        <div style={styles.activityRow}>
+          <span style={styles.activityLabel}>{t('agentShield')}</span>
+          <span style={styles.activityStats}>
+            <span style={{ color: '#10b981' }}>✓{stats?.agentActionsApproved || 0}</span>
+            {' / '}
+            <span style={{ color: '#ef4444' }}>✗{stats?.agentActionsRejected || 0}</span>
+          </span>
+        </div>
+        <div style={styles.activityRow}>
+          <span style={styles.activityLabel}>{t('mcpGateway')}</span>
+          <span style={styles.activityStats}>
+            <span style={{ color: '#10b981' }}>✓{stats?.mcpToolCallsApproved || 0}</span>
+            {' / '}
+            <span style={{ color: '#ef4444' }}>✗{stats?.mcpToolCallsRejected || 0}</span>
+          </span>
+        </div>
+      </div>
+    ) : null}
 
     <div style={styles.section}>
       <h3 style={styles.sectionTitle}>{t('quickActions')}</h3>
@@ -629,6 +712,27 @@ const styles: Record<string, React.CSSProperties> = {
   levelSubtext: {
     fontSize: 12,
     color: '#888',
+  },
+  activitySummary: {
+    padding: 12,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 8,
+    marginBottom: 16,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  activityRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+  },
+  activityLabel: {
+    fontSize: 12,
+    color: '#888',
+  },
+  activityStats: {
+    fontSize: 12,
+    fontWeight: 600,
   },
 };
 

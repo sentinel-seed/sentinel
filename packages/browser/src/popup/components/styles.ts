@@ -1,0 +1,585 @@
+/**
+ * @fileoverview Shared styles for popup components
+ *
+ * @author Sentinel Team
+ * @license MIT
+ */
+
+import type React from 'react';
+
+// Base styles (shared across components)
+export const styles: Record<string, React.CSSProperties> = {
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    textAlign: 'center',
+  },
+  sectionTitle: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+};
+
+// Agent Tab styles
+export const agentStyles: Record<string, React.CSSProperties> = {
+  sectionTabs: {
+    display: 'flex',
+    gap: 4,
+    marginBottom: 16,
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    paddingBottom: 8,
+  },
+  sectionTab: {
+    flex: 1,
+    padding: '8px 12px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    color: '#888',
+    fontSize: 11,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  sectionTabActive: {
+    background: 'rgba(99, 102, 241, 0.2)',
+    color: '#818cf8',
+  },
+  sectionTabAlert: {
+    color: '#f59e0b',
+  },
+  agentCard: {
+    padding: 12,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 8,
+    marginBottom: 8,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  agentHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  agentInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  agentIcon: {
+    fontSize: 24,
+  },
+  agentName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#fff',
+  },
+  agentType: {
+    fontSize: 11,
+    color: '#666',
+  },
+  agentStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 11,
+    color: '#888',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+  },
+  agentStats: {
+    display: 'flex',
+    gap: 16,
+    padding: '8px 0',
+    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+    marginBottom: 8,
+  },
+  agentStat: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#666',
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#fff',
+  },
+  agentActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  disconnectButton: {
+    padding: '6px 12px',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: 6,
+    color: '#ef4444',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  pendingCard: {
+    padding: 12,
+    background: 'rgba(245, 158, 11, 0.05)',
+    borderRadius: 8,
+    marginBottom: 8,
+    border: '1px solid rgba(245, 158, 11, 0.2)',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  pendingHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  pendingIcon: {
+    fontSize: 20,
+  },
+  pendingInfo: {
+    flex: 1,
+  },
+  pendingAction: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#fff',
+  },
+  pendingAgent: {
+    fontSize: 11,
+    color: '#888',
+  },
+  riskBadge: {
+    padding: '4px 8px',
+    borderRadius: 4,
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+  },
+  pendingDescription: {
+    fontSize: 12,
+    color: '#ccc',
+    marginBottom: 8,
+    lineHeight: 1.4,
+  },
+  pendingMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 10,
+    color: '#666',
+  },
+  expiresIn: {
+    color: '#f59e0b',
+  },
+  historyCard: {
+    padding: 10,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 6,
+    marginBottom: 6,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  historyHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  historyIcon: {
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  historyAction: {
+    fontSize: 12,
+    color: '#fff',
+  },
+  historyAgent: {
+    fontSize: 10,
+    color: '#666',
+  },
+  historyMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  historyMethod: {
+    fontSize: 12,
+  },
+  historyTime: {
+    fontSize: 10,
+    color: '#666',
+  },
+  historyReason: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 6,
+    paddingLeft: 26,
+    fontStyle: 'italic',
+  },
+};
+
+// MCP Tab styles
+export const mcpStyles: Record<string, React.CSSProperties> = {
+  sectionTabs: agentStyles.sectionTabs,
+  sectionTab: agentStyles.sectionTab,
+  sectionTabActive: agentStyles.sectionTabActive,
+  serverCard: {
+    padding: 12,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 8,
+    marginBottom: 8,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  serverHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  serverInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  serverIcon: {
+    fontSize: 24,
+  },
+  serverName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#fff',
+  },
+  serverEndpoint: {
+    fontSize: 10,
+    color: '#666',
+    fontFamily: 'monospace',
+  },
+  trustBadge: {
+    padding: '4px 8px',
+    borderRadius: 4,
+    fontSize: 10,
+    fontWeight: 600,
+  },
+  trustBadgeTrusted: {
+    background: 'rgba(16, 185, 129, 0.2)',
+    color: '#10b981',
+  },
+  trustBadgeUntrusted: {
+    background: 'rgba(239, 68, 68, 0.2)',
+    color: '#ef4444',
+  },
+  serverStats: agentStyles.agentStats,
+  serverStat: agentStyles.agentStat,
+  toolsList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  toolChip: {
+    padding: '4px 8px',
+    background: 'rgba(99, 102, 241, 0.1)',
+    borderRadius: 4,
+    fontSize: 10,
+    color: '#818cf8',
+  },
+  serverActions: agentStyles.agentActions,
+  unregisterButton: agentStyles.disconnectButton,
+  toolCallCard: {
+    padding: 10,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 6,
+    marginBottom: 6,
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  toolCallHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  toolCallIcon: {
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  toolCallInfo: {
+    flex: 1,
+  },
+  toolCallName: {
+    fontSize: 12,
+    color: '#fff',
+    fontFamily: 'monospace',
+  },
+  toolCallServer: {
+    fontSize: 10,
+    color: '#666',
+  },
+  toolCallMeta: agentStyles.historyMeta,
+  toolCallTime: agentStyles.historyTime,
+};
+
+// Modal styles
+export const modalStyles: Record<string, React.CSSProperties> = {
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: 16,
+  },
+  modal: {
+    background: '#1a1a2e',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 20px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+  },
+  headerContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: {
+    fontSize: 24,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#fff',
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#888',
+    margin: 0,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    color: '#888',
+    fontSize: 24,
+    cursor: 'pointer',
+  },
+  tabs: {
+    display: 'flex',
+    gap: 4,
+    padding: '12px 16px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  tab: {
+    flex: 1,
+    padding: '8px 12px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    color: '#888',
+    fontSize: 11,
+    cursor: 'pointer',
+  },
+  tabActive: {
+    background: 'rgba(99, 102, 241, 0.2)',
+    color: '#818cf8',
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+    overflowY: 'auto',
+  },
+  infoRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#888',
+  },
+  infoValue: {
+    fontSize: 12,
+    color: '#fff',
+    textAlign: 'right',
+    maxWidth: '60%',
+    wordBreak: 'break-word',
+  },
+  riskBadge: {
+    padding: '4px 8px',
+    borderRadius: 4,
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+  },
+  thspBadge: {
+    padding: '4px 10px',
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  thspGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 8,
+    marginBottom: 16,
+  },
+  thspCard: {
+    padding: 12,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 8,
+    border: '1px solid',
+  },
+  thspCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  thspIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  thspName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#fff',
+  },
+  thspStatus: {
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  thspScore: {
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 6,
+  },
+  thspIssues: {
+    fontSize: 10,
+    color: '#f59e0b',
+  },
+  thspIssue: {
+    marginBottom: 2,
+  },
+  thspSummary: {
+    padding: 12,
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 6,
+    fontSize: 12,
+    color: '#ccc',
+    lineHeight: 1.5,
+  },
+  paramsCode: {
+    padding: 12,
+    background: '#0a0a0f',
+    borderRadius: 6,
+    fontSize: 11,
+    color: '#a5b4fc',
+    fontFamily: 'monospace',
+    overflow: 'auto',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    margin: 0,
+  },
+  reasonSection: {
+    padding: '12px 16px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  reasonLabel: {
+    display: 'block',
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 8,
+  },
+  reasonInput: {
+    width: '100%',
+    padding: 10,
+    background: '#0a0a0f',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: 6,
+    color: '#fff',
+    fontSize: 12,
+    resize: 'vertical',
+    fontFamily: 'inherit',
+  },
+  actions: {
+    display: 'flex',
+    gap: 12,
+    padding: 16,
+    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  rejectButton: {
+    flex: 1,
+    padding: '12px 16px',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: 8,
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  approveButton: {
+    flex: 1,
+    padding: '12px 16px',
+    background: 'linear-gradient(135deg, #10b981, #059669)',
+    border: 'none',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  errorMessage: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    padding: '8px 10px',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: 6,
+    color: '#ef4444',
+    fontSize: 11,
+  },
+};
