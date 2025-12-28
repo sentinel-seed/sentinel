@@ -74,7 +74,12 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
         set(value) = setSecureKey(COMPATIBLE_KEY_ID, value)
 
     private fun createCredentialAttributes(key: String): CredentialAttributes {
-        return CredentialAttributes(generateServiceName("SentinelAISafety", key))
+        return CredentialAttributes(
+            serviceName = generateServiceName("SentinelAISafety", key),
+            userName = null,
+            isPasswordMemoryOnly = false,
+            cacheDeniedItems = true
+        )
     }
 
     private fun getSecureKey(key: String): String? {
