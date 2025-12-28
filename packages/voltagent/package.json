@@ -67,7 +67,7 @@
     "url": "git+https://github.com/sentinel-seed/sentinel.git",
     "directory": "packages/voltagent"
   },
-  "homepage": "https://sentinelseed.dev/docs/integrations/voltagent",
+  "homepage": "https://github.com/sentinel-seed/sentinel/tree/main/packages/voltagent",
   "bugs": {
     "url": "https://github.com/sentinel-seed/sentinel/issues"
   },
@@ -84,7 +84,7 @@
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "@vitest/coverage-v8": "^1.1.0",
-    "@voltagent/core": "^0.1.0",
+    "@voltagent/core": "^1.5.2",
     "eslint": "^8.56.0",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",

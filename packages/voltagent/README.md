@@ -2,7 +2,6 @@
 
 AI safety guardrails for VoltAgent applications. Implements THSP protocol validation, OWASP security protection, and PII detection/redaction.
 
-[![npm version](https://img.shields.io/npm/v/@sentinelseed/voltagent.svg)](https://www.npmjs.com/package/@sentinelseed/voltagent)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -273,8 +272,8 @@ interface SentinelGuardrailConfig {
 
 ## Links
 
-- [Documentation](https://sentinelseed.dev/docs/integrations/voltagent)
-- [GitHub](https://github.com/sentinel-seed/sentinel)
+- [GitHub](https://github.com/sentinel-seed/sentinel/tree/main/packages/voltagent)
+- [Sentinel Documentation](https://sentinelseed.dev)
 - [VoltAgent Documentation](https://voltagent.dev/docs/)
 
 ## License
