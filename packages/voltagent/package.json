@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/voltagent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI safety guardrails for VoltAgent: THSP protocol validation, OWASP protection, and PII detection for autonomous AI agents",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
