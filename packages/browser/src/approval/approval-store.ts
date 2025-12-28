@@ -111,7 +111,7 @@ export async function getDatabase(): Promise<IDBPDatabase<SentinelDBSchema>> {
   }
 
   dbInstance = await openDB<SentinelDBSchema>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, newVersion, transaction) {
+    upgrade(db, _oldVersion, _newVersion, _transaction) {
       // Create approval rules store
       if (!db.objectStoreNames.contains('approvalRules')) {
         const rulesStore = db.createObjectStore('approvalRules', {

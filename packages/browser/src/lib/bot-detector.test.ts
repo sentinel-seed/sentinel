@@ -7,7 +7,6 @@ import {
   detectBot,
   quickBotCheck,
   recordInteraction,
-  BotDetectionResult,
 } from './bot-detector';
 
 describe('Bot Detector', () => {

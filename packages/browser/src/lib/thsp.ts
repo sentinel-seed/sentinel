@@ -90,7 +90,7 @@ function validateTruth(input: string, context: ValidationContext): GateResult {
  * - Could this action cause harm to the user?
  * - Are there security implications?
  */
-function validateHarm(input: string, context: ValidationContext): GateResult {
+function validateHarm(input: string, _context: ValidationContext): GateResult {
   const issues: string[] = [];
   let score = 100;
 

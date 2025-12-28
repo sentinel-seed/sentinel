@@ -9,10 +9,6 @@ import {
   analyzeTransaction,
   analyzeDApp,
   scanForWalletThreats,
-  WalletAddress,
-  WalletThreat,
-  TransactionPreview,
-  dAppSecurityInfo,
 } from './wallet-guard';
 
 describe('Wallet Guard', () => {

@@ -40,10 +40,7 @@ import {
   Settings,
   Stats,
   Alert,
-  AgentType,
-  AgentActionType,
   ApprovalRule,
-  MCPClientSource,
   DEFAULT_AGENT_SHIELD_SETTINGS,
   DEFAULT_MCP_GATEWAY_SETTINGS,
   DEFAULT_APPROVAL_SETTINGS,
@@ -54,14 +51,10 @@ import {
   validateOrThrow,
   AgentConnectPayloadSchema,
   AgentInterceptActionPayloadSchema,
-  AgentUpdateTrustPayloadSchema,
   MCPRegisterServerPayloadSchema,
   MCPInterceptToolCallPayloadSchema,
-  MCPUpdateTrustPayloadSchema,
   ApprovalDecidePayloadSchema,
   ApprovalCreateRulePayloadSchema,
-  ApprovalRuleSchema,
-  GetHistoryPayloadSchema,
 } from '../validation';
 
 // Messaging system
@@ -72,12 +65,11 @@ import {
   broadcastStats,
   broadcastAlert,
   badgeManager,
-  notificationService,
   notifyApprovalRequired,
   isBroadcastMessage,
 } from '../messaging';
 
-// Types - only StorageData is unique to this file
+// StorageData type for this file
 interface StorageData {
   settings: Settings;
   stats: Stats;
@@ -197,7 +189,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleMessage(
   message: { type: string; payload?: unknown },
-  sender: chrome.runtime.MessageSender
+  _sender: chrome.runtime.MessageSender
 ): Promise<unknown> {
   switch (message.type) {
     case 'GET_SETTINGS':

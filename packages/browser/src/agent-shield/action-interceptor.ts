@@ -13,7 +13,6 @@ import {
   AgentActionType,
   AgentConnection,
   RiskLevel,
-  THSPResult,
   MemoryContext,
 } from '../types';
 import { validateTHSP } from '../lib/thsp';

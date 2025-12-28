@@ -7,9 +7,7 @@
 import {
   validateTHSP,
   quickCheck,
-  THSPResult,
   ValidationContext,
-  GateResult,
 } from './thsp';
 
 // =============================================================================

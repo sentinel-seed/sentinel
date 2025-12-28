@@ -14,7 +14,6 @@ import {
   MCPTool,
   MCPClientSource,
   RiskLevel,
-  THSPResult,
 } from '../types';
 import { validateTHSP } from '../lib/thsp';
 import { processAction, EvaluationContext } from '../approval/approval-engine';

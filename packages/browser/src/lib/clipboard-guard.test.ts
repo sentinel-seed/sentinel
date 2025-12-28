@@ -11,7 +11,6 @@ import {
   getClipboardHistory,
   clearClipboardHistory,
   getClipboardStats,
-  ClipboardScanResult,
 } from './clipboard-guard';
 
 describe('Clipboard Guard', () => {

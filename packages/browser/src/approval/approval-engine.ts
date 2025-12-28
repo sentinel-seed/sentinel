@@ -17,7 +17,6 @@ import {
   ApprovalDecision,
   RuleCondition,
   RuleConditionField,
-  RuleConditionOperator,
   RiskLevel,
   AgentAction,
   MCPToolCall,

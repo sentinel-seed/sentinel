@@ -9,8 +9,6 @@ import {
   scanForPIIByRegion,
   maskAllPII,
   getPIISummary,
-  PIIMatch,
-  PIICategory,
 } from './pii-guard';
 
 describe('PII Guard', () => {

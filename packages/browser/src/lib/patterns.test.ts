@@ -10,9 +10,6 @@ import {
   scanAll,
   maskSensitiveData,
   PatternMatch,
-  SECRET_PATTERNS,
-  CRYPTO_PATTERNS,
-  PII_PATTERNS,
 } from './patterns';
 
 // =============================================================================

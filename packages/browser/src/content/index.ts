@@ -7,12 +7,12 @@
  * - Detect and block threats
  */
 
-import { scanAll, maskSensitiveData, PatternMatch } from '../lib/patterns';
+import { scanAll, maskSensitiveData } from '../lib/patterns';
 import { setupBotDetectionListeners, detectBot } from '../lib/bot-detector';
-import { scanForPII, scanForHighConfidencePII, maskAllPII } from '../lib/pii-guard';
-import { setupClipboardGuard, handleCopyEvent, handlePasteEvent } from '../lib/clipboard-guard';
-import { scanForWalletThreats, detectPrivateKeys, detectSeedPhrases } from '../lib/wallet-guard';
-import { setLanguage, t, Language } from '../lib/i18n';
+import { scanForPII, scanForHighConfidencePII } from '../lib/pii-guard';
+import { setupClipboardGuard } from '../lib/clipboard-guard';
+import { scanForWalletThreats } from '../lib/wallet-guard';
+import { setLanguage, t } from '../lib/i18n';
 
 /**
  * Escape HTML to prevent XSS attacks
@@ -27,8 +27,9 @@ function escapeHtml(text: string): string {
 
 /**
  * Create an HTML element safely without innerHTML
+ * Note: Exported for future use in other content script modules
  */
-function createSafeElement(tag: string, className?: string, textContent?: string): HTMLElement {
+export function createSafeElement(tag: string, className?: string, textContent?: string): HTMLElement {
   const element = document.createElement(tag);
   if (className) element.className = className;
   if (textContent) element.textContent = textContent;
@@ -654,7 +655,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       // C001: Create toast safely without innerHTML
       const toast = createToast(
-        `${t('pageScanComplete')}: ${matches.length} ${t('sensitiveItems')} (${critical} ${t('criticalIssues')})`,
+        `${t('pageScanComplete')}: ${matches.length} ${t('sensitiveItems')} (${critical} critical, ${high} high)`,
         'warning'
       );
       document.body.appendChild(toast);
