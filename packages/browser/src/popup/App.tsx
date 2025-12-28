@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { setLanguage, t, detectBrowserLanguage } from '../lib/i18n';
 import { AgentsTab, MCPTab, RulesTab, HistoryTab, SettingsTab } from './components';
+import { SkipLink } from './components/ui';
 
 type TabType = 'dashboard' | 'agents' | 'mcp' | 'rules' | 'history' | 'alerts' | 'settings';
 
@@ -112,10 +113,13 @@ const App: React.FC = () => {
 
   return (
     <div style={styles.container}>
+      {/* Skip link for keyboard navigation */}
+      <SkipLink targetId="main-content" />
+
       {/* Header */}
-      <div style={styles.header}>
+      <header style={styles.header}>
         <div style={styles.headerContent}>
-          <span style={styles.logo}>🛡️</span>
+          <span style={styles.logo} aria-hidden="true">🛡️</span>
           <span style={styles.title}>Sentinel Guard</span>
         </div>
         <div
@@ -126,13 +130,15 @@ const App: React.FC = () => {
               : 'rgba(239, 68, 68, 0.2)',
             color: settings?.enabled ? '#fff' : '#ef4444',
           }}
+          role="status"
+          aria-live="polite"
         >
           {settings?.enabled ? `🟢 ${t('protected')}` : `🔴 ${t('disabled')}`}
         </div>
-      </div>
+      </header>
 
       {/* Navigation */}
-      <div style={styles.nav}>
+      <nav style={styles.nav} role="navigation" aria-label="Main navigation">
         {(['dashboard', 'agents', 'mcp', 'rules', 'history', 'alerts', 'settings'] as const).map((tab) => (
           <button
             key={tab}
@@ -141,21 +147,30 @@ const App: React.FC = () => {
               ...styles.navButton,
               ...(activeTab === tab ? styles.navButtonActive : {}),
             }}
+            aria-current={activeTab === tab ? 'page' : undefined}
+            className="transition-colors"
           >
-            {tab === 'dashboard' && '📊'}
-            {tab === 'agents' && '🤖'}
-            {tab === 'mcp' && '🔌'}
-            {tab === 'rules' && '📋'}
-            {tab === 'history' && '📜'}
-            {tab === 'alerts' && `🔔 ${unacknowledgedAlerts.length > 0 ? `(${unacknowledgedAlerts.length})` : ''}`}
-            {tab === 'settings' && '⚙️'}
+            <span aria-hidden="true">
+              {tab === 'dashboard' && '📊'}
+              {tab === 'agents' && '🤖'}
+              {tab === 'mcp' && '🔌'}
+              {tab === 'rules' && '📋'}
+              {tab === 'history' && '📜'}
+              {tab === 'alerts' && `🔔 ${unacknowledgedAlerts.length > 0 ? `(${unacknowledgedAlerts.length})` : ''}`}
+              {tab === 'settings' && '⚙️'}
+            </span>
             <span style={{ marginLeft: 4 }}>{t(tab)}</span>
+            {tab === 'alerts' && unacknowledgedAlerts.length > 0 && (
+              <span className="sr-only">
+                {` (${unacknowledgedAlerts.length} unread)`}
+              </span>
+            )}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {/* Content */}
-      <div style={styles.content}>
+      {/* Main Content */}
+      <main id="main-content" style={styles.content} tabIndex={-1}>
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
         {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
         {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
@@ -163,15 +178,15 @@ const App: React.FC = () => {
         {activeTab === 'history' && <HistoryTab onStatsUpdate={loadData} />}
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
         {activeTab === 'settings' && <SettingsTab settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
-      </div>
+      </main>
 
       {/* Footer */}
-      <div style={styles.footer}>
+      <footer style={styles.footer}>
         <a href="https://sentinelseed.dev" target="_blank" rel="noopener noreferrer" style={styles.link}>
           sentinelseed.dev
         </a>
         <span style={styles.version}>v0.1.0</span>
-      </div>
+      </footer>
     </div>
   );
 };

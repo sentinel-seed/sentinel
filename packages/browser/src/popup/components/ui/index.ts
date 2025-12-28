@@ -17,3 +17,4 @@ export {
   SkeletonTabs,
   SkeletonStatsGrid,
 } from './SkeletonLoader';
+export { SkipLink } from './SkipLink';

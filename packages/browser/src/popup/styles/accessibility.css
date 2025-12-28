@@ -1,0 +1,464 @@
+/**
+ * Accessibility & Animation Styles
+ *
+ * This file contains:
+ * - Focus management (focus-visible)
+ * - Reduced motion support
+ * - High contrast mode
+ * - Screen reader utilities
+ * - CSS animations and transitions
+ *
+ * @author Sentinel Team
+ * @license MIT
+ */
+
+/* =============================================================================
+   CSS VARIABLES
+   ============================================================================= */
+
+:root {
+  /* Focus ring */
+  --focus-ring-color: rgba(99, 102, 241, 0.6);
+  --focus-ring-offset: 2px;
+  --focus-ring-width: 2px;
+
+  /* Transitions */
+  --transition-fast: 150ms;
+  --transition-normal: 200ms;
+  --transition-slow: 300ms;
+  --transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Colors - accessible contrast ratios */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #6366f1;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-background: #0f0f23;
+  --color-surface: #1a1a2e;
+}
+
+/* =============================================================================
+   FOCUS MANAGEMENT
+   ============================================================================= */
+
+/* Remove default focus outline */
+*:focus {
+  outline: none;
+}
+
+/* Focus-visible for keyboard navigation */
+*:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 4px;
+}
+
+/* Custom focus styles for buttons */
+button:focus-visible,
+[role="button"]:focus-visible {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+  outline: none;
+}
+
+/* Focus styles for interactive elements */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-info);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+/* Tab focus indicators */
+[role="tab"]:focus-visible {
+  background: rgba(99, 102, 241, 0.3);
+  box-shadow: inset 0 -2px 0 var(--color-info);
+}
+
+/* =============================================================================
+   REDUCED MOTION
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-pulse,
+  .animate-spin,
+  .animate-bounce,
+  .animate-fade-in,
+  .animate-slide-in,
+  .animate-scale-in {
+    animation: none !important;
+  }
+}
+
+/* =============================================================================
+   HIGH CONTRAST MODE
+   ============================================================================= */
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-text-primary: #ffffff;
+    --color-text-secondary: #e5e5e5;
+    --color-text-muted: #c0c0c0;
+    --focus-ring-color: #ffffff;
+    --focus-ring-width: 3px;
+  }
+
+  button,
+  [role="button"] {
+    border: 2px solid currentColor !important;
+  }
+
+  .risk-badge,
+  .status-badge {
+    border: 2px solid currentColor !important;
+  }
+}
+
+/* =============================================================================
+   SCREEN READER UTILITIES
+   ============================================================================= */
+
+/* Visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Show when focused (skip links) */
+.sr-only-focusable:focus,
+.sr-only-focusable:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 8px 16px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: var(--color-info);
+  color: white;
+  z-index: 9999;
+}
+
+/* Live region for announcements */
+.live-region {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* =============================================================================
+   CSS ANIMATIONS
+   ============================================================================= */
+
+/* Fade in */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-normal) var(--transition-ease);
+}
+
+/* Fade out */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.animate-fade-out {
+  animation: fadeOut var(--transition-normal) var(--transition-ease);
+}
+
+/* Slide in from bottom */
+@keyframes slideInUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slideInUp var(--transition-normal) var(--transition-ease);
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--transition-normal) var(--transition-ease);
+}
+
+/* Scale in */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--transition-fast) var(--transition-ease);
+}
+
+/* Pulse */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Spin */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Shake (for errors) */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* =============================================================================
+   TRANSITIONS
+   ============================================================================= */
+
+/* Default transition for interactive elements */
+.transition-colors {
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: var(--transition-ease);
+}
+
+.transition-opacity {
+  transition-property: opacity;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: var(--transition-ease);
+}
+
+.transition-transform {
+  transition-property: transform;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: var(--transition-ease);
+}
+
+.transition-all {
+  transition-property: all;
+  transition-duration: var(--transition-normal);
+  transition-timing-function: var(--transition-ease);
+}
+
+/* Hover states */
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+
+/* =============================================================================
+   TOAST ANIMATIONS
+   ============================================================================= */
+
+@keyframes toastEnter {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastExit {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toastEnter var(--transition-normal) var(--transition-ease);
+}
+
+.toast-exit {
+  animation: toastExit var(--transition-normal) var(--transition-ease);
+}
+
+/* =============================================================================
+   MODAL ANIMATIONS
+   ============================================================================= */
+
+@keyframes overlayEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalEnter {
+  from {
+    transform: scale(0.95) translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-overlay-enter {
+  animation: overlayEnter var(--transition-fast) var(--transition-ease);
+}
+
+.modal-enter {
+  animation: modalEnter var(--transition-normal) var(--transition-ease);
+}
+
+/* =============================================================================
+   LOADING STATES
+   ============================================================================= */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* =============================================================================
+   BUTTON STATES
+   ============================================================================= */
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+button:active:not(:disabled),
+[role="button"]:active:not([aria-disabled="true"]) {
+  transform: scale(0.98);
+}
+
+/* =============================================================================
+   SCROLLBAR STYLING
+   ============================================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
