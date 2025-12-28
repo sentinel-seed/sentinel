@@ -49,7 +49,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Database Guard:** Query validation to prevent data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
-- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, OpenGuardrails, PyRIT
+- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, OpenGuardrails, PyRIT
 - **REST API:** Deploy alignment as a service
 
 ---
@@ -807,6 +807,29 @@ const agent = new Agent({
 });
 ```
 
+### VoltAgent
+
+```typescript
+// npm install @sentinelseed/voltagent
+import { Agent } from "@voltagent/core";
+import { createSentinelGuardrails } from "@sentinelseed/voltagent";
+
+// Create guardrails with preset configuration
+const { inputGuardrails, outputGuardrails } = createSentinelGuardrails({
+  level: "strict",
+  enablePII: true,
+});
+
+// Add to your agent
+const agent = new Agent({
+  name: "safe-agent",
+  inputGuardrails,
+  outputGuardrails,
+});
+```
+
+Features: THSP validation, OWASP protection (SQL injection, XSS, command injection), PII detection/redaction, streaming support.
+
 ### OpenAI Agents SDK
 
 ```python
@@ -1022,6 +1045,7 @@ sentinel/
 │   └── results/              # Test results by benchmark
 ├── packages/                  # External NPM packages
 │   ├── elizaos/              # @sentinelseed/elizaos-plugin
+│   ├── voltagent/            # @sentinelseed/voltagent
 │   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit
 │   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
 │   └── vscode/               # VS Code/Cursor/Windsurf extension
