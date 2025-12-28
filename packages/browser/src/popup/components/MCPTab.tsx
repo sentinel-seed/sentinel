@@ -21,7 +21,7 @@ import type { MCPServer, MCPToolCall } from '../../types';
 import { t } from '../../lib/i18n';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { ErrorMessage } from './ui/ErrorMessage';
-import { SkeletonCard, SkeletonList, SkeletonTabs } from './ui/SkeletonLoader';
+import { SkeletonCard, SkeletonTabs } from './ui/SkeletonLoader';
 import { useMCPEvents, useAnnounce } from '../hooks';
 import {
   getTransportIcon,

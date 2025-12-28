@@ -9,7 +9,7 @@
  */
 
 import { scanAll, PatternMatch } from './patterns';
-import { scanForPII, PIIMatch, PIICategory } from './pii-guard';
+import { scanForPII, PIIMatch } from './pii-guard';
 
 export interface ClipboardScanResult {
   hasSensitiveData: boolean;
@@ -145,7 +145,7 @@ export async function scanCurrentClipboard(): Promise<ClipboardScanResult> {
   try {
     const text = await navigator.clipboard.readText();
     return scanClipboardContent(text);
-  } catch (error) {
+  } catch {
     return {
       hasSensitiveData: false,
       hasSecrets: false,
@@ -321,7 +321,7 @@ export async function safeClipboardWrite(
       masked,
       message: masked ? 'Copied with sensitive data masked' : 'Copied to clipboard',
     };
-  } catch (error) {
+  } catch {
     return {
       success: false,
       masked: false,
@@ -361,7 +361,7 @@ export function setupClipboardGuard(
   onCopy?: (result: ClipboardScanResult) => void,
   onPaste?: (result: ClipboardScanResult) => void
 ): () => void {
-  const copyHandler = (e: Event) => {
+  const copyHandler = (_e: Event) => {
     const selection = window.getSelection()?.toString() || '';
     if (selection) {
       const result = handleCopyEvent(selection, window.location.href);

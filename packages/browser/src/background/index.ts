@@ -69,13 +69,6 @@ import {
   isBroadcastMessage,
 } from '../messaging';
 
-// StorageData type for this file
-interface StorageData {
-  settings: Settings;
-  stats: Stats;
-  alerts: Alert[];
-}
-
 // Default settings
 const DEFAULT_SETTINGS: Settings = {
   enabled: true,

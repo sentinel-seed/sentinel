@@ -9,7 +9,7 @@
 
 import { scanAll, maskSensitiveData } from '../lib/patterns';
 import { setupBotDetectionListeners, detectBot } from '../lib/bot-detector';
-import { scanForPII, scanForHighConfidencePII } from '../lib/pii-guard';
+import { scanForHighConfidencePII } from '../lib/pii-guard';
 import { setupClipboardGuard } from '../lib/clipboard-guard';
 import { scanForWalletThreats } from '../lib/wallet-guard';
 import { setLanguage, t } from '../lib/i18n';

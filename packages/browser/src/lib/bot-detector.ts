@@ -62,8 +62,8 @@ const AUTOMATION_SIGNATURES = {
   ],
 };
 
-// Suspicious navigator properties
-const SUSPICIOUS_NAVIGATOR_PROPS = [
+// Suspicious navigator properties (used as reference for checkNavigatorProperties)
+const _SUSPICIOUS_NAVIGATOR_PROPS = [
   'webdriver',
   'languages', // Empty or single language can indicate automation
   'plugins', // Empty plugins array is suspicious
@@ -152,8 +152,7 @@ function checkChromeAutomation(): BotIndicator[] {
 
   // Check Chrome DevTools protocol
   if (win.chrome) {
-    const chrome = win.chrome as Record<string, unknown>;
-
+    // chrome object exists, check for ChromeDriver properties
     // Check for cdc_ (ChromeDriver) properties
     for (const key of Object.keys(win)) {
       if (key.startsWith('cdc_') || key.startsWith('$cdc_')) {
@@ -391,7 +390,7 @@ function checkWebGLAnomaly(): BotIndicator[] {
           indicators.push({
             type: 'software_renderer',
             confidence: 70,
-            description: `Software WebGL renderer detected: ${renderer}`,
+            description: `Software WebGL renderer detected: ${renderer} (${vendor})`,
           });
         }
       }

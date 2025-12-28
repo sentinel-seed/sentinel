@@ -67,8 +67,8 @@ jest.mock('../../../lib/i18n', () => ({
 
 // Mock format utilities
 jest.mock('../../utils/format', () => ({
-  formatRelativeTime: (timestamp: number) => '2m ago',
-  formatDate: (timestamp: number) => 'Dec 28, 2024',
+  formatRelativeTime: (_timestamp: number) => '2m ago',
+  formatDate: (_timestamp: number) => 'Dec 28, 2024',
 }));
 
 // Helper to create mock THSP result

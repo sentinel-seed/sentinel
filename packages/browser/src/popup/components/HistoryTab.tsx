@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { t } from '../../lib/i18n';
-import { ActionHistoryEntry, ApprovalDecision } from '../../types';
+import { ActionHistoryEntry } from '../../types';
 import { ConfirmDialog } from './ui';
 import { formatRelativeTime, formatDate } from '../utils/format';
 

@@ -26,7 +26,7 @@ import { t } from '../../lib/i18n';
 import { ApprovalModal } from './ApprovalModal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { ErrorMessage } from './ui/ErrorMessage';
-import { SkeletonCard, SkeletonList, SkeletonTabs } from './ui/SkeletonLoader';
+import { SkeletonCard, SkeletonTabs } from './ui/SkeletonLoader';
 import { useAgentEvents, useApprovalEvents, useAnnounce } from '../hooks';
 import {
   getActionDisplayInfo,

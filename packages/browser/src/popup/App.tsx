@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // M009: Import types from centralized location instead of duplicating
 import {
   Settings,
   Stats,
   Alert,
-  Language,
   DEFAULT_AGENT_SHIELD_SETTINGS,
   DEFAULT_MCP_GATEWAY_SETTINGS,
   DEFAULT_APPROVAL_SETTINGS,
@@ -33,7 +32,7 @@ const App: React.FC = () => {
     const tryLoad = async (retries = 3) => {
       try {
         await loadData();
-      } catch (err) {
+      } catch {
         if (retries > 0) {
           // Wait a bit for service worker to wake up and retry
           setTimeout(() => tryLoad(retries - 1), 100);
@@ -143,19 +142,23 @@ const App: React.FC = () => {
           <span style={styles.logo} aria-hidden="true">🛡️</span>
           <span style={styles.title}>Sentinel Guard</span>
         </div>
-        <div
+        <button
+          onClick={toggleEnabled}
           style={{
             ...styles.statusBadge,
             background: settings?.enabled
               ? 'linear-gradient(135deg, #10b981, #059669)'
               : 'rgba(239, 68, 68, 0.2)',
             color: settings?.enabled ? '#fff' : '#ef4444',
+            border: 'none',
+            cursor: 'pointer',
           }}
-          role="status"
-          aria-live="polite"
+          role="switch"
+          aria-checked={settings?.enabled}
+          aria-label={settings?.enabled ? t('disableProtection') : t('enableProtection')}
         >
           {settings?.enabled ? `🟢 ${t('protected')}` : `🔴 ${t('disabled')}`}
-        </div>
+        </button>
       </header>
 
       {/* Navigation */}
