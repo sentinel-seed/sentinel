@@ -1,0 +1,99 @@
+{
+  "name": "@sentinelseed/voltagent",
+  "version": "0.1.0",
+  "description": "AI safety guardrails for VoltAgent: THSP protocol validation, OWASP protection, and PII detection for autonomous AI agents",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./guardrails": {
+      "types": "./dist/guardrails/index.d.ts",
+      "import": "./dist/guardrails/index.mjs",
+      "require": "./dist/guardrails/index.js"
+    },
+    "./validators": {
+      "types": "./dist/validators/index.d.ts",
+      "import": "./dist/validators/index.mjs",
+      "require": "./dist/validators/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "keywords": [
+    "voltagent",
+    "ai-safety",
+    "guardrails",
+    "thsp",
+    "owasp",
+    "pii",
+    "sentinel",
+    "llm-security",
+    "ai-agents",
+    "autonomous-agents",
+    "prompt-injection",
+    "jailbreak-detection",
+    "sql-injection",
+    "xss-protection",
+    "input-validation",
+    "output-validation",
+    "streaming-guardrails"
+  ],
+  "author": {
+    "name": "Sentinel Team",
+    "email": "team@sentinelseed.dev",
+    "url": "https://sentinelseed.dev"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sentinel-seed/sentinel.git",
+    "directory": "packages/voltagent"
+  },
+  "homepage": "https://sentinelseed.dev/docs/integrations/voltagent",
+  "bugs": {
+    "url": "https://github.com/sentinel-seed/sentinel/issues"
+  },
+  "peerDependencies": {
+    "@voltagent/core": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@voltagent/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vitest/coverage-v8": "^1.1.0",
+    "@voltagent/core": "^0.1.0",
+    "eslint": "^8.56.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
