@@ -517,14 +517,14 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ rule, onSave, onCancel }) => {
 
       {/* Priority */}
       <div style={styles.field}>
-        <label style={styles.label}>{t('priority')} (0-100)</label>
+        <label style={styles.label}>{t('priority')} (0-1000)</label>
         <input
           type="number"
           value={formData.priority}
-          onChange={(e) => updateField('priority', parseInt(e.target.value) || 0)}
+          onChange={(e) => updateField('priority', Math.min(1000, Math.max(0, parseInt(e.target.value) || 0)))}
           style={styles.input}
           min={0}
-          max={100}
+          max={1000}
         />
       </div>
 
