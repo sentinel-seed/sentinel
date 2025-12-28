@@ -10,9 +10,9 @@ import {
   DEFAULT_APPROVAL_SETTINGS,
 } from '../types';
 import { setLanguage, t, getAvailableLanguages, detectBrowserLanguage, Language as LangType } from '../lib/i18n';
-import { AgentsTab, MCPTab } from './components';
+import { AgentsTab, MCPTab, RulesTab, HistoryTab } from './components';
 
-type TabType = 'dashboard' | 'agents' | 'mcp' | 'alerts' | 'settings';
+type TabType = 'dashboard' | 'agents' | 'mcp' | 'rules' | 'history' | 'alerts' | 'settings';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -133,7 +133,7 @@ const App: React.FC = () => {
 
       {/* Navigation */}
       <div style={styles.nav}>
-        {(['dashboard', 'agents', 'mcp', 'alerts', 'settings'] as const).map((tab) => (
+        {(['dashboard', 'agents', 'mcp', 'rules', 'history', 'alerts', 'settings'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -145,6 +145,8 @@ const App: React.FC = () => {
             {tab === 'dashboard' && '📊'}
             {tab === 'agents' && '🤖'}
             {tab === 'mcp' && '🔌'}
+            {tab === 'rules' && '📋'}
+            {tab === 'history' && '📜'}
             {tab === 'alerts' && `🔔 ${unacknowledgedAlerts.length > 0 ? `(${unacknowledgedAlerts.length})` : ''}`}
             {tab === 'settings' && '⚙️'}
             <span style={{ marginLeft: 4 }}>{t(tab)}</span>
@@ -157,6 +159,8 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
         {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
         {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
+        {activeTab === 'rules' && <RulesTab onStatsUpdate={loadData} />}
+        {activeTab === 'history' && <HistoryTab onStatsUpdate={loadData} />}
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
         {activeTab === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
       </div>

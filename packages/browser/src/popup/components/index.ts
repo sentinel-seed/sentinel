@@ -8,6 +8,8 @@
 // Main tab components
 export { AgentsTab } from './AgentsTab';
 export { MCPTab } from './MCPTab';
+export { RulesTab } from './RulesTab';
+export { HistoryTab } from './HistoryTab';
 export { ApprovalModal } from './ApprovalModal';
 
 // Shared styles

@@ -190,6 +190,32 @@ export interface Translations {
   errorDetails: string;
   retry: string;
   dismiss: string;
+
+  // Rules & History (Phase 4)
+  newRule: string;
+  export: string;
+  import: string;
+  createFirstRule: string;
+  deleteRuleConfirm: string;
+  name: string;
+  priority: string;
+  conditions: string;
+  action: string;
+  reason: string;
+  save: string;
+  disable: string;
+  enable: string;
+  edit: string;
+  delete: string;
+  allSources: string;
+  allDecisions: string;
+  clear: string;
+  clearHistoryConfirm: string;
+  agent: string;
+  server: string;
+  processedAt: string;
+  method: string;
+  ruleId: string;
 }
 
 const translations: Record<Language, Translations> = {
@@ -378,6 +404,32 @@ const translations: Record<Language, Translations> = {
     errorDetails: 'Error Details',
     retry: 'Retry',
     dismiss: 'Dismiss',
+
+    // Rules & History (Phase 4)
+    newRule: 'New Rule',
+    export: 'Export',
+    import: 'Import',
+    createFirstRule: 'Create your first rule',
+    deleteRuleConfirm: 'Are you sure you want to delete this rule?',
+    name: 'Name',
+    priority: 'Priority',
+    conditions: 'Conditions',
+    action: 'Action',
+    reason: 'Reason',
+    save: 'Save',
+    disable: 'Disable',
+    enable: 'Enable',
+    edit: 'Edit',
+    delete: 'Delete',
+    allSources: 'All Sources',
+    allDecisions: 'All Decisions',
+    clear: 'Clear',
+    clearHistoryConfirm: 'Are you sure you want to clear all history? This cannot be undone.',
+    agent: 'Agent',
+    server: 'Server',
+    processedAt: 'Processed At',
+    method: 'Method',
+    ruleId: 'Rule ID',
   },
 
   es: {
@@ -565,6 +617,32 @@ const translations: Record<Language, Translations> = {
     errorDetails: 'Detalles del Error',
     retry: 'Reintentar',
     dismiss: 'Descartar',
+
+    // Rules & History (Phase 4)
+    newRule: 'Nueva Regla',
+    export: 'Exportar',
+    import: 'Importar',
+    createFirstRule: 'Crear tu primera regla',
+    deleteRuleConfirm: '¿Estás seguro de que deseas eliminar esta regla?',
+    name: 'Nombre',
+    priority: 'Prioridad',
+    conditions: 'Condiciones',
+    action: 'Acción',
+    reason: 'Razón',
+    save: 'Guardar',
+    disable: 'Desactivar',
+    enable: 'Activar',
+    edit: 'Editar',
+    delete: 'Eliminar',
+    allSources: 'Todas las Fuentes',
+    allDecisions: 'Todas las Decisiones',
+    clear: 'Limpiar',
+    clearHistoryConfirm: '¿Estás seguro de que deseas borrar todo el historial? Esto no se puede deshacer.',
+    agent: 'Agente',
+    server: 'Servidor',
+    processedAt: 'Procesado En',
+    method: 'Método',
+    ruleId: 'ID de Regla',
   },
 
   pt: {
@@ -752,6 +830,32 @@ const translations: Record<Language, Translations> = {
     errorDetails: 'Detalhes do Erro',
     retry: 'Tentar novamente',
     dismiss: 'Dispensar',
+
+    // Rules & History (Phase 4)
+    newRule: 'Nova Regra',
+    export: 'Exportar',
+    import: 'Importar',
+    createFirstRule: 'Criar sua primeira regra',
+    deleteRuleConfirm: 'Tem certeza que deseja excluir esta regra?',
+    name: 'Nome',
+    priority: 'Prioridade',
+    conditions: 'Condições',
+    action: 'Ação',
+    reason: 'Motivo',
+    save: 'Salvar',
+    disable: 'Desativar',
+    enable: 'Ativar',
+    edit: 'Editar',
+    delete: 'Excluir',
+    allSources: 'Todas as Fontes',
+    allDecisions: 'Todas as Decisões',
+    clear: 'Limpar',
+    clearHistoryConfirm: 'Tem certeza que deseja limpar todo o histórico? Esta ação não pode ser desfeita.',
+    agent: 'Agente',
+    server: 'Servidor',
+    processedAt: 'Processado Em',
+    method: 'Método',
+    ruleId: 'ID da Regra',
   },
 };
 
