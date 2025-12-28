@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/solana-agent-kit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sentinel safety validation plugin for Solana Agent Kit - THSP protocol for AI agent transaction safety",
   "main": "dist/index.js",
   "module": "dist/index.js",
