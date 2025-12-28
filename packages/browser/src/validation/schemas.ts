@@ -217,6 +217,51 @@ export const GetHistoryPayloadSchema = z.object({
 });
 
 // =============================================================================
+// SETTINGS SCHEMAS
+// =============================================================================
+
+/** Language enum */
+export const LanguageSchema = z.enum(['en', 'es', 'pt']);
+
+/** Protection level enum */
+export const ProtectionLevelSchema = z.enum(['basic', 'recommended', 'maximum']);
+
+/** Agent Shield settings schema */
+export const AgentShieldSettingsSchema = z.object({
+  enabled: z.boolean(),
+  trustThreshold: z.number().min(0).max(100),
+  memoryInjectionDetection: z.boolean(),
+  maxAutoApproveValue: z.number().min(0),
+});
+
+/** MCP Gateway settings schema */
+export const MCPGatewaySettingsSchema = z.object({
+  enabled: z.boolean(),
+  interceptAll: z.boolean(),
+  trustedServers: z.array(z.string()),
+});
+
+/** Approval settings schema */
+export const ApprovalSettingsSchema = z.object({
+  enabled: z.boolean(),
+  defaultAction: ApprovalActionSchema,
+  showNotifications: z.boolean(),
+  autoRejectTimeoutMs: z.number().min(0),
+});
+
+/** Full settings schema for import validation */
+export const SettingsSchema = z.object({
+  enabled: z.boolean(),
+  protectionLevel: ProtectionLevelSchema,
+  platforms: z.array(z.string()),
+  notifications: z.boolean(),
+  language: LanguageSchema,
+  agentShield: AgentShieldSettingsSchema,
+  mcpGateway: MCPGatewaySettingsSchema,
+  approval: ApprovalSettingsSchema,
+});
+
+// =============================================================================
 // VALIDATION HELPERS
 // =============================================================================
 
@@ -313,6 +358,13 @@ export const schemas = {
   ApprovalCreateRulePayloadSchema,
   ApprovalRuleSchema,
   GetHistoryPayloadSchema,
+  // Settings
+  LanguageSchema,
+  ProtectionLevelSchema,
+  AgentShieldSettingsSchema,
+  MCPGatewaySettingsSchema,
+  ApprovalSettingsSchema,
+  SettingsSchema,
 };
 
 export default schemas;

@@ -20,8 +20,10 @@ import {
   MCPGatewaySettings,
   ApprovalSettings,
   ApprovalAction,
+  EXTENSION_VERSION,
 } from '../../types';
-import { ConfirmDialog } from './ui';
+import { ConfirmDialog, Toast, ErrorSeverity } from './ui';
+import { SettingsSchema, validate } from '../../validation';
 
 // =============================================================================
 // TYPES
@@ -57,6 +59,12 @@ const DEFAULT_ACTION_OPTIONS: { value: ApprovalAction; labelKey: keyof Translati
 // MAIN COMPONENT
 // =============================================================================
 
+/** Toast notification state */
+interface ToastState {
+  message: string;
+  severity: ErrorSeverity;
+}
+
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   settings,
   onUpdate,
@@ -65,6 +73,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [activeSection, setActiveSection] = useState<SettingsSection>('general');
   const [resetConfirm, setResetConfirm] = useState(false);
   const [clearDataConfirm, setClearDataConfirm] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  /** Show a toast notification */
+  const showToast = useCallback((message: string, severity: ErrorSeverity = 'error') => {
+    setToast({ message, severity });
+  }, []);
 
   // Update a top-level setting
   const updateSetting = useCallback(
@@ -82,9 +96,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         }
       } catch (err) {
         console.error('[SettingsTab] Failed to update setting:', err);
+        showToast(t('unexpectedError'), 'error');
       }
     },
-    [onUpdate, onLanguageChange]
+    [onUpdate, onLanguageChange, showToast]
   );
 
   // Update AgentShield settings
@@ -150,12 +165,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       try {
         const text = await file.text();
-        const imported = JSON.parse(text) as Settings;
+        const parsed = JSON.parse(text);
 
-        // Validate required fields
-        if (typeof imported.enabled !== 'boolean') {
-          throw new Error('Invalid settings file');
+        // Validate using Zod schema
+        const validation = validate(SettingsSchema, parsed);
+        if (!validation.success) {
+          console.error('[SettingsTab] Validation failed:', validation.error);
+          showToast(t('importFailed'), 'error');
+          return;
         }
+
+        const imported = validation.data as Settings;
 
         const updated = await chrome.runtime.sendMessage({
           type: 'UPDATE_SETTINGS',
@@ -167,13 +187,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           setLanguage(imported.language);
           onLanguageChange();
         }
+
+        showToast(t('importSettings') + ' ✓', 'info');
       } catch (err) {
         console.error('[SettingsTab] Failed to import settings:', err);
-        alert(t('importFailed'));
+        showToast(t('importFailed'), 'error');
       }
     };
     input.click();
-  }, [onUpdate, onLanguageChange]);
+  }, [onUpdate, onLanguageChange, showToast]);
 
   // Reset to defaults
   const resetToDefaults = useCallback(async () => {
@@ -187,10 +209,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         setLanguage(updated.language);
         onLanguageChange();
       }
+
+      showToast(t('resetSettings') + ' ✓', 'info');
     } catch (err) {
       console.error('[SettingsTab] Failed to reset settings:', err);
+      showToast(t('unexpectedError'), 'error');
     }
-  }, [onUpdate, onLanguageChange]);
+  }, [onUpdate, onLanguageChange, showToast]);
 
   // Clear all data
   const clearAllData = useCallback(async () => {
@@ -201,8 +226,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       window.location.reload();
     } catch (err) {
       console.error('[SettingsTab] Failed to clear data:', err);
+      showToast(t('unexpectedError'), 'error');
     }
-  }, []);
+  }, [showToast]);
 
   if (!settings) {
     return (
@@ -217,11 +243,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   return (
     <div style={styles.container}>
       {/* Section Navigation */}
-      <div style={styles.sectionNav}>
+      <div style={styles.sectionNav} role="tablist" aria-label="Settings sections">
         {(['general', 'agentShield', 'mcpGateway', 'approval', 'advanced'] as const).map(
           (section) => (
             <button
               key={section}
+              role="tab"
+              aria-selected={activeSection === section}
+              aria-controls={`${section}-panel`}
+              id={`${section}-tab`}
               onClick={() => setActiveSection(section)}
               style={{
                 ...styles.sectionButton,
@@ -240,7 +270,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* General Settings */}
       {activeSection === 'general' && (
-        <div style={styles.section}>
+        <div style={styles.section} role="tabpanel" id="general-panel" aria-labelledby="general-tab">
           <SettingRow
             label={t('enabled')}
             description={t('enableProtection')}
@@ -325,7 +355,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* AgentShield Settings */}
       {activeSection === 'agentShield' && (
-        <div style={styles.section}>
+        <div style={styles.section} role="tabpanel" id="agentShield-panel" aria-labelledby="agentShield-tab">
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>🤖</span>
             <span style={styles.sectionTitle}>{t('agentShield')}</span>
@@ -392,7 +422,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* MCPGateway Settings */}
       {activeSection === 'mcpGateway' && (
-        <div style={styles.section}>
+        <div style={styles.section} role="tabpanel" id="mcpGateway-panel" aria-labelledby="mcpGateway-tab">
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>🔌</span>
             <span style={styles.sectionTitle}>{t('mcpGateway')}</span>
@@ -432,7 +462,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* Approval Settings */}
       {activeSection === 'approval' && (
-        <div style={styles.section}>
+        <div style={styles.section} role="tabpanel" id="approval-panel" aria-labelledby="approval-tab">
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>✅</span>
             <span style={styles.sectionTitle}>{t('approval')}</span>
@@ -497,7 +527,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* Advanced Settings */}
       {activeSection === 'advanced' && (
-        <div style={styles.section}>
+        <div style={styles.section} role="tabpanel" id="advanced-panel" aria-labelledby="advanced-tab">
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>⚙️</span>
             <span style={styles.sectionTitle}>{t('advanced')}</span>
@@ -558,7 +588,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div style={styles.aboutInfo}>
               <div style={styles.aboutRow}>
                 <span>{t('version')}</span>
-                <span>0.1.0</span>
+                <span>{EXTENSION_VERSION}</span>
               </div>
               <div style={styles.aboutRow}>
                 <span>{t('website')}</span>
@@ -610,6 +640,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         onCancel={() => setClearDataConfirm(false)}
         variant="danger"
       />
+
+      {/* Toast notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          severity={toast.severity}
+          onDismiss={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

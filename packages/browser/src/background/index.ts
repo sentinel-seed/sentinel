@@ -346,6 +346,16 @@ async function handleMessage(
     case 'APPROVAL_CLEAR_HISTORY':
       return approvalStore.clearActionHistory();
 
+    // =========================================================================
+    // DATA MANAGEMENT HANDLERS
+    // =========================================================================
+
+    case 'RESET_SETTINGS':
+      return resetSettings();
+
+    case 'CLEAR_ALL_DATA':
+      return clearAllData();
+
     default:
       throw new Error(`Unknown message type: ${message.type}`);
   }
@@ -362,6 +372,51 @@ async function updateSettings(updates: Partial<Settings>): Promise<Settings> {
   const updated = { ...current, ...updates };
   await chrome.storage.local.set({ settings: updated });
   return updated;
+}
+
+async function resetSettings(): Promise<Settings> {
+  await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
+  console.log('[Sentinel Guard] Settings reset to defaults');
+  return DEFAULT_SETTINGS;
+}
+
+async function clearAllData(): Promise<{ success: boolean }> {
+  // Clear all storage
+  await chrome.storage.local.clear();
+
+  // Re-initialize with defaults
+  await chrome.storage.local.set({
+    settings: DEFAULT_SETTINGS,
+    stats: DEFAULT_STATS,
+    alerts: [],
+  });
+
+  // Clear approval data
+  await approvalStore.clearActionHistory();
+  const rules = await approvalStore.getAllRules();
+  for (const rule of rules) {
+    await approvalStore.deleteRule(rule.id);
+  }
+
+  // Clear agent and MCP registrations
+  const agents = await agentRegistry.getAgentConnections();
+  for (const agent of agents) {
+    await agentRegistry.unregisterAgent(agent.id);
+  }
+
+  const servers = await mcpRegistry.getMCPServers();
+  for (const server of servers) {
+    await mcpRegistry.unregisterServer(server.id);
+  }
+
+  // Recreate default rules
+  await approvalEngine.createDefaultRules();
+
+  // Reset badge
+  await badgeManager.initialize(0, 0, false);
+
+  console.log('[Sentinel Guard] All data cleared');
+  return { success: true };
 }
 
 // Stats management

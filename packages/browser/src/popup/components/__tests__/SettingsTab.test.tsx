@@ -559,4 +559,120 @@ describe('SettingsTab', () => {
       consoleSpy.mockRestore();
     });
   });
+
+  describe('reset settings', () => {
+    it('should have reset button in advanced section', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      // Go to advanced section
+      fireEvent.click(screen.getByText('Advanced'));
+
+      // Reset button should exist
+      expect(screen.getByText('Reset')).toBeInTheDocument();
+    });
+
+    it('should display reset description text', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Advanced'));
+      expect(screen.getByText('Reset to Defaults')).toBeInTheDocument();
+      expect(screen.getByText('Restore default values')).toBeInTheDocument();
+    });
+  });
+
+  describe('clear all data', () => {
+    it('should have clear data button in advanced section', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Advanced'));
+      expect(screen.getByText('Clear Data')).toBeInTheDocument();
+      expect(screen.getByText('Clear All Data')).toBeInTheDocument();
+      expect(screen.getByText('Delete all data')).toBeInTheDocument();
+    });
+  });
+
+  describe('export settings', () => {
+    it('should have export button in advanced section', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Advanced'));
+      expect(screen.getByText('Export')).toBeInTheDocument();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('should have tablist role on navigation', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+    });
+
+    it('should have 5 tabs', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      expect(screen.getAllByRole('tab').length).toBe(5);
+    });
+
+    it('should have tabpanel role on content section', () => {
+      const settings = createMockSettings();
+
+      render(
+        <SettingsTab
+          settings={settings}
+          onUpdate={mockOnUpdate}
+          onLanguageChange={mockOnLanguageChange}
+        />
+      );
+
+      expect(screen.getByRole('tabpanel')).toBeInTheDocument();
+    });
+  });
 });

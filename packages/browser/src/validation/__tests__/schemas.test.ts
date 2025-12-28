@@ -14,6 +14,7 @@ import {
   MCPInterceptToolCallPayloadSchema,
   ApprovalDecidePayloadSchema,
   ApprovalCreateRulePayloadSchema,
+  SettingsSchema,
 } from '../schemas';
 
 describe('validation schemas', () => {
@@ -365,6 +366,167 @@ describe('validation schemas', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('SettingsSchema', () => {
+    const validSettings = {
+      enabled: true,
+      protectionLevel: 'recommended',
+      platforms: ['chatgpt', 'claude'],
+      notifications: true,
+      language: 'en',
+      agentShield: {
+        enabled: true,
+        trustThreshold: 70,
+        memoryInjectionDetection: true,
+        maxAutoApproveValue: 100,
+      },
+      mcpGateway: {
+        enabled: true,
+        interceptAll: false,
+        trustedServers: ['file-server'],
+      },
+      approval: {
+        enabled: true,
+        defaultAction: 'require_approval',
+        showNotifications: true,
+        autoRejectTimeoutMs: 300000,
+      },
+    };
+
+    it('should accept valid complete settings', () => {
+      const result = validate(SettingsSchema, validSettings);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(validSettings);
+    });
+
+    it('should reject settings with missing enabled field', () => {
+      const { enabled, ...incomplete } = validSettings;
+      const result = validate(SettingsSchema, incomplete);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid protection level', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        protectionLevel: 'ultra',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid language', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        language: 'fr',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject missing agentShield settings', () => {
+      const { agentShield, ...noAgentShield } = validSettings;
+      const result = validate(SettingsSchema, noAgentShield);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid agentShield trustThreshold (over 100)', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        agentShield: {
+          ...validSettings.agentShield,
+          trustThreshold: 150,
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid agentShield trustThreshold (negative)', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        agentShield: {
+          ...validSettings.agentShield,
+          trustThreshold: -10,
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject missing mcpGateway settings', () => {
+      const { mcpGateway, ...noMcpGateway } = validSettings;
+      const result = validate(SettingsSchema, noMcpGateway);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid mcpGateway trustedServers type', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        mcpGateway: {
+          ...validSettings.mcpGateway,
+          trustedServers: 'not-an-array',
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject missing approval settings', () => {
+      const { approval, ...noApproval } = validSettings;
+      const result = validate(SettingsSchema, noApproval);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid approval defaultAction', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        approval: {
+          ...validSettings.approval,
+          defaultAction: 'invalid_action',
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject negative autoRejectTimeoutMs', () => {
+      const result = validate(SettingsSchema, {
+        ...validSettings,
+        approval: {
+          ...validSettings.approval,
+          autoRejectTimeoutMs: -1000,
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept all valid languages', () => {
+      for (const lang of ['en', 'es', 'pt']) {
+        const result = validate(SettingsSchema, {
+          ...validSettings,
+          language: lang,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it('should accept all valid protection levels', () => {
+      for (const level of ['basic', 'recommended', 'maximum']) {
+        const result = validate(SettingsSchema, {
+          ...validSettings,
+          protectionLevel: level,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it('should accept all valid approval actions', () => {
+      for (const action of ['auto_approve', 'auto_reject', 'require_approval']) {
+        const result = validate(SettingsSchema, {
+          ...validSettings,
+          approval: {
+            ...validSettings.approval,
+            defaultAction: action,
+          },
+        });
+        expect(result.success).toBe(true);
+      }
     });
   });
 });
