@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 // M009: Import types from centralized location instead of duplicating
 import {
   Settings,
@@ -12,6 +12,7 @@ import {
 import { setLanguage, t, detectBrowserLanguage } from '../lib/i18n';
 import { AgentsTab, MCPTab, RulesTab, HistoryTab, SettingsTab } from './components';
 import { SkipLink } from './components/ui';
+import { useAnnouncer, useAccessibilityPreferences } from './hooks';
 
 type TabType = 'dashboard' | 'agents' | 'mcp' | 'rules' | 'history' | 'alerts' | 'settings';
 
@@ -21,6 +22,11 @@ const App: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [, forceUpdate] = useState({});
+
+  // Accessibility hooks
+  const { announce } = useAnnouncer();
+  const { prefersReducedMotion } = useAccessibilityPreferences();
+  const prevTabRef = useRef<TabType>(activeTab);
 
   useEffect(() => {
     // Try to load data, with retry if service worker is waking up
@@ -107,9 +113,24 @@ const App: React.FC = () => {
       payload: { enabled: !settings.enabled },
     });
     setSettings(updated);
+
+    // Announce protection status change
+    const status = !settings.enabled ? t('protected') : t('disabled');
+    announce(`Protection ${status}`, 'assertive');
   };
 
+  // Announce tab changes for screen readers
+  useEffect(() => {
+    if (prevTabRef.current !== activeTab) {
+      announce(`${t(activeTab)} tab selected`);
+      prevTabRef.current = activeTab;
+    }
+  }, [activeTab, announce]);
+
   const unacknowledgedAlerts = alerts.filter((a) => !a.acknowledged);
+
+  // Animation class based on user preference
+  const animationClass = prefersReducedMotion ? '' : 'animate-fade-in';
 
   return (
     <div style={styles.container}>
@@ -170,7 +191,7 @@ const App: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main id="main-content" style={styles.content} tabIndex={-1}>
+      <main id="main-content" style={styles.content} tabIndex={-1} className={animationClass}>
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
         {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
         {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
