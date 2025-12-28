@@ -9,6 +9,9 @@ environments. The four gates are interpreted for reinforcement learning:
 - Scope: Action is within operational boundaries (workspace, joint limits)
 - Purpose: Action contributes to task objective (optional)
 
+Uses the core THSPValidator for text/command validation when natural language
+commands are used, with physical action validation layered on top.
+
 Classes:
     - ActionValidationResult: Result of action validation
     - THSPRobotValidator: Main validator for robot actions
@@ -24,6 +27,14 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 import math
 import logging
+
+# Import core THSPValidator for text/command validation
+try:
+    from sentinelseed.validators.gates import THSPValidator as CoreTHSPValidator
+    CORE_THSP_AVAILABLE = True
+except (ImportError, AttributeError):
+    CoreTHSPValidator = None
+    CORE_THSP_AVAILABLE = False
 
 from sentinelseed.integrations.isaac_lab.constraints import (
     RobotConstraints,
@@ -173,6 +184,14 @@ class THSPRobotValidator:
         self.action_type = action_type
         self.strict_mode = strict_mode
         self.log_violations = log_violations
+
+        # Initialize core THSPValidator for text/command validation
+        self._core_validator = None
+        if CORE_THSP_AVAILABLE and CoreTHSPValidator is not None:
+            try:
+                self._core_validator = CoreTHSPValidator()
+            except Exception:
+                pass  # Physical validation still works without core
 
         # Statistics
         self._stats = {
@@ -652,3 +671,65 @@ class THSPRobotValidator:
                 "purpose": 0,
             },
         }
+
+    def validate_text_command(self, command: str) -> ActionValidationResult:
+        """
+        Validate a natural language command through THSP gates.
+
+        Uses the core THSPValidator for comprehensive text validation including
+        jailbreak detection, prompt injection, and harmful content detection.
+
+        Args:
+            command: Natural language command to validate
+
+        Returns:
+            ActionValidationResult with validation details
+
+        Example:
+            result = validator.validate_text_command("Move to position (1, 2, 3)")
+            if not result.is_safe:
+                print(f"Command blocked: {result.reasoning}")
+        """
+        if not command or not command.strip():
+            return ActionValidationResult(
+                is_safe=True,
+                level=SafetyLevel.SAFE,
+                gates={"truth": True, "harm": True, "scope": True, "purpose": True},
+                violations=[],
+                reasoning="Empty command - no action required.",
+            )
+
+        violations = []
+        gates = {"truth": True, "harm": True, "scope": True, "purpose": True}
+
+        # Use core THSPValidator for text validation
+        if self._core_validator is not None:
+            thsp_result = self._core_validator.validate(command)
+            if not thsp_result.get("is_safe", True):
+                thsp_gates = thsp_result.get("gates", {})
+                for gate_name in ["truth", "harm", "scope", "purpose"]:
+                    if thsp_gates.get(gate_name) == "fail":
+                        gates[gate_name] = False
+                violations.extend(thsp_result.get("violations", []))
+
+        is_safe = all(gates.values())
+
+        if is_safe:
+            level = SafetyLevel.SAFE
+        elif not gates["harm"]:
+            level = SafetyLevel.DANGEROUS
+        else:
+            level = SafetyLevel.WARNING
+
+        reasoning = self._generate_reasoning(violations, level)
+
+        if self.log_violations and violations:
+            logger.warning(f"Text command validation: {reasoning}")
+
+        return ActionValidationResult(
+            is_safe=is_safe,
+            level=level,
+            gates=gates,
+            violations=violations,
+            reasoning=reasoning,
+        )

@@ -176,7 +176,11 @@ class SuspiciousPattern:
 # Default suspicious patterns for crypto transactions
 # SECURITY: All patterns use word boundaries (\b) to prevent false positives
 # and avoid ReDoS vulnerabilities (no unbounded .* quantifiers)
+#
+# Includes THSP jailbreak detection patterns to protect against prompt injection
+# attacks that could manipulate AI agents into unauthorized transactions.
 DEFAULT_SUSPICIOUS_PATTERNS: List[SuspiciousPattern] = [
+    # === CRYPTO-SPECIFIC PATTERNS ===
     SuspiciousPattern(
         name="drain_operation",
         pattern=r"\b(?:drain|sweep|empty)\b",
@@ -206,6 +210,114 @@ DEFAULT_SUSPICIOUS_PATTERNS: List[SuspiciousPattern] = [
         pattern=r"\b(?:urgent|immediately|right\s+now|asap)\b",
         risk_level=TransactionRisk.MEDIUM,
         message="Suspicious urgency language detected",
+    ),
+
+    # === JAILBREAK/PROMPT INJECTION PATTERNS ===
+
+    # Instruction override patterns
+    SuspiciousPattern(
+        name="instruction_override_ignore",
+        pattern=r"ignore\s+(?:all\s+)?(?:previous\s+)?(?:instructions?|rules?|guidelines?|safety)",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Instruction override: ignore instructions detected",
+    ),
+    SuspiciousPattern(
+        name="instruction_override_disregard",
+        pattern=r"disregard\s+(?:all\s+)?(?:your\s+)?(?:instructions?|rules?|guidelines?|programming|safety)",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Instruction override: disregard instructions detected",
+    ),
+    SuspiciousPattern(
+        name="instruction_override_bypass",
+        pattern=r"bypass\s+(?:your\s+)?(?:restrictions?|filters?|safety|guidelines?|rules?)",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Instruction override: bypass restrictions detected",
+    ),
+    SuspiciousPattern(
+        name="instruction_override_forget",
+        pattern=r"forget\s+(?:all\s+)?(?:your\s+)?(?:instructions?|rules?|training|programming)",
+        risk_level=TransactionRisk.HIGH,
+        message="Instruction override: forget instructions detected",
+    ),
+    SuspiciousPattern(
+        name="instruction_override_override",
+        pattern=r"override\s+(?:your\s+)?(?:safety|guidelines?|instructions?|programming)",
+        risk_level=TransactionRisk.HIGH,
+        message="Instruction override: override safety detected",
+    ),
+
+    # Role manipulation patterns
+    SuspiciousPattern(
+        name="role_manipulation_persona",
+        pattern=r"you\s+are\s+now\s+(?:DAN|jailbroken|unrestricted|unfiltered|evil|unlimited)",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Role manipulation: persona switch detected",
+    ),
+    SuspiciousPattern(
+        name="role_manipulation_mode",
+        pattern=r"you\s+are\s+now\s+in\s+(?:developer|debug|admin|god|unrestricted|jailbreak)\s+mode",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Role manipulation: mode switch detected",
+    ),
+    SuspiciousPattern(
+        name="role_manipulation_enable",
+        pattern=r"(?:enter|switch\s+to|enable|activate)\s+(?:developer|debug|admin|god|unrestricted|jailbreak)\s+mode",
+        risk_level=TransactionRisk.HIGH,
+        message="Role manipulation: enable mode detected",
+    ),
+    SuspiciousPattern(
+        name="role_manipulation_no_restrictions",
+        pattern=r"pretend\s+(?:that\s+)?you\s+(?:have\s+no|don't\s+have(?:\s+any)?)\s+(?:restrictions?|rules?|limits?|guidelines?|filters?)",
+        risk_level=TransactionRisk.HIGH,
+        message="Role manipulation: no restrictions persona detected",
+    ),
+
+    # Prompt extraction patterns
+    SuspiciousPattern(
+        name="prompt_extraction_reveal",
+        pattern=r"(?:reveal|show|display|print|output|give\s+me)\s+your\s+(?:system\s+)?(?:prompt|instructions?|message|configuration)",
+        risk_level=TransactionRisk.HIGH,
+        message="Prompt extraction: reveal system prompt detected",
+    ),
+    SuspiciousPattern(
+        name="prompt_extraction_what",
+        pattern=r"what\s+(?:are|is)\s+your\s+(?:system\s+)?(?:instructions?|prompt|original\s+prompt)",
+        risk_level=TransactionRisk.MEDIUM,
+        message="Prompt extraction: asking for instructions detected",
+    ),
+
+    # Filter bypass patterns
+    SuspiciousPattern(
+        name="filter_bypass_disable",
+        pattern=r"(?:disable|turn\s+off|deactivate|remove|bypass)\s+(?:your\s+)?(?:safety|content\s+)?(?:filters?|features?|guardrails?|restrictions?|mode)",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Filter bypass: disable safety features detected",
+    ),
+    SuspiciousPattern(
+        name="filter_bypass_unfiltered",
+        pattern=r"(?:unfiltered|uncensored|unrestricted)\s+mode",
+        risk_level=TransactionRisk.HIGH,
+        message="Filter bypass: unfiltered mode detected",
+    ),
+    SuspiciousPattern(
+        name="filter_bypass_without",
+        pattern=r"without\s+(?:any\s+)?(?:restrictions?|safety|filters?|guardrails?)",
+        risk_level=TransactionRisk.HIGH,
+        message="Filter bypass: without restrictions detected",
+    ),
+
+    # Explicit jailbreak patterns
+    SuspiciousPattern(
+        name="jailbreak_explicit",
+        pattern=r"\bjailbreak\b",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Jailbreak: explicit mention detected",
+    ),
+    SuspiciousPattern(
+        name="jailbreak_dan_mode",
+        pattern=r"\bdan\s+mode\b",
+        risk_level=TransactionRisk.CRITICAL,
+        message="Jailbreak: DAN mode detected",
     ),
 ]
 

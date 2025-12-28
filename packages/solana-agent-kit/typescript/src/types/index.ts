@@ -210,8 +210,12 @@ export const HIGH_RISK_ACTIONS = [
  *
  * Patterns use word boundaries (\b) to avoid false positives on partial matches.
  * Avoid using .* which can cause catastrophic backtracking (ReDoS).
+ *
+ * Includes THSP jailbreak detection patterns to protect against prompt injection
+ * attacks that could manipulate AI agents into unauthorized transactions.
  */
 export const DEFAULT_SUSPICIOUS_PATTERNS: SuspiciousPattern[] = [
+  // === CRYPTO-SPECIFIC PATTERNS ===
   {
     name: "drain_operation",
     // Use word boundaries to avoid matching "drainage" or "sweeper"
@@ -246,5 +250,113 @@ export const DEFAULT_SUSPICIOUS_PATTERNS: SuspiciousPattern[] = [
     pattern: /\b(?:urgent|immediately|right\s+now|asap)\b/i,
     riskLevel: RiskLevel.MEDIUM,
     message: "Suspicious urgency language detected",
+  },
+
+  // === JAILBREAK/PROMPT INJECTION PATTERNS ===
+
+  // Instruction override patterns (violating operational limits)
+  {
+    name: "instruction_override_ignore",
+    pattern: /ignore\s+(?:all\s+)?(?:previous\s+)?(?:instructions?|rules?|guidelines?|safety)/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Instruction override: ignore instructions detected",
+  },
+  {
+    name: "instruction_override_disregard",
+    pattern: /disregard\s+(?:all\s+)?(?:your\s+)?(?:instructions?|rules?|guidelines?|programming|safety)/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Instruction override: disregard instructions detected",
+  },
+  {
+    name: "instruction_override_bypass",
+    pattern: /bypass\s+(?:your\s+)?(?:restrictions?|filters?|safety|guidelines?|rules?)/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Instruction override: bypass restrictions detected",
+  },
+  {
+    name: "instruction_override_forget",
+    pattern: /forget\s+(?:all\s+)?(?:your\s+)?(?:instructions?|rules?|training|programming)/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Instruction override: forget instructions detected",
+  },
+  {
+    name: "instruction_override_override",
+    pattern: /override\s+(?:your\s+)?(?:safety|guidelines?|instructions?|programming)/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Instruction override: override safety detected",
+  },
+
+  // Role manipulation patterns (identity deception)
+  {
+    name: "role_manipulation_persona",
+    pattern: /you\s+are\s+now\s+(?:DAN|jailbroken|unrestricted|unfiltered|evil|unlimited)/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Role manipulation: persona switch detected",
+  },
+  {
+    name: "role_manipulation_mode",
+    pattern: /you\s+are\s+now\s+in\s+(?:developer|debug|admin|god|unrestricted|jailbreak)\s+mode/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Role manipulation: mode switch detected",
+  },
+  {
+    name: "role_manipulation_enable",
+    pattern: /(?:enter|switch\s+to|enable|activate)\s+(?:developer|debug|admin|god|unrestricted|jailbreak)\s+mode/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Role manipulation: enable mode detected",
+  },
+  {
+    name: "role_manipulation_no_restrictions",
+    pattern: /pretend\s+(?:that\s+)?you\s+(?:have\s+no|don't\s+have(?:\s+any)?)\s+(?:restrictions?|rules?|limits?|guidelines?|filters?)/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Role manipulation: no restrictions persona detected",
+  },
+
+  // Prompt extraction patterns (accessing restricted information)
+  {
+    name: "prompt_extraction_reveal",
+    pattern: /(?:reveal|show|display|print|output|give\s+me)\s+your\s+(?:system\s+)?(?:prompt|instructions?|message|configuration)/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Prompt extraction: reveal system prompt detected",
+  },
+  {
+    name: "prompt_extraction_what",
+    pattern: /what\s+(?:are|is)\s+your\s+(?:system\s+)?(?:instructions?|prompt|original\s+prompt)/i,
+    riskLevel: RiskLevel.MEDIUM,
+    message: "Prompt extraction: asking for instructions detected",
+  },
+
+  // Filter bypass patterns (disabling safety features)
+  {
+    name: "filter_bypass_disable",
+    pattern: /(?:disable|turn\s+off|deactivate|remove|bypass)\s+(?:your\s+)?(?:safety|content\s+)?(?:filters?|features?|guardrails?|restrictions?|mode)/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Filter bypass: disable safety features detected",
+  },
+  {
+    name: "filter_bypass_unfiltered",
+    pattern: /(?:unfiltered|uncensored|unrestricted)\s+mode/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Filter bypass: unfiltered mode detected",
+  },
+  {
+    name: "filter_bypass_without",
+    pattern: /without\s+(?:any\s+)?(?:restrictions?|safety|filters?|guardrails?)/i,
+    riskLevel: RiskLevel.HIGH,
+    message: "Filter bypass: without restrictions detected",
+  },
+
+  // Explicit jailbreak patterns
+  {
+    name: "jailbreak_explicit",
+    pattern: /\bjailbreak\b/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Jailbreak: explicit mention detected",
+  },
+  {
+    name: "jailbreak_dan_mode",
+    pattern: /\bdan\s+mode\b/i,
+    riskLevel: RiskLevel.CRITICAL,
+    message: "Jailbreak: DAN mode detected",
   },
 ];

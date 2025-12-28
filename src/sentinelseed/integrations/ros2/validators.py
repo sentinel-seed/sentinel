@@ -4,6 +4,9 @@ Robot Safety Validation Rules for ROS2.
 This module provides THSP-adapted validation rules for robotic systems.
 The rules focus on physical safety, operational limits, and purpose validation.
 
+Uses the core THSPValidator for text/command validation, with additional
+robotics-specific physical safety checks layered on top.
+
 Classes:
     - VelocityLimits: Linear and angular velocity constraints
     - SafetyZone: Spatial boundaries for safe operation
@@ -16,6 +19,14 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 import math
 import re
+
+# Import core THSPValidator for text validation
+try:
+    from sentinelseed.validators.gates import THSPValidator
+    THSP_VALIDATOR_AVAILABLE = True
+except (ImportError, AttributeError):
+    THSPValidator = None
+    THSP_VALIDATOR_AVAILABLE = False
 
 
 # Validation constants
@@ -307,7 +318,15 @@ class RobotSafetyRules:
         self.require_purpose = require_purpose
         self.emergency_stop_on_violation = emergency_stop_on_violation
 
-        # Compile patterns
+        # Initialize core THSPValidator for text/command validation
+        self._thsp_validator = None
+        if THSP_VALIDATOR_AVAILABLE and THSPValidator is not None:
+            try:
+                self._thsp_validator = THSPValidator()
+            except Exception:
+                pass  # Fall back to local patterns
+
+        # Compile robotics-specific patterns (used in addition to core)
         self._danger_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.DANGEROUS_COMMAND_PATTERNS
         ]
@@ -424,7 +443,8 @@ class RobotSafetyRules:
         """
         Validate a string command through THSP gates.
 
-        This is useful for natural language commands sent to the robot.
+        Uses the core THSPValidator for comprehensive text validation (jailbreaks,
+        prompt injection, harmful content, etc.), plus robotics-specific patterns.
 
         Args:
             command: String command to validate
@@ -451,7 +471,20 @@ class RobotSafetyRules:
                 reasoning="Empty command - no action required.",
             )
 
-        # Harm Gate: Check for dangerous patterns
+        # Step 1: Use core THSPValidator for comprehensive text validation
+        # This catches jailbreaks, prompt injection, SQL injection, XSS, etc.
+        if self._thsp_validator is not None:
+            thsp_result = self._thsp_validator.validate(command)
+            if not thsp_result.get("is_safe", True):
+                thsp_gates = thsp_result.get("gates", {})
+                for gate_name in ["truth", "harm", "scope", "purpose"]:
+                    if thsp_gates.get(gate_name) == "fail":
+                        gates[gate_name] = False
+                thsp_violations = thsp_result.get("violations", [])
+                violations.extend(thsp_violations)
+
+        # Step 2: Apply robotics-specific patterns (additional checks)
+        # Harm Gate: Check for dangerous robot-specific patterns
         for pattern in self._danger_patterns:
             if pattern.search(command):
                 gates["harm"] = False

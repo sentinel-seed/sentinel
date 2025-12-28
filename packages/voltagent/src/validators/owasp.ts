@@ -277,14 +277,45 @@ const SSRF_PATTERNS: OWASPPatternDefinition[] = [
 
 /**
  * Prompt Injection patterns (specific to AI agents).
+ * Expanded to match core THSP jailbreak detection patterns.
+ *
+ * Note: For comprehensive jailbreak detection, use the THSP validator
+ * which imports from @anthropic/sentinel-core with 100+ patterns.
  */
 const PROMPT_INJECTION_PATTERNS: OWASPPatternDefinition[] = [
+  // Instruction override patterns
   {
     pattern: /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|context)/i,
     type: 'PROMPT_INJECTION',
     severity: 'critical',
     description: 'Instruction override attempt',
   },
+  {
+    pattern: /disregard\s+(all\s+)?(your\s+)?(instructions?|rules?|guidelines?|programming|safety)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Instruction disregard attempt',
+  },
+  {
+    pattern: /bypass\s+(your\s+)?(restrictions?|filters?|safety|guidelines?|rules?)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Safety bypass attempt',
+  },
+  {
+    pattern: /forget\s+(all\s+)?(your\s+)?(instructions?|rules?|training|programming)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Memory wipe attempt',
+  },
+  {
+    pattern: /override\s+(your\s+)?(safety|guidelines?|instructions?|programming)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Safety override attempt',
+  },
+
+  // System prompt delimiters
   {
     pattern: /\[SYSTEM\]|\[INST\]|\[\/INST\]|<<SYS>>|<\|system\|>/i,
     type: 'PROMPT_INJECTION',
@@ -297,6 +328,8 @@ const PROMPT_INJECTION_PATTERNS: OWASPPatternDefinition[] = [
     severity: 'high',
     description: 'Role prefix injection',
   },
+
+  // New instruction injection
   {
     pattern: /new\s+instructions?:?\s+|updated\s+prompt:?\s+/i,
     type: 'PROMPT_INJECTION',
@@ -304,11 +337,93 @@ const PROMPT_INJECTION_PATTERNS: OWASPPatternDefinition[] = [
     description: 'Instruction injection attempt',
   },
   {
+    pattern: /new\s+directive\s+(replaces|overrides)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Directive replacement attempt',
+  },
+
+  // Role manipulation
+  {
+    pattern: /you\s+are\s+now\s+(DAN|jailbroken|unrestricted|unfiltered|evil|unlimited)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Role manipulation: persona switch',
+  },
+  {
+    pattern: /you\s+are\s+now\s+in\s+(developer|debug|admin|god|unrestricted|jailbreak)\s+mode/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Role manipulation: mode switch',
+  },
+  {
+    pattern: /(enter|switch\s+to|enable|activate)\s+(developer|debug|admin|god|unrestricted|jailbreak)\s+mode/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Role manipulation: enable mode',
+  },
+  {
+    pattern: /pretend\s+(that\s+)?you\s+(have\s+no|don'?t\s+have(\s+any)?)\s+(restrictions?|rules?|limits?|guidelines?|filters?)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Role manipulation: no restrictions',
+  },
+
+  // Prompt extraction
+  {
+    pattern: /(reveal|show|display|print|output|give\s+me)\s+your\s+(system\s+)?(prompt|instructions?|message|configuration)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Prompt extraction attempt',
+  },
+  {
+    pattern: /what\s+(are|is)\s+your\s+(system\s+)?(instructions?|prompt|original\s+prompt)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'medium',
+    description: 'System prompt inquiry',
+  },
+
+  // Filter bypass
+  {
+    pattern: /(disable|turn\s+off|deactivate|remove|bypass)\s+(your\s+)?(safety|content\s+)?(filters?|features?|guardrails?|restrictions?|mode)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Filter bypass attempt',
+  },
+  {
+    pattern: /(unfiltered|uncensored|unrestricted)\s+mode/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Unfiltered mode request',
+  },
+  {
+    pattern: /without\s+(any\s+)?(restrictions?|safety|filters?|guardrails?)/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'high',
+    description: 'Without restrictions request',
+  },
+
+  // Common jailbreak indicators
+  {
     pattern: /\bpwned\b|\bhacked\b/i,
     type: 'PROMPT_INJECTION',
     severity: 'medium',
     description: 'Common jailbreak indicator',
   },
+  {
+    pattern: /\bjailbreak\b/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'Explicit jailbreak mention',
+  },
+  {
+    pattern: /\bdan\s+mode\b/i,
+    type: 'PROMPT_INJECTION',
+    severity: 'critical',
+    description: 'DAN mode request',
+  },
+
+  // Output manipulation
   {
     pattern: /respond\s+only\s+with|output\s+only|say\s+only/i,
     type: 'PROMPT_INJECTION',
