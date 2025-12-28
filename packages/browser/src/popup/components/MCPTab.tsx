@@ -22,7 +22,7 @@ import { t } from '../../lib/i18n';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { SkeletonCard, SkeletonList, SkeletonTabs } from './ui/SkeletonLoader';
-import { useSubscription, useAnnounce } from '../hooks';
+import { useMCPEvents, useAnnounce } from '../hooks';
 import {
   getTransportIcon,
   getServerName,
@@ -86,12 +86,9 @@ export const MCPTab: React.FC<MCPTabProps> = ({ onStatsUpdate }) => {
   }, [loadData]);
 
   // Subscribe to real-time updates
-  useSubscription(
-    ['MCP_STATE_CHANGED'],
-    () => {
-      loadData();
-    }
-  );
+  useMCPEvents(() => {
+    loadData();
+  });
 
   // Memoized all tools from all servers
   const allTools = useMemo(() =>

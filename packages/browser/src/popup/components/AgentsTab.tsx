@@ -27,7 +27,7 @@ import { ApprovalModal } from './ApprovalModal';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { SkeletonCard, SkeletonList, SkeletonTabs } from './ui/SkeletonLoader';
-import { useSubscription, useAnnounce } from '../hooks';
+import { useAgentEvents, useApprovalEvents, useAnnounce } from '../hooks';
 import {
   getActionDisplayInfo,
   getAgentIcon,
@@ -95,12 +95,13 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({ onStatsUpdate }) => {
   }, [loadData]);
 
   // Subscribe to real-time updates
-  useSubscription(
-    ['AGENT_STATE_CHANGED', 'APPROVAL_STATE_CHANGED'],
-    () => {
-      loadData();
-    }
-  );
+  useAgentEvents(() => {
+    loadData();
+  });
+
+  useApprovalEvents(() => {
+    loadData();
+  });
 
   // Open confirmation dialog
   const openDisconnectConfirm = (agentId: string, agentName: string) => {

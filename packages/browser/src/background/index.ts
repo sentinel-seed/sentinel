@@ -64,6 +64,19 @@ import {
   GetHistoryPayloadSchema,
 } from '../validation';
 
+// Messaging system
+import {
+  broadcastAgent,
+  broadcastMCP,
+  broadcastApproval,
+  broadcastStats,
+  broadcastAlert,
+  badgeManager,
+  notificationService,
+  notifyApprovalRequired,
+  isBroadcastMessage,
+} from '../messaging';
+
 // Types - only StorageData is unique to this file
 interface StorageData {
   settings: Settings;
@@ -125,6 +138,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // Create default approval rules
     await approvalEngine.createDefaultRules();
 
+    // Initialize badge
+    await badgeManager.initialize(0, 0, false);
+
     console.log('[Sentinel Guard] Extension installed');
   }
 
@@ -133,6 +149,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
   // Setup approval expiry check alarm
   approvalQueue.setupExpiryCheckAlarm(1);
+
+  // Initialize badge with current state
+  const pending = await approvalStore.getPendingApprovals();
+  const alerts = await getAlerts();
+  const unacknowledgedAlerts = alerts.filter((a) => !a.acknowledged).length;
+  const settings = await getSettings();
+  await badgeManager.initialize(pending.length, unacknowledgedAlerts, !settings.enabled);
 });
 
 // Handle alarms
@@ -157,6 +180,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Ignore broadcast messages (they're outgoing, not requests)
+  if (isBroadcastMessage(message)) {
+    return false;
+  }
+
   handleMessage(message, sender)
     .then(sendResponse)
     .catch((error) => {
@@ -348,6 +376,9 @@ async function incrementStat(stat: keyof Stats): Promise<Stats> {
     (stats[stat] as number)++;
     stats.lastUpdated = Date.now();
     await chrome.storage.local.set({ stats });
+
+    // Broadcast stats updated
+    await broadcastStats.updated(stats, [stat, 'lastUpdated']);
   }
   return stats;
 }
@@ -378,6 +409,13 @@ async function reportThreat(
 
   await chrome.storage.local.set({ alerts });
 
+  // Calculate unacknowledged count and update badge
+  const unacknowledgedCount = alerts.filter((a) => !a.acknowledged).length;
+  await badgeManager.setAlertCount(unacknowledgedCount);
+
+  // Broadcast alert created
+  await broadcastAlert.created(alert, unacknowledgedCount);
+
   // Show notification
   const settings = await getSettings();
   if (settings.notifications) {
@@ -399,6 +437,14 @@ async function acknowledgeAlert(alertId: string): Promise<boolean> {
   if (alert) {
     alert.acknowledged = true;
     await chrome.storage.local.set({ alerts });
+
+    // Calculate unacknowledged count and update badge
+    const unacknowledgedCount = alerts.filter((a) => !a.acknowledged).length;
+    await badgeManager.setAlertCount(unacknowledgedCount);
+
+    // Broadcast alert acknowledged
+    await broadcastAlert.acknowledged(alertId, unacknowledgedCount);
+
     return true;
   }
   return false;
@@ -615,6 +661,9 @@ async function handleAgentConnect(
     relatedEntityId: agent.id,
   });
 
+  // Broadcast event
+  await broadcastAgent.connected(agent);
+
   return agent;
 }
 
@@ -635,6 +684,9 @@ async function handleAgentDisconnect(agentId: string): Promise<boolean> {
       source: 'agent_shield',
       relatedEntityId: agentId,
     });
+
+    // Broadcast event
+    await broadcastAgent.disconnected(agentId, agent.name);
   }
 
   return result;
@@ -665,11 +717,29 @@ async function handleAgentInterceptAction(
     }
   );
 
-  // Update stats based on decision
+  // Get agent for broadcast
+  const agent = await agentRegistry.getAgentConnection(payload.agentId);
+  const agentName = agent?.name || payload.agentId;
+
+  // Update stats and broadcast based on decision
   if (result.decision === 'approved') {
     await incrementStat('agentActionsApproved');
+    await broadcastAgent.actionDecided({
+      agentId: payload.agentId,
+      actionId: result.action.id,
+      decision: 'approved',
+      method: result.action.decision?.method || 'auto',
+      reason: result.action.decision?.reason || 'Auto-approved',
+    });
   } else if (result.decision === 'rejected') {
     await incrementStat('agentActionsRejected');
+    await broadcastAgent.actionDecided({
+      agentId: payload.agentId,
+      actionId: result.action.id,
+      decision: 'rejected',
+      method: result.action.decision?.method || 'auto',
+      reason: result.action.decision?.reason || 'Auto-rejected',
+    });
 
     // Check for memory injection
     if (result.action.memoryContext?.isCompromised) {
@@ -677,6 +747,32 @@ async function handleAgentInterceptAction(
     }
   } else if (result.decision === 'pending') {
     await incrementStat('approvalsPending');
+    await badgeManager.incrementPending();
+
+    // Get updated pending list for broadcast
+    const pending = await approvalStore.getPendingApprovals();
+
+    // Broadcast intercepted action
+    await broadcastAgent.actionIntercepted({
+      agentId: payload.agentId,
+      agentName,
+      actionId: result.action.id,
+      actionType: payload.type,
+      riskLevel: result.action.riskLevel,
+      requiresApproval: true,
+    });
+
+    // Broadcast queue changed
+    await broadcastApproval.queueChanged(pending.length, pending.map((p) => p.id));
+
+    // Show notification if enabled
+    if (settings.approval.showNotifications) {
+      await notifyApprovalRequired(
+        agentName,
+        payload.type,
+        result.action.riskLevel
+      );
+    }
   }
 
   return result;
@@ -722,6 +818,9 @@ async function handleMCPRegisterServer(
     relatedEntityId: server.id,
   });
 
+  // Broadcast event
+  await broadcastMCP.serverRegistered(server);
+
   return server;
 }
 
@@ -748,13 +847,57 @@ async function handleMCPInterceptToolCall(
     }
   );
 
-  // Update stats based on decision
+  // Get server for broadcast
+  const server = await mcpRegistry.getMCPServer(payload.serverId);
+  const serverName = server?.name || payload.serverId;
+
+  // Update stats and broadcast based on decision
   if (result.decision === 'approved') {
     await incrementStat('mcpToolCallsApproved');
+    await broadcastMCP.toolCallDecided({
+      serverId: payload.serverId,
+      callId: result.toolCall.id,
+      decision: 'approved',
+      method: result.toolCall.decision?.method || 'auto',
+      reason: result.toolCall.decision?.reason || 'Auto-approved',
+    });
   } else if (result.decision === 'rejected') {
     await incrementStat('mcpToolCallsRejected');
+    await broadcastMCP.toolCallDecided({
+      serverId: payload.serverId,
+      callId: result.toolCall.id,
+      decision: 'rejected',
+      method: result.toolCall.decision?.method || 'auto',
+      reason: result.toolCall.decision?.reason || 'Auto-rejected',
+    });
   } else if (result.decision === 'pending') {
     await incrementStat('approvalsPending');
+    await badgeManager.incrementPending();
+
+    // Get updated pending list for broadcast
+    const pending = await approvalStore.getPendingApprovals();
+
+    // Broadcast intercepted tool call
+    await broadcastMCP.toolCallIntercepted({
+      serverId: payload.serverId,
+      serverName,
+      callId: result.toolCall.id,
+      toolName: payload.toolName,
+      riskLevel: result.toolCall.riskLevel,
+      requiresApproval: true,
+    });
+
+    // Broadcast queue changed
+    await broadcastApproval.queueChanged(pending.length, pending.map((p) => p.id));
+
+    // Show notification if enabled
+    if (settings.approval.showNotifications) {
+      await notifyApprovalRequired(
+        serverName,
+        payload.toolName,
+        result.toolCall.riskLevel
+      );
+    }
   }
 
   return result;
@@ -796,7 +939,22 @@ async function handleApprovalDecide(
     }
 
     // Update badge
-    await approvalQueue.updateBadge();
+    await badgeManager.decrementPending();
+
+    // Get remaining pending count
+    const pending = await approvalStore.getPendingApprovals();
+
+    // Broadcast decision
+    await broadcastApproval.decided({
+      pendingId: payload.pendingId,
+      decision: decision.action === 'approve' ? 'approved' : 'rejected',
+      method: 'manual',
+      reason: payload.reason,
+      queueLength: pending.length,
+    });
+
+    // Broadcast queue changed
+    await broadcastApproval.queueChanged(pending.length, pending.map((p) => p.id));
   }
 
   return decision;

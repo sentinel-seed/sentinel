@@ -7,8 +7,11 @@
 
 export {
   useSubscription,
-  useSingleSubscription,
+  useBroadcastEvent as useSingleSubscription,
   useFetchWithSubscription,
+  useAgentEvents,
+  useMCPEvents,
+  useApprovalEvents,
   type SubscriptionEvent,
   type SubscriptionCallback,
 } from './useSubscription';
