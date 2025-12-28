@@ -1,6 +1,11 @@
 // Jest setup file
 // Mock chrome API for testing
 
+// Polyfill for structuredClone (required by fake-indexeddb in Node < 17)
+if (typeof structuredClone === 'undefined') {
+  global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
+}
+
 global.chrome = {
   runtime: {
     sendMessage: jest.fn().mockResolvedValue({}),
