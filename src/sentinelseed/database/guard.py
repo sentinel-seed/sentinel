@@ -18,7 +18,7 @@ The Solution:
 - Detect sensitive data access
 - Enforce row limits and table access control
 
-Reference: OWASP ASI03 (Identity & Privilege Abuse)
+Reference: OWASP ASI03 (Identity and Privilege Abuse)
 """
 
 from __future__ import annotations

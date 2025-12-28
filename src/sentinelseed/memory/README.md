@@ -399,12 +399,12 @@ See `@sentinelseed/solana-agent-kit` for Solana-specific memory integrity featur
 
 ## OWASP Coverage
 
-Memory Shield addresses **ASI08: Memory & Context Poisoning** from the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications/).
+Memory Shield addresses **ASI06: Memory and Context Poisoning** from the [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
 
 ## References
 
-- [Princeton CrAIBench Paper](https://arxiv.org/abs/2503.16248) - Research on memory injection attacks
-- [OWASP Agentic AI Top 10](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications/) - Security standards
+- [Princeton CrAIBench Paper](https://arxiv.org/abs/2503.16248): Research on memory injection attacks
+- [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/): Security standards
 - [Sentinel Documentation](https://sentinelseed.dev/docs/memory-integrity) - Full documentation
 
 ## License

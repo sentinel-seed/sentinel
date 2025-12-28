@@ -36,7 +36,7 @@ Quick validation:
     if result.has_sensitive_data:
         log.warning("Query accesses sensitive columns")
 
-Reference: OWASP ASI03 (Identity & Privilege Abuse)
+Reference: OWASP ASI03 (Identity and Privilege Abuse)
 """
 
 from .guard import (

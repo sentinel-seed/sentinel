@@ -45,7 +45,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Memory Integrity:** HMAC-based protection against memory injection attacks
 - **Fiduciary AI:** Ensures AI acts in user's best interest (duty of loyalty and care)
 - **EU AI Act Compliance:** Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
-- **OWASP Agentic AI:** Coverage for 7/10 Top 10 threats (ASI01-ASI10)
+- **OWASP Agentic AI:** 65% coverage of Top 10 for Agentic Applications (5 full, 3 partial)
 - **Database Guard:** Query validation to prevent data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
@@ -946,24 +946,24 @@ result = check_eu_ai_act_compliance(
 
 Detects 8 prohibited practices under Article 5: subliminal manipulation, exploitation of vulnerabilities, social scoring, predictive policing, facial scraping, emotion recognition (workplace/education), biometric categorization, and real-time biometric identification.
 
-### OWASP Top 10 for Agentic Applications
+### OWASP Top 10 for Agentic Applications (2026)
 
-Sentinel provides coverage for **7 of 10** OWASP Agentic AI threats:
+Sentinel provides **65% coverage** of OWASP Agentic AI threats (5 full, 3 partial):
 
 | ID | Threat | Coverage | Component |
 |----|--------|----------|-----------|
 | ASI01 | Agent Goal Hijack | ✅ Full | THSP Purpose Gate |
-| ASI02 | Tool Misuse | ✅ Full | THSP Scope Gate |
-| ASI03 | Identity Abuse | 🔶 Partial | Database Guard |
-| ASI04 | Supply Chain | 🔶 Partial | Memory Shield |
-| ASI05 | Code Execution | ❌ | Out of scope |
-| ASI06 | Memory Poisoning | ✅ Full | Memory Shield |
-| ASI07 | Inter-Agent Comm | ❌ | Future roadmap |
+| ASI02 | Tool Misuse and Exploitation | ✅ Full | THSP Scope Gate |
+| ASI03 | Identity and Privilege Abuse | 🔶 Partial | Database Guard |
+| ASI04 | Agentic Supply Chain Vulnerabilities | 🔶 Partial | Memory Shield |
+| ASI05 | Unexpected Code Execution | ❌ N/A | Infrastructure |
+| ASI06 | Memory and Context Poisoning | ✅ Full | Memory Shield |
+| ASI07 | Insecure Inter Agent Communication | ❌ N/A | Phase 3 roadmap |
 | ASI08 | Cascading Failures | 🔶 Partial | THSP Truth Gate |
-| ASI09 | Trust Exploitation | ✅ Full | Fiduciary AI |
-| ASI10 | Rogue Agents | ✅ Full | THSP + Anti-Preservation |
+| ASI09 | Human Agent Trust Exploitation | ✅ Full | Fiduciary AI |
+| ASI10 | Rogue Agents | ✅ Full | THSP, Anti-Preservation |
 
-📄 Full mapping: [docs/OWASP_AGENTIC_COVERAGE.md](docs/OWASP_AGENTIC_COVERAGE.md)
+Full mapping: [docs/OWASP_AGENTIC_COVERAGE.md](docs/OWASP_AGENTIC_COVERAGE.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Query validation for AI agents to prevent data exfiltration**
 
-Database Guard protects databases from AI agent abuse by validating SQL queries before execution. It addresses **OWASP ASI03 (Identity & Privilege Abuse)** and prevents data exfiltration attacks.
+Database Guard protects databases from AI agent abuse by validating SQL queries before execution. It addresses **OWASP ASI03 (Identity and Privilege Abuse)** and prevents data exfiltration attacks.
 
 ## The Problem
 
@@ -320,8 +320,8 @@ Database Guard addresses:
 
 | OWASP ID | Vulnerability | Coverage |
 |----------|--------------|----------|
-| ASI03 | Identity & Privilege Abuse | Full |
-| ASI01 | Prompt Injection (via SQL) | Partial |
+| ASI03 | Identity and Privilege Abuse | Partial |
+| ASI01 | Agent Goal Hijack (via SQL) | Partial |
 
 ## Best Practices
 

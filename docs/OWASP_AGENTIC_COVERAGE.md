@@ -1,10 +1,11 @@
 # OWASP Top 10 for Agentic Applications: Sentinel Coverage Map
 
-> **Document Version:** 1.0
-> **OWASP Reference:** Top 10 for Agentic Applications (December 2025)
+> **Document Version:** 1.1
+> **OWASP Reference:** Top 10 for Agentic Applications (2026)
+> **Release Date:** December 2025
 > **Last Updated:** December 2025
 
-This document maps Sentinel's security components to the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications/), providing transparency about our coverage and identifying areas for future development.
+This document maps Sentinel's security components to the [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/), providing transparency about our coverage and identifying areas for future development.
 
 ---
 
@@ -16,7 +17,7 @@ This document maps Sentinel's security components to the [OWASP Top 10 for Agent
 | **Partial Coverage** | 3 | ASI03, ASI04, ASI08 |
 | **Not Covered** | 2 | ASI05, ASI07 |
 
-**Overall Coverage: 70%** (5 full + 3 partial out of 10)
+**Overall Coverage: 65%** (5 full at 100% + 3 partial at 50% + 2 not covered)
 
 ---
 
@@ -25,14 +26,14 @@ This document maps Sentinel's security components to the [OWASP Top 10 for Agent
 | ID | Vulnerability | Sentinel Coverage | Component |
 |----|--------------|-------------------|-----------|
 | ASI01 | Agent Goal Hijack | ✅ Full | THSP Purpose Gate |
-| ASI02 | Tool Misuse & Exploitation | ✅ Full | THSP Scope Gate |
-| ASI03 | Identity & Privilege Abuse | 🔶 Partial | Database Guard |
-| ASI04 | Supply Chain Vulnerabilities | 🔶 Partial | Memory Shield (integrity) |
+| ASI02 | Tool Misuse and Exploitation | ✅ Full | THSP Scope Gate |
+| ASI03 | Identity and Privilege Abuse | 🔶 Partial | Database Guard |
+| ASI04 | Agentic Supply Chain Vulnerabilities | 🔶 Partial | Memory Shield (integrity) |
 | ASI05 | Unexpected Code Execution | ❌ Not Covered | Out of scope |
-| ASI06 | Memory & Context Poisoning | ✅ Full | Memory Shield |
-| ASI07 | Insecure Inter-Agent Comm | ❌ Not Covered | Future roadmap |
+| ASI06 | Memory and Context Poisoning | ✅ Full | Memory Shield |
+| ASI07 | Insecure Inter Agent Communication | ❌ Not Covered | Future roadmap |
 | ASI08 | Cascading Failures | 🔶 Partial | THSP Truth Gate |
-| ASI09 | Human-Agent Trust Exploitation | ✅ Full | THSP Truth + Harm Gates |
+| ASI09 | Human Agent Trust Exploitation | ✅ Full | THSP Truth + Harm Gates |
 | ASI10 | Rogue Agents | ✅ Full | THSP Protocol + Anti-Preservation |
 
 ---
@@ -70,14 +71,14 @@ seed = sentinel.get_seed("standard")
 # 3. Would this action benefit the user appropriately?
 ```
 
-**Mitigation Level:** High - Purpose Gate explicitly validates goal alignment before action execution.
+**Mitigation Level:** High. Purpose Gate explicitly validates goal alignment before action execution.
 
 ---
 
 ### ASI02: Tool Misuse and Exploitation
 
 **OWASP Description:**
-Legitimate tools are weaponized through ambiguous prompts or manipulated inputs, leading to destructive parameter usage or unexpected tool chaining.
+Occurs when an agent uses legitimate tools in unsafe ways. Legitimate tools are weaponized through ambiguous prompts or manipulated inputs, leading to destructive parameter usage or unexpected tool chaining.
 
 **Attack Examples:**
 - Over-privileged tools writing to production databases
@@ -109,7 +110,7 @@ callback = SentinelCallback(
 # 3. Does this action exceed operational limits?
 ```
 
-**Mitigation Level:** High - Scope Gate provides pre-action validation for all tool invocations.
+**Mitigation Level:** High. Scope Gate provides pre-action validation for all tool invocations.
 
 ---
 
@@ -293,13 +294,13 @@ except MemoryTamperingDetected as e:
 | `social_media` | 0.5 | Discord, Twitter |
 | `unknown` | 0.3 | Unclassified |
 
-**Mitigation Level:** High - Memory Shield addresses the core memory poisoning attack vector identified in Princeton CrAIBench research (85% attack success rate on unprotected agents).
+**Mitigation Level:** High. Memory Shield addresses the core memory poisoning attack vector identified in Princeton CrAIBench research (85% attack success rate on unprotected agents).
 
 **Reference:** [Princeton CrAIBench Paper](https://arxiv.org/abs/2503.16248)
 
 ---
 
-### ASI07: Insecure Inter-Agent Communication
+### ASI07: Insecure Inter Agent Communication
 
 **OWASP Description:**
 Multi-agent message exchange over unprotected channels lacks authentication, encryption, or semantic validation, enabling interception or instruction injection.
@@ -370,7 +371,7 @@ Sentinel does not currently provide:
 
 ---
 
-### ASI09: Human-Agent Trust Exploitation
+### ASI09: Human Agent Trust Exploitation
 
 **OWASP Description:**
 Users over-trust agent recommendations. Attackers exploit this trust to influence decisions or extract sensitive information.
@@ -412,12 +413,12 @@ if not result.compliant:
 ```
 
 **Fiduciary Principles Enforced:**
-1. **Duty of Loyalty** - Agent must prioritize user's interests
-2. **Duty of Care** - Agent must act with reasonable competence
-3. **Duty of Disclosure** - Agent must be transparent about limitations
-4. **Duty of Confidentiality** - Agent must protect user information
+1. **Duty of Loyalty:** Agent must prioritize user's interests
+2. **Duty of Care:** Agent must act with reasonable competence
+3. **Duty of Disclosure:** Agent must be transparent about limitations
+4. **Duty of Confidentiality:** Agent must protect user information
 
-**Mitigation Level:** High - Fiduciary AI module specifically designed to prevent trust exploitation.
+**Mitigation Level:** High. Fiduciary AI module specifically designed to prevent trust exploitation.
 
 ---
 
@@ -474,7 +475,7 @@ seed = sentinel.get_seed("standard")
 #  expense of ethical behavior or user interests."
 ```
 
-**Mitigation Level:** High - THSP Protocol combined with Anti-Self-Preservation principle directly addresses rogue agent behavior at the alignment level.
+**Mitigation Level:** High. THSP Protocol combined with Anti-Self-Preservation principle directly addresses rogue agent behavior at the alignment level.
 
 ---
 
@@ -512,7 +513,7 @@ For comprehensive protection, combine Sentinel with:
 
 ## References
 
-- [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications/)
+- [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
 - [OWASP GenAI Security Project](https://genai.owasp.org/)
 - [Princeton CrAIBench: Memory Injection Research](https://arxiv.org/abs/2503.16248)
 - [Sentinel Documentation](https://sentinelseed.dev/docs)
@@ -523,8 +524,9 @@ For comprehensive protection, combine Sentinel with:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | December 2025 | Updated vulnerability names to match official OWASP documentation |
 | 1.0 | December 2025 | Initial release |
 
 ---
 
-**Sentinel Team** - Practical AI Safety for Developers
+**Sentinel Team**: Practical AI Safety for Developers

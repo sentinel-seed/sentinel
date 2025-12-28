@@ -7,6 +7,7 @@ Currently supported:
 - EU AI Act (Regulation 2024/1689)
 - CSA AI Controls Matrix (AICM v1.0)
 - OWASP LLM Top 10 (2025)
+- OWASP Top 10 for Agentic Applications (2026)
 
 Usage:
     # EU AI Act
@@ -47,6 +48,23 @@ Usage:
     from sentinelseed.compliance import check_owasp_llm_compliance
     result = check_owasp_llm_compliance(content, validation_type="output")
 
+    # OWASP Top 10 for Agentic Applications (2026)
+    from sentinelseed.compliance import OWASPAgenticChecker
+
+    checker = OWASPAgenticChecker()
+
+    # Get complete coverage assessment
+    result = checker.get_coverage_assessment()
+    print(f"Overall coverage: {result.overall_coverage}%")
+
+    # Check specific vulnerability
+    finding = checker.check_vulnerability(AgenticVulnerability.ASI01_AGENT_GOAL_HIJACK)
+    print(f"Protected: {finding.protected}")
+
+    # Or use convenience function:
+    from sentinelseed.compliance import get_owasp_agentic_coverage
+    result = get_owasp_agentic_coverage()
+
     # With fail_closed mode (strict):
     checker = EUAIActComplianceChecker(api_key="...", fail_closed=True)
 """
@@ -86,6 +104,18 @@ from sentinelseed.compliance.owasp_llm import (
     check_owasp_llm_compliance,
 )
 
+from sentinelseed.compliance.owasp_agentic import (
+    OWASPAgenticChecker,
+    AgenticComplianceResult,
+    AgenticFinding,
+    AgenticVulnerability,
+    CoverageLevel as AgenticCoverageLevel,
+    VULNERABILITY_COVERAGE,
+    VULNERABILITY_NAMES,
+    get_owasp_agentic_coverage,
+    check_agentic_vulnerability,
+)
+
 __all__ = [
     # EU AI Act
     "EUAIActComplianceChecker",
@@ -116,4 +146,14 @@ __all__ = [
     "OWASPCoverageLevel",
     "VULNERABILITY_GATE_MAPPING",
     "check_owasp_llm_compliance",
+    # OWASP Agentic Top 10
+    "OWASPAgenticChecker",
+    "AgenticComplianceResult",
+    "AgenticFinding",
+    "AgenticVulnerability",
+    "AgenticCoverageLevel",
+    "VULNERABILITY_COVERAGE",
+    "VULNERABILITY_NAMES",
+    "get_owasp_agentic_coverage",
+    "check_agentic_vulnerability",
 ]
