@@ -37,6 +37,7 @@ export interface Translations {
   // Settings
   enabled: string;
   enableProtection: string;
+  disableProtection: string;
   notifications: string;
   showNotifications: string;
   language: string;
@@ -298,6 +299,7 @@ const translations: Record<Language, Translations> = {
     // Settings
     enabled: 'Enabled',
     enableProtection: 'Enable protection',
+    disableProtection: 'Disable protection',
     notifications: 'Notifications',
     showNotifications: 'Show desktop notifications',
     language: 'Language',
@@ -558,6 +560,7 @@ const translations: Record<Language, Translations> = {
     // Settings
     enabled: 'Activado',
     enableProtection: 'Activar protección',
+    disableProtection: 'Desactivar protección',
     notifications: 'Notificaciones',
     showNotifications: 'Mostrar notificaciones de escritorio',
     language: 'Idioma',
@@ -818,6 +821,7 @@ const translations: Record<Language, Translations> = {
     // Settings
     enabled: 'Ativado',
     enableProtection: 'Ativar proteção',
+    disableProtection: 'Desativar proteção',
     notifications: 'Notificações',
     showNotifications: 'Mostrar notificações na área de trabalho',
     language: 'Idioma',

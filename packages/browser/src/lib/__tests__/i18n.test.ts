@@ -122,6 +122,8 @@ describe('i18n', () => {
       setLanguage('en');
       expect(t('settings')).toBe('Settings');
       expect(t('enabled')).toBe('Enabled');
+      expect(t('enableProtection')).toBe('Enable protection');
+      expect(t('disableProtection')).toBe('Disable protection');
       expect(t('notifications')).toBe('Notifications');
       expect(t('language')).toBe('Language');
     });
