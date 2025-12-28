@@ -9,8 +9,8 @@ import {
   DEFAULT_MCP_GATEWAY_SETTINGS,
   DEFAULT_APPROVAL_SETTINGS,
 } from '../types';
-import { setLanguage, t, getAvailableLanguages, detectBrowserLanguage, Language as LangType } from '../lib/i18n';
-import { AgentsTab, MCPTab, RulesTab, HistoryTab } from './components';
+import { setLanguage, t, detectBrowserLanguage } from '../lib/i18n';
+import { AgentsTab, MCPTab, RulesTab, HistoryTab, SettingsTab } from './components';
 
 type TabType = 'dashboard' | 'agents' | 'mcp' | 'rules' | 'history' | 'alerts' | 'settings';
 
@@ -162,7 +162,7 @@ const App: React.FC = () => {
         {activeTab === 'rules' && <RulesTab onStatsUpdate={loadData} />}
         {activeTab === 'history' && <HistoryTab onStatsUpdate={loadData} />}
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
-        {activeTab === 'settings' && <SettingsPanel settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
+        {activeTab === 'settings' && <SettingsTab settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
       </div>
 
       {/* Footer */}
@@ -346,130 +346,6 @@ const Alerts: React.FC<{ alerts: Alert[]; onRefresh: () => void }> = ({ alerts, 
           )}
         </div>
       ))}
-    </div>
-  );
-};
-
-// Settings Component
-const SettingsPanel: React.FC<{
-  settings: Settings | null;
-  onUpdate: (s: Settings) => void;
-  onLanguageChange: () => void;
-}> = ({ settings, onUpdate, onLanguageChange }) => {
-  const updateSetting = async (key: keyof Settings, value: unknown) => {
-    const updated = await chrome.runtime.sendMessage({
-      type: 'UPDATE_SETTINGS',
-      payload: { [key]: value },
-    });
-    onUpdate(updated);
-
-    // If language changed, update the i18n system and trigger re-render
-    if (key === 'language') {
-      setLanguage(value as LangType);
-      onLanguageChange();
-    }
-  };
-
-  if (!settings) return null;
-
-  const availableLanguages = getAvailableLanguages();
-
-  return (
-    <div>
-      <div style={styles.settingRow}>
-        <div>
-          <div style={styles.settingLabel}>{t('enabled')}</div>
-          <div style={styles.settingDesc}>{t('enableProtection')}</div>
-        </div>
-        <button
-          onClick={() => updateSetting('enabled', !settings.enabled)}
-          style={{
-            ...styles.toggle,
-            background: settings.enabled
-              ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-              : 'rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          {settings.enabled ? 'ON' : 'OFF'}
-        </button>
-      </div>
-
-      <div style={styles.settingRow}>
-        <div>
-          <div style={styles.settingLabel}>{t('protectionLevel')}</div>
-          <div style={styles.settingDesc}>{t('howAggressive')}</div>
-        </div>
-        <select
-          value={settings.protectionLevel}
-          onChange={(e) => updateSetting('protectionLevel', e.target.value)}
-          style={styles.select}
-        >
-          <option value="basic">{t('basic')}</option>
-          <option value="recommended">{t('recommended')}</option>
-          <option value="maximum">{t('maximum')}</option>
-        </select>
-      </div>
-
-      <div style={styles.settingRow}>
-        <div>
-          <div style={styles.settingLabel}>{t('notifications')}</div>
-          <div style={styles.settingDesc}>{t('showNotifications')}</div>
-        </div>
-        <button
-          onClick={() => updateSetting('notifications', !settings.notifications)}
-          style={{
-            ...styles.toggle,
-            background: settings.notifications
-              ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-              : 'rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          {settings.notifications ? 'ON' : 'OFF'}
-        </button>
-      </div>
-
-      <div style={styles.settingRow}>
-        <div>
-          <div style={styles.settingLabel}>{t('language')}</div>
-          <div style={styles.settingDesc}>{t('selectLanguage')}</div>
-        </div>
-        <select
-          value={settings.language}
-          onChange={(e) => updateSetting('language', e.target.value)}
-          style={styles.select}
-        >
-          {availableLanguages.map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div style={{ ...styles.section, marginTop: 20 }}>
-        <h3 style={styles.sectionTitle}>{t('protectedPlatforms')}</h3>
-        <div style={styles.platforms}>
-          {['chatgpt', 'claude', 'gemini', 'perplexity', 'deepseek', 'grok', 'copilot', 'meta'].map((platform) => (
-            <div
-              key={platform}
-              onClick={() => {
-                const isActive = settings.platforms.includes(platform);
-                const newPlatforms = isActive
-                  ? settings.platforms.filter((p) => p !== platform)
-                  : [...settings.platforms, platform];
-                updateSetting('platforms', newPlatforms);
-              }}
-              style={{
-                ...styles.platformChip,
-                ...(settings.platforms.includes(platform) ? styles.platformChipActive : {}),
-                cursor: 'pointer',
-              }}
-            >
-              {platform.charAt(0).toUpperCase() + platform.slice(1)}
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

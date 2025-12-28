@@ -10,6 +10,7 @@ export { AgentsTab } from './AgentsTab';
 export { MCPTab } from './MCPTab';
 export { RulesTab } from './RulesTab';
 export { HistoryTab } from './HistoryTab';
+export { SettingsTab } from './SettingsTab';
 export { ApprovalModal } from './ApprovalModal';
 
 // Shared styles

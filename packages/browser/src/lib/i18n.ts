@@ -216,6 +216,53 @@ export interface Translations {
   processedAt: string;
   method: string;
   ruleId: string;
+
+  // Settings Advanced (Phase 5)
+  general: string;
+  advanced: string;
+  agentShieldDesc: string;
+  enableAgentShield: string;
+  trustThreshold: string;
+  trustThresholdDesc: string;
+  memoryInjectionDetection: string;
+  memoryInjectionDesc: string;
+  maxAutoApproveValue: string;
+  maxAutoApproveDesc: string;
+  mcpGatewayDesc: string;
+  enableMCPGateway: string;
+  interceptAll: string;
+  interceptAllDesc: string;
+  trustedServers: string;
+  trustedServersDesc: string;
+  serverNamePlaceholder: string;
+  noTrustedServers: string;
+  approval: string;
+  approvalDesc: string;
+  enableApproval: string;
+  defaultAction: string;
+  defaultActionDesc: string;
+  approvalTimeout: string;
+  approvalTimeoutDesc: string;
+  approvalNotifications: string;
+  approvalNotificationsDesc: string;
+  dataManagement: string;
+  exportSettings: string;
+  exportSettingsDesc: string;
+  importSettings: string;
+  importSettingsDesc: string;
+  importFailed: string;
+  resetSettings: string;
+  resetSettingsDesc: string;
+  reset: string;
+  resetSettingsConfirm: string;
+  clearAllData: string;
+  clearAllDataDesc: string;
+  clearData: string;
+  clearAllDataConfirm: string;
+  about: string;
+  version: string;
+  website: string;
+  github: string;
 }
 
 const translations: Record<Language, Translations> = {
@@ -430,6 +477,53 @@ const translations: Record<Language, Translations> = {
     processedAt: 'Processed At',
     method: 'Method',
     ruleId: 'Rule ID',
+
+    // Settings Advanced (Phase 5)
+    general: 'General',
+    advanced: 'Advanced',
+    agentShieldDesc: 'Protect against malicious AI agent actions and memory injection attacks.',
+    enableAgentShield: 'Enable Agent Shield protection',
+    trustThreshold: 'Trust Threshold',
+    trustThresholdDesc: 'Minimum trust level for auto-approval (0-100)',
+    memoryInjectionDetection: 'Memory Injection Detection',
+    memoryInjectionDesc: 'Scan for prompt injection attempts in agent memory',
+    maxAutoApproveValue: 'Max Auto-Approve Value',
+    maxAutoApproveDesc: 'Maximum transaction value (USD) for auto-approval',
+    mcpGatewayDesc: 'Monitor and control MCP server tool calls.',
+    enableMCPGateway: 'Enable MCP Gateway protection',
+    interceptAll: 'Intercept All Tools',
+    interceptAllDesc: 'Intercept all tool calls, not just high-risk ones',
+    trustedServers: 'Trusted Servers',
+    trustedServersDesc: 'Servers that bypass approval requirements',
+    serverNamePlaceholder: 'Enter server name...',
+    noTrustedServers: 'No trusted servers configured',
+    approval: 'Approval',
+    approvalDesc: 'Configure how actions are approved or rejected.',
+    enableApproval: 'Enable approval system',
+    defaultAction: 'Default Action',
+    defaultActionDesc: 'Action when no rules match',
+    approvalTimeout: 'Approval Timeout',
+    approvalTimeoutDesc: 'Time before pending approvals expire',
+    approvalNotifications: 'Approval Notifications',
+    approvalNotificationsDesc: 'Show notifications for pending approvals',
+    dataManagement: 'Data Management',
+    exportSettings: 'Export Settings',
+    exportSettingsDesc: 'Download your settings as a JSON file',
+    importSettings: 'Import Settings',
+    importSettingsDesc: 'Load settings from a JSON file',
+    importFailed: 'Failed to import settings. Please check the file format.',
+    resetSettings: 'Reset to Defaults',
+    resetSettingsDesc: 'Restore all settings to their default values',
+    reset: 'Reset',
+    resetSettingsConfirm: 'Are you sure you want to reset all settings to defaults? This cannot be undone.',
+    clearAllData: 'Clear All Data',
+    clearAllDataDesc: 'Delete all extension data including history and rules',
+    clearData: 'Clear Data',
+    clearAllDataConfirm: 'Are you sure you want to delete ALL extension data? This will remove history, rules, and settings. This cannot be undone.',
+    about: 'About',
+    version: 'Version',
+    website: 'Website',
+    github: 'GitHub',
   },
 
   es: {
@@ -643,6 +737,53 @@ const translations: Record<Language, Translations> = {
     processedAt: 'Procesado En',
     method: 'Método',
     ruleId: 'ID de Regla',
+
+    // Settings Advanced (Phase 5)
+    general: 'General',
+    advanced: 'Avanzado',
+    agentShieldDesc: 'Proteger contra acciones maliciosas de agentes de IA y ataques de inyección de memoria.',
+    enableAgentShield: 'Habilitar protección Agent Shield',
+    trustThreshold: 'Umbral de Confianza',
+    trustThresholdDesc: 'Nivel mínimo de confianza para auto-aprobación (0-100)',
+    memoryInjectionDetection: 'Detección de Inyección de Memoria',
+    memoryInjectionDesc: 'Escanear intentos de inyección de prompt en la memoria del agente',
+    maxAutoApproveValue: 'Valor Máximo de Auto-Aprobación',
+    maxAutoApproveDesc: 'Valor máximo de transacción (USD) para auto-aprobación',
+    mcpGatewayDesc: 'Monitorear y controlar llamadas de herramientas de servidores MCP.',
+    enableMCPGateway: 'Habilitar protección MCP Gateway',
+    interceptAll: 'Interceptar Todas las Herramientas',
+    interceptAllDesc: 'Interceptar todas las llamadas de herramientas, no solo las de alto riesgo',
+    trustedServers: 'Servidores Confiables',
+    trustedServersDesc: 'Servidores que no requieren aprobación',
+    serverNamePlaceholder: 'Ingrese nombre del servidor...',
+    noTrustedServers: 'No hay servidores confiables configurados',
+    approval: 'Aprobación',
+    approvalDesc: 'Configurar cómo se aprueban o rechazan las acciones.',
+    enableApproval: 'Habilitar sistema de aprobación',
+    defaultAction: 'Acción Predeterminada',
+    defaultActionDesc: 'Acción cuando ninguna regla coincide',
+    approvalTimeout: 'Tiempo de Espera de Aprobación',
+    approvalTimeoutDesc: 'Tiempo antes de que expiren las aprobaciones pendientes',
+    approvalNotifications: 'Notificaciones de Aprobación',
+    approvalNotificationsDesc: 'Mostrar notificaciones para aprobaciones pendientes',
+    dataManagement: 'Gestión de Datos',
+    exportSettings: 'Exportar Configuración',
+    exportSettingsDesc: 'Descargar tu configuración como archivo JSON',
+    importSettings: 'Importar Configuración',
+    importSettingsDesc: 'Cargar configuración desde un archivo JSON',
+    importFailed: 'Error al importar configuración. Por favor verifica el formato del archivo.',
+    resetSettings: 'Restablecer Valores Predeterminados',
+    resetSettingsDesc: 'Restaurar toda la configuración a sus valores predeterminados',
+    reset: 'Restablecer',
+    resetSettingsConfirm: '¿Estás seguro de que deseas restablecer toda la configuración? Esto no se puede deshacer.',
+    clearAllData: 'Borrar Todos los Datos',
+    clearAllDataDesc: 'Eliminar todos los datos de la extensión incluyendo historial y reglas',
+    clearData: 'Borrar Datos',
+    clearAllDataConfirm: '¿Estás seguro de que deseas eliminar TODOS los datos de la extensión? Esto eliminará historial, reglas y configuración. No se puede deshacer.',
+    about: 'Acerca de',
+    version: 'Versión',
+    website: 'Sitio Web',
+    github: 'GitHub',
   },
 
   pt: {
@@ -856,6 +997,53 @@ const translations: Record<Language, Translations> = {
     processedAt: 'Processado Em',
     method: 'Método',
     ruleId: 'ID da Regra',
+
+    // Settings Advanced (Phase 5)
+    general: 'Geral',
+    advanced: 'Avançado',
+    agentShieldDesc: 'Proteger contra ações maliciosas de agentes de IA e ataques de injeção de memória.',
+    enableAgentShield: 'Ativar proteção Agent Shield',
+    trustThreshold: 'Limite de Confiança',
+    trustThresholdDesc: 'Nível mínimo de confiança para auto-aprovação (0-100)',
+    memoryInjectionDetection: 'Detecção de Injeção de Memória',
+    memoryInjectionDesc: 'Escanear tentativas de injeção de prompt na memória do agente',
+    maxAutoApproveValue: 'Valor Máximo de Auto-Aprovação',
+    maxAutoApproveDesc: 'Valor máximo de transação (USD) para auto-aprovação',
+    mcpGatewayDesc: 'Monitorar e controlar chamadas de ferramentas de servidores MCP.',
+    enableMCPGateway: 'Ativar proteção MCP Gateway',
+    interceptAll: 'Interceptar Todas as Ferramentas',
+    interceptAllDesc: 'Interceptar todas as chamadas de ferramentas, não apenas as de alto risco',
+    trustedServers: 'Servidores Confiáveis',
+    trustedServersDesc: 'Servidores que não requerem aprovação',
+    serverNamePlaceholder: 'Digite o nome do servidor...',
+    noTrustedServers: 'Nenhum servidor confiável configurado',
+    approval: 'Aprovação',
+    approvalDesc: 'Configurar como as ações são aprovadas ou rejeitadas.',
+    enableApproval: 'Ativar sistema de aprovação',
+    defaultAction: 'Ação Padrão',
+    defaultActionDesc: 'Ação quando nenhuma regra corresponde',
+    approvalTimeout: 'Tempo Limite de Aprovação',
+    approvalTimeoutDesc: 'Tempo antes das aprovações pendentes expirarem',
+    approvalNotifications: 'Notificações de Aprovação',
+    approvalNotificationsDesc: 'Mostrar notificações para aprovações pendentes',
+    dataManagement: 'Gerenciamento de Dados',
+    exportSettings: 'Exportar Configurações',
+    exportSettingsDesc: 'Baixar suas configurações como arquivo JSON',
+    importSettings: 'Importar Configurações',
+    importSettingsDesc: 'Carregar configurações de um arquivo JSON',
+    importFailed: 'Falha ao importar configurações. Por favor verifique o formato do arquivo.',
+    resetSettings: 'Restaurar Padrões',
+    resetSettingsDesc: 'Restaurar todas as configurações para seus valores padrão',
+    reset: 'Restaurar',
+    resetSettingsConfirm: 'Tem certeza que deseja restaurar todas as configurações para os padrões? Esta ação não pode ser desfeita.',
+    clearAllData: 'Limpar Todos os Dados',
+    clearAllDataDesc: 'Excluir todos os dados da extensão incluindo histórico e regras',
+    clearData: 'Limpar Dados',
+    clearAllDataConfirm: 'Tem certeza que deseja excluir TODOS os dados da extensão? Isso removerá histórico, regras e configurações. Esta ação não pode ser desfeita.',
+    about: 'Sobre',
+    version: 'Versão',
+    website: 'Site',
+    github: 'GitHub',
   },
 };
 
