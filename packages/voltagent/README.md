@@ -263,12 +263,12 @@ interface SentinelGuardrailConfig {
 ## Requirements
 
 - Node.js >= 18.0.0
-- VoltAgent >= 0.1.0
+- VoltAgent >= 1.0.0 (tested with @voltagent/core v1.5.2)
 
 ## Related Packages
 
-- [`sentinelseed`](https://www.npmjs.com/package/sentinelseed) - Python package
-- [`@sentinelseed/elizaos-plugin`](https://www.npmjs.com/package/@sentinelseed/elizaos-plugin) - ElizaOS integration
+- [`sentinelseed`](https://www.npmjs.com/package/sentinelseed): Python package
+- [`@sentinelseed/elizaos-plugin`](https://www.npmjs.com/package/@sentinelseed/elizaos-plugin): ElizaOS integration
 
 ## Links
 
@@ -278,7 +278,7 @@ interface SentinelGuardrailConfig {
 
 ## License
 
-MIT License - see [LICENSE](./LICENSE) for details.
+MIT License (see [LICENSE](./LICENSE) for details)
 
 ---
 

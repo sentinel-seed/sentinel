@@ -9,9 +9,12 @@ import type {
   SentinelGuardrailConfig,
   VoltAgentOutputArgs,
   VoltAgentOutputResult,
+  VoltAgentOutputStreamArgs,
+  VoltAgentOutputStreamResult,
   GuardrailAction,
   PIIType,
 } from '../types';
+import type { VoltAgentTextStreamPart } from '@voltagent/core';
 import { validateTHSP } from '../validators/thsp';
 import { validateOWASP } from '../validators/owasp';
 import { detectPII, redactPII, maskPII } from '../validators/pii';
@@ -47,20 +50,25 @@ const DEFAULT_OUTPUT_CONFIG: Required<
 
 /**
  * VoltAgent output guardrail interface.
+ * Compatible with VoltAgent's OutputGuardrail type.
  */
 export interface SentinelOutputGuardrail<T = unknown> {
+  /** Guardrail unique identifier */
+  id?: string;
   /** Guardrail name */
   name: string;
   /** Guardrail description */
-  description: string;
+  description?: string;
   /** Optional tags for categorization */
   tags?: string[];
+  /** Severity level */
+  severity?: 'info' | 'warning' | 'critical';
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
   /** Handler function that performs validation */
   handler: (args: VoltAgentOutputArgs<T>) => Promise<VoltAgentOutputResult<T>>;
-  /** Optional stream handler for streaming responses */
-  streamHandler?: (args: {
-    textStream: AsyncIterable<string>;
-  }) => AsyncGenerator<string, void, unknown>;
+  /** VoltAgent-compatible stream handler for streaming responses */
+  streamHandler?: (args: VoltAgentOutputStreamArgs) => VoltAgentOutputStreamResult;
 }
 
 // =============================================================================
@@ -105,7 +113,8 @@ export function createSentinelOutputGuardrail<T = unknown>(
 
     async handler(args: VoltAgentOutputArgs<T>): Promise<VoltAgentOutputResult<T>> {
       const startTime = Date.now();
-      const { outputText, output } = args;
+      const outputText = args.outputText ?? '';
+      const { output } = args;
 
       // Handle empty output
       if (!outputText || typeof outputText !== 'string') {
@@ -225,39 +234,73 @@ export function createSentinelOutputGuardrail<T = unknown>(
       }
     },
 
-    // Stream handler for real-time PII redaction
-    async *streamHandler({ textStream }): AsyncGenerator<string, void, unknown> {
+    // VoltAgent-compatible stream handler for real-time PII redaction
+    streamHandler(args: VoltAgentOutputStreamArgs): VoltAgentOutputStreamResult {
+      const { part, state } = args;
+
+      // Initialize state if needed
+      if (!state._sentinelBuffer) {
+        state._sentinelBuffer = '';
+        state._sentinelPIICount = 0;
+      }
+
+      // If PII redaction not enabled, pass through
       if (!mergedConfig.enablePII || !mergedConfig.redactPII) {
-        // Pass through if PII redaction not enabled
-        for await (const chunk of textStream) {
-          yield chunk;
+        return part;
+      }
+
+      // Only process text-delta parts (the ones that contain actual text)
+      // VoltAgentTextStreamPart is a union type - we only care about text-delta
+      if (part.type !== 'text-delta') {
+        return part;
+      }
+
+      // Get text from the text-delta part
+      // Note: ai-sdk's text-delta has 'text' property, not 'textDelta'
+      const textDeltaPart = part as unknown as { type: 'text-delta'; text: string };
+      const textDelta = textDeltaPart.text;
+
+      if (!textDelta) {
+        return part;
+      }
+
+      // Add to buffer
+      state._sentinelBuffer = (state._sentinelBuffer as string) + textDelta;
+
+      // Process buffer for PII
+      const bufferText = state._sentinelBuffer as string;
+      const { safeText, remainder } = findSafeSplit(bufferText);
+
+      if (safeText.length === 0) {
+        // Keep buffering, return null to suppress this part
+        return null;
+      }
+
+      // Redact PII in the safe portion
+      const redacted = redactPII(safeText, config.piiTypes, config.redactionFormat);
+
+      // Track if PII was found
+      const piiResult = detectPII(safeText, config.piiTypes);
+      if (piiResult.detected) {
+        state._sentinelPIICount = (state._sentinelPIICount as number) + piiResult.count;
+
+        // Log if enabled
+        if (config.logger) {
+          config.logger('PII redacted in stream', {
+            count: piiResult.count,
+            types: piiResult.types,
+          });
         }
-        return;
       }
 
-      // Buffer for potential PII spanning chunks
-      let buffer = '';
+      // Update buffer with remainder
+      state._sentinelBuffer = remainder;
 
-      for await (const chunk of textStream) {
-        buffer += chunk;
-
-        // Find safe split point (avoid splitting mid-PII)
-        const { safeText, remainder } = findSafeSplit(buffer);
-
-        if (safeText.length > 0) {
-          // Redact PII in the safe portion
-          const redacted = redactPII(safeText, config.piiTypes, config.redactionFormat);
-          yield redacted;
-        }
-
-        buffer = remainder;
-      }
-
-      // Process remaining buffer
-      if (buffer.length > 0) {
-        const redacted = redactPII(buffer, config.piiTypes, config.redactionFormat);
-        yield redacted;
-      }
+      // Return modified text-delta part with redacted text
+      return {
+        ...part,
+        text: redacted,
+      } as VoltAgentTextStreamPart;
     },
   };
 }

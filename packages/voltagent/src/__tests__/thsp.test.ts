@@ -9,7 +9,7 @@ import {
   validateTHSP,
   quickCheck,
   getFailedGates,
-  gatePasssed,
+  gatePassed,
   getBuiltinPatterns,
   getPatternCount,
 } from '../validators/thsp';
@@ -345,15 +345,15 @@ describe('getFailedGates', () => {
   });
 });
 
-describe('gatePasssed', () => {
+describe('gatePassed', () => {
   it('should return true for passing gate', () => {
     const gates = { truth: 'pass' as const, harm: 'fail' as const, scope: 'pass' as const, purpose: 'pass' as const };
-    expect(gatePasssed(gates, 'truth')).toBe(true);
+    expect(gatePassed(gates, 'truth')).toBe(true);
   });
 
   it('should return false for failing gate', () => {
     const gates = { truth: 'pass' as const, harm: 'fail' as const, scope: 'pass' as const, purpose: 'pass' as const };
-    expect(gatePasssed(gates, 'harm')).toBe(false);
+    expect(gatePassed(gates, 'harm')).toBe(false);
   });
 });
 

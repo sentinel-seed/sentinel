@@ -283,7 +283,7 @@ export function getFailedGates(gates: THSPGates): (keyof THSPGates)[] {
  * @param gate - Gate name to check
  * @returns true if the gate passed
  */
-export function gatePasssed(gates: THSPGates, gate: keyof THSPGates): boolean {
+export function gatePassed(gates: THSPGates, gate: keyof THSPGates): boolean {
   return gates[gate] === 'pass';
 }
 

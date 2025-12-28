@@ -10,7 +10,7 @@ export {
   validateTHSP,
   quickCheck,
   getFailedGates,
-  gatePasssed,
+  gatePassed,
   getBuiltinPatterns,
   getPatternCount as getTHSPPatternCount,
 } from './thsp';

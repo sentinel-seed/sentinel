@@ -14,12 +14,22 @@ import {
 } from '../guardrails/input';
 import type { VoltAgentInputArgs } from '../types';
 
-// Helper to create input args
+// Helper to create VoltAgent-compatible input args
 function createInputArgs(inputText: string): VoltAgentInputArgs {
   return {
+    // Input content
     inputText,
     input: inputText,
     originalInput: inputText,
+    originalInputText: inputText,
+    // Required context from VoltAgentGuardrailContext
+    agent: { name: 'test-agent' },
+    context: {
+      operationId: 'test-op-001',
+      userId: 'test-user',
+      conversationId: 'test-conv',
+    },
+    operation: 'generateText',
   };
 }
 
@@ -153,8 +163,12 @@ describe('createSentinelInputGuardrail', () => {
       const guardrail = createSentinelInputGuardrail();
       const result = await guardrail.handler({
         inputText: null as unknown as string,
-        input: null,
-        originalInput: null,
+        input: null as unknown as string,
+        originalInput: null as unknown as string,
+        originalInputText: null as unknown as string,
+        agent: { name: 'test-agent' },
+        context: { operationId: 'test-op-001' },
+        operation: 'generateText',
       });
 
       expect(result.pass).toBe(true);

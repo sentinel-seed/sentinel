@@ -372,93 +372,67 @@ export interface StreamingChunkResult {
 // VoltAgent Compatibility Types
 // =============================================================================
 
+// Re-export public VoltAgent types for full compatibility
+export type {
+  InputGuardrailArgs as VoltAgentInputArgs,
+  InputGuardrailResult as VoltAgentInputResult,
+  OutputGuardrailArgs as VoltAgentOutputArgs,
+  OutputGuardrailResult as VoltAgentOutputResult,
+  VoltAgentTextStreamPart,
+  GuardrailContext as VoltAgentGuardrailContext,
+} from '@voltagent/core';
+
 /**
- * Input guardrail arguments from VoltAgent.
- * Matches VoltAgent's InputGuardrailArgs interface.
+ * VoltAgent operation types.
  */
-export interface VoltAgentInputArgs {
-  /** Extracted text from input */
-  inputText: string;
-  /** Full input object */
-  input: unknown;
-  /** Original unmodified input */
-  originalInput: unknown;
-  /** Agent reference */
-  agent?: unknown;
+export type VoltAgentOperationType = 'generateText' | 'streamText' | 'generateObject' | 'streamObject';
+
+/**
+ * Output guardrail stream arguments.
+ * Structurally compatible with VoltAgent's OutputGuardrailStreamArgs.
+ * Note: This type is not publicly exported by @voltagent/core, so we define it here.
+ */
+export interface VoltAgentOutputStreamArgs {
+  /** The agent instance */
+  agent: unknown;
   /** Operation context */
-  context?: unknown;
-  /** Type of operation */
-  operationType?: string;
+  context: unknown;
+  /** Operation type */
+  operation: VoltAgentOperationType;
+  /** The current stream part being processed */
+  part: import('@voltagent/core').VoltAgentTextStreamPart;
+  /** All stream parts received so far */
+  streamParts: import('@voltagent/core').VoltAgentTextStreamPart[];
+  /** Mutable state object for maintaining context across stream parts */
+  state: Record<string, unknown>;
+  /** Function to abort the stream */
+  abort: (reason?: string) => never;
 }
 
 /**
- * Input guardrail result for VoltAgent.
- * Matches VoltAgent's InputGuardrailResult interface.
+ * Output guardrail stream result type.
  */
-export interface VoltAgentInputResult {
-  /** Whether validation passed */
-  pass: boolean;
-  /** Action to take */
-  action?: GuardrailAction;
-  /** Human-readable message */
-  message?: string;
-  /** Additional metadata */
-  metadata?: Record<string, unknown>;
-  /** Modified input (for 'modify' action) */
-  modifiedInput?: unknown;
-}
+export type VoltAgentOutputStreamResult =
+  | import('@voltagent/core').VoltAgentTextStreamPart
+  | null
+  | undefined
+  | Promise<import('@voltagent/core').VoltAgentTextStreamPart | null | undefined>;
 
 /**
- * Output guardrail arguments from VoltAgent.
- * Matches VoltAgent's OutputGuardrailArgs interface.
+ * Stream handler function type for output guardrails.
+ * Structurally compatible with VoltAgent's OutputGuardrailStreamHandler.
  */
-export interface VoltAgentOutputArgs<T = unknown> {
-  /** Output object */
-  output: T;
-  /** Extracted text from output */
-  outputText: string;
-  /** Original output */
-  originalOutput: T;
-  /** Token usage metadata */
-  usage?: {
-    promptTokens?: number;
-    completionTokens?: number;
-    totalTokens?: number;
-  };
-  /** Finish reason */
-  finishReason?: string;
-  /** Warnings */
-  warnings?: unknown[];
-  /** Agent reference */
-  agent?: unknown;
-  /** Operation context */
-  context?: unknown;
-}
+export type VoltAgentStreamHandler = (args: VoltAgentOutputStreamArgs) => VoltAgentOutputStreamResult;
 
 /**
- * Output guardrail result for VoltAgent.
- * Matches VoltAgent's OutputGuardrailResult interface.
- */
-export interface VoltAgentOutputResult<T = unknown> {
-  /** Whether validation passed */
-  pass: boolean;
-  /** Action to take */
-  action?: GuardrailAction;
-  /** Human-readable message */
-  message?: string;
-  /** Additional metadata */
-  metadata?: Record<string, unknown>;
-  /** Modified output (for 'modify' action) */
-  modifiedOutput?: T;
-}
-
-/**
- * Streaming text source for output guardrails.
+ * Legacy streaming text source (for backwards compatibility).
+ * @deprecated Use VoltAgentStreamHandler instead for VoltAgent integration.
  */
 export type TextStream = AsyncIterable<string>;
 
 /**
- * Stream handler function type for output guardrails.
+ * Legacy stream handler function type (for backwards compatibility).
+ * @deprecated Use VoltAgentStreamHandler instead for VoltAgent integration.
  */
 export type StreamHandler = (args: {
   textStream: TextStream;

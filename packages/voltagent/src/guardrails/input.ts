@@ -50,15 +50,21 @@ const DEFAULT_CONFIG: Required<
 
 /**
  * VoltAgent input guardrail interface.
- * This matches VoltAgent's expected guardrail structure.
+ * Compatible with VoltAgent's InputGuardrail type.
  */
 export interface SentinelInputGuardrail {
+  /** Guardrail unique identifier */
+  id?: string;
   /** Guardrail name */
   name: string;
   /** Guardrail description */
-  description: string;
+  description?: string;
   /** Optional tags for categorization */
   tags?: string[];
+  /** Severity level */
+  severity?: 'info' | 'warning' | 'critical';
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
   /** Handler function that performs validation */
   handler: (args: VoltAgentInputArgs) => Promise<VoltAgentInputResult>;
 }

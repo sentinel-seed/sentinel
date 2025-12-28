@@ -78,7 +78,7 @@ export {
   validateTHSP,
   quickCheck,
   getFailedGates,
-  gatePasssed,
+  gatePassed,
   getBuiltinPatterns,
   getTHSPPatternCount,
 } from './validators';
@@ -142,11 +142,16 @@ export type {
   TextStream,
   StreamHandler,
 
-  // VoltAgent compatibility
+  // VoltAgent compatibility (re-exported from @voltagent/core)
+  VoltAgentOperationType,
   VoltAgentInputArgs,
   VoltAgentInputResult,
   VoltAgentOutputArgs,
   VoltAgentOutputResult,
+  VoltAgentTextStreamPart,
+  VoltAgentOutputStreamArgs,
+  VoltAgentOutputStreamResult,
+  VoltAgentStreamHandler,
 } from './types';
 
 // =============================================================================
@@ -166,4 +171,4 @@ export const PACKAGE_NAME = '@sentinelseed/voltagent';
 /**
  * Supported VoltAgent version range.
  */
-export const VOLTAGENT_VERSION_RANGE = '>=0.1.0';
+export const VOLTAGENT_VERSION_RANGE = '>=1.0.0';

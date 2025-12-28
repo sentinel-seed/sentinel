@@ -9,18 +9,26 @@
  *
  * Run:
  *   npx ts-node examples/basic-agent.ts
+ *
+ * Note: For development, imports use relative paths.
+ * In production, use: import { ... } from '@sentinelseed/voltagent';
  */
 
 import { Agent } from '@voltagent/core';
+import { openai } from '@ai-sdk/openai';
 import {
   createSentinelGuardrails,
   createSentinelInputGuardrail,
   createSentinelOutputGuardrail,
+  createChatGuardrails,
+  createAgentGuardrails,
+  createPrivacyGuardrails,
+  createDevelopmentGuardrails,
   validateTHSP,
   validateOWASP,
   detectPII,
   redactPII,
-} from '@sentinelseed/voltagent';
+} from '../src';
 
 // =============================================================================
 // Example 1: Quick Start with Bundle
@@ -36,6 +44,8 @@ const { inputGuardrails, outputGuardrails } = createSentinelGuardrails({
 
 const safeAgent = new Agent({
   name: 'safe-agent',
+  model: openai('gpt-4o-mini'),
+  instructions: 'You are a helpful assistant.',
   inputGuardrails,
   outputGuardrails,
 });
@@ -67,6 +77,8 @@ const customOutputGuard = createSentinelOutputGuardrail({
 
 const customAgent = new Agent({
   name: 'custom-agent',
+  model: openai('gpt-4o-mini'),
+  instructions: 'You are a helpful assistant with custom guardrails.',
   inputGuardrails: [customInputGuard],
   outputGuardrails: [customOutputGuard],
 });
@@ -107,7 +119,7 @@ const piiContent = 'Contact me at john.doe@example.com or call 555-123-4567';
 console.log('Testing PII detection:');
 console.log(`  Content: "${piiContent}"`);
 const piiResult = detectPII(piiContent);
-console.log(`  Has PII: ${piiResult.hasPII}`);
+console.log(`  Has PII: ${piiResult.detected}`);
 console.log(`  Types found: ${piiResult.matches.map((m) => m.type).join(', ')}`);
 
 const redactedContent = redactPII(piiContent);
@@ -119,13 +131,6 @@ console.log(`  Redacted: "${redactedContent}"\n`);
 
 console.log('Example 4: Preset Bundles');
 console.log('=========================\n');
-
-import {
-  createChatGuardrails,
-  createAgentGuardrails,
-  createPrivacyGuardrails,
-  createDevelopmentGuardrails,
-} from '@sentinelseed/voltagent';
 
 // For chat applications (focus on jailbreak prevention)
 const chatGuards = createChatGuardrails();
