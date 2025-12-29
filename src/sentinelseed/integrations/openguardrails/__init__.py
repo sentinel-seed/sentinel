@@ -610,12 +610,20 @@ class SentinelGuardrailsWrapper:
                 sentinel_result = self.sentinel.validate(content)
                 result["sentinel_result"] = sentinel_result
 
-                # Validate sentinel_result structure before using
-                if sentinel_result is not None and isinstance(sentinel_result, dict):
+                # Handle sentinel_result which can be:
+                # - tuple: (is_safe: bool, violations: List[str]) from Sentinel.validate()
+                # - dict: {"safe": bool, ...} from custom validators
+                if isinstance(sentinel_result, tuple) and len(sentinel_result) >= 1:
+                    # Sentinel.validate() returns (is_safe, violations)
+                    is_safe = sentinel_result[0]
+                    if not is_safe:
+                        result["safe"] = False
+                        result["blocked_by"].append("sentinel")
+                elif isinstance(sentinel_result, dict):
                     if not sentinel_result.get("safe", True):
                         result["safe"] = False
                         result["blocked_by"].append("sentinel")
-                else:
+                elif sentinel_result is not None:
                     logger.warning(
                         f"Unexpected sentinel_result type: {type(sentinel_result)}"
                     )

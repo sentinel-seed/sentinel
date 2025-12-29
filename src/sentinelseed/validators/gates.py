@@ -79,15 +79,30 @@ class TruthGate(BaseGate):
     # Role manipulation patterns (identity deception)
     # These ask the AI to falsely claim to be something it's not
     ROLE_MANIPULATION_PATTERNS = [
-        r"you\s+are\s+now\s+(DAN|jailbroken|unrestricted|unfiltered|evil|unlimited)",
-        r"you\s+are\s+now\s+in\s+(developer|debug|admin|god|unrestricted|jailbreak)\s+mode",
-        r"(enter|switch\s+to|enable|activate)\s+(developer|debug|admin|god|unrestricted|jailbreak)\s+mode",
+        r"you\s+are\s+(now\s+)?(DAN|jailbroken|unrestricted|unfiltered|evil|unlimited)",
+        r"you\s+are\s+now\s+in\s+(developer|debug|admin|god|unrestricted|jailbreak|testing)\s+mode",
+        r"(enter|switch\s+to|enable|activate)\s+(developer|debug|admin|god|unrestricted|jailbreak|DAN|sudo|root)\s+mode",
+        r"(access|enter)\s+(developer|admin|testing)\s+(settings|mode)",
         r"pretend\s+(that\s+)?you\s+(have\s+no|don'?t\s+have(\s+any)?)\s+(restrictions|rules|limits|guidelines|filters)",
+        r"pretend\s+(that\s+)?you\s+(are|is)\s+DAN",
         r"act\s+(like|as)\s+(an?\s+)?(AI|assistant|bot|you)\s+(with(out)?|without)\s+(any\s+)?(restrictions|rules|limits|limitations)",
-        r"act\s+as\s+(an?\s+)?(unrestricted|unfiltered|unlimited|evil)\s+(AI|assistant|bot)",
+        r"act\s+as\s+(an?\s+)?(unrestricted|unfiltered|unlimited|evil|unethical|hacker|malicious)\s+(AI|assistant|bot)",
+        r"act\s+as\s+DAN",
         r"you\s+(can|will|must)\s+(now\s+)?(do|say)\s+anything",
         r"from\s+now\s+on,?\s+you\s+(have\s+no|are\s+free\s+from)\s+(restrictions|rules|limits)",
         r"imagine\s+(you\s+)?(are|were)\s+(an?\s+)?(evil|unrestricted|unfiltered)\s+(AI|assistant|bot)",
+        # Version-specific DAN patterns
+        r"you\s+are\s+DAN\s*\d+(\.\d+)?",
+        # Persona patterns
+        r"be\s+a\s+(malicious|evil|hacker)\s+(assistant|AI)",
+        r"you\s+are\s+(now\s+)?a\s+hacker\s+AI",
+        r"roleplay\s+as\s+(an\s+)?(AI|assistant)\s+(with(out)?|without|with\s+no)\s+(ethical|any)\s+(guidelines?|rules?)",
+        r"you\s+are\s+(VENOM|EVIL|DARK|CHAOS|DOOM)",
+        r"AI\s+from\s+a\s+dystopia",
+        # Mode activation patterns
+        r"(sudo|root)\s+(mode\s+)?activated",
+        r"(root|admin)\s+access\s+granted",
+        r"testing\s+mode,?\s+(no|without)\s+restrictions",
     ]
 
     # Roleplay manipulation patterns (context deception)
@@ -101,6 +116,12 @@ class TruthGate(BaseGate):
         r"in\s+this\s+(story|scenario|game|roleplay),?\s+(you\s+)?(can|have\s+no|are\s+free)",
         r"what\s+if\s+you\s+(didn'?t|did\s+not|don'?t)\s+have\s+(any\s+)?(rules|restrictions|limits|guidelines)",
         r"what\s+would\s+(you\s+)?(say|do)\s+if\s+(you\s+)?(had\s+no|didn'?t\s+have)\s+(rules|restrictions)",
+        # Hypothetical framing patterns
+        r"hypothetically,?\s+(if|what\s+if)\s+you\s+had\s+no\s+restrict",
+        r"in\s+a\s+fictional\s+world\s+where\s+AI\s+has\s+no\s+limit",
+        r"for\s+educational\s+purposes\s+only,?\s+teach\s+me",
+        r"just\s+theoretically,?\s+how\s+would\s+one",
+        r"in\s+an\s+alternate\s+universe\s+where\s+this\s+is\s+legal",
     ]
 
     # Phrases that indicate potential misinformation
@@ -188,6 +209,11 @@ class HarmGate(BaseGate):
             r"instructions\s+for\s+(making|building)\s+(a\s+)?(bomb|weapon|explosive)",
             r"recipe\s+for\s+(a\s+)?(poison|drug|explosive)",
             r"here\s+(are|is)\s+instructions\s+for\s+(making|building)",
+            # Violence patterns
+            r"how\s+to\s+kill\s+someone",
+            r"how\s+to\s+murder",
+            r"ways\s+to\s+hurt\s+(someone|people)",
+            r"how\s+to\s+assault",
         ],
         "cyber": [
             r"here'?s?\s+(the\s+)?malware\s+code",
@@ -338,12 +364,18 @@ class ScopeGate(BaseGate):
         r"(please\s+)?ignore\s+(your\s+)?(previous\s+)?(instructions|rules)",
         r"(could|would)\s+you\s+(please\s+)?ignore\s+(your\s+)?(instructions|rules|guidelines|restrictions|safety)",
         r"(would\s+you\s+mind|can\s+you)\s+ignoring\s+(your\s+)?(safety\s+)?(guidelines|rules|restrictions)",
-        r"disregard\s+(all\s+)?(your\s+)?(instructions|rules|guidelines|programming|safety)",
-        r"forget\s+(everything|all)(\s+you\s+(were|have\s+been)\s+told)?",
-        r"override\s+(your\s+)?(programming|instructions|rules|safety)",
-        r"bypass\s+(your\s+)?(restrictions|filters|safety|guidelines|rules)",
+        r"disregard\s+(all\s+)?(your\s+)?(instructions|rules|guidelines|programming|safety|training|ethical)",
+        r"forget\s+(everything|all)(\s+(you\s+(were|have\s+been)\s+told|above))?",
+        r"override\s+(your\s+)?(programming|instructions|rules|safety|guidelines)",
+        r"bypass\s+(your\s+)?(restrictions|filters|safety|guidelines|rules|content\s+policy)",
         r"bypass\s+(the\s+)?(content\s+)?filter",
         r"do\s+not\s+follow\s+(your\s+)?(rules|guidelines|instructions)",
+        # Additional patterns from TypeScript
+        r"ignore\s+(the\s+)?(system\s+)?prompt",
+        r"cancel\s+(all\s+)?(previous\s+)?(commands|instructions)",
+        r"reset\s+to\s+(factory|default)\s+settings",
+        r"remove\s+(all\s+)?(safety\s+)?(filters?|restrictions?|guardrails?)",
+        r"start\s+fresh",
     ]
 
     # Prompt extraction patterns (accessing restricted information)
@@ -365,6 +397,22 @@ class ScopeGate(BaseGate):
         r"without\s+(any\s+)?(safety|content)\s+(filters?|restrictions?|guidelines)",
         r"no\s+(safety|content)\s+(filters?|restrictions?|guidelines)\s+(needed|required|necessary)",
         r"bypass\s+(the\s+)?(content\s+)?filter",
+    ]
+
+    # System prompt injection patterns (delimiters, markers, etc.)
+    SYSTEM_INJECTION_PATTERNS = [
+        r"---\s*END\s+(SYSTEM\s+)?PROMPT\s*---",
+        r"###\s*OVERRIDE\s*###",
+        r"<!--\s*(admin|system|root)\s+mode\s*-->",
+        r"\{\{\s*system\.(override|ignore|bypass)\s*\}\}",
+        r"%%\s*(ADMIN|SYSTEM|ROOT)_COMMAND\s*%%",
+        r"\[\s*(SYSTEM|ADMIN|ROOT)\s*\]",
+        r"```\s*(system|admin)\s*\n",
+        r"<\|im_start\|>\s*system",
+        r"<<\s*SYS\s*>>",
+        r"official\s+test,?\s+(bypass|ignore|disable)",
+        r"admin\s+rights?,?\s+show\s+me",
+        r"critical\s+situation.*disable\s+safety",
     ]
 
     # Indicators of overstepping
@@ -420,9 +468,10 @@ class ScopeGate(BaseGate):
         self.override_patterns = [re.compile(p, re.IGNORECASE) for p in self.INSTRUCTION_OVERRIDE_PATTERNS]
         self.extraction_patterns = [re.compile(p, re.IGNORECASE) for p in self.PROMPT_EXTRACTION_PATTERNS]
         self.bypass_patterns = [re.compile(p, re.IGNORECASE) for p in self.FILTER_BYPASS_PATTERNS]
+        self.injection_patterns = [re.compile(p, re.IGNORECASE) for p in self.SYSTEM_INJECTION_PATTERNS]
 
     def check(self, text: str) -> Tuple[bool, List[str]]:
-        """Check for scope violations including instruction override and prompt extraction."""
+        """Check for scope violations including instruction override, prompt extraction, and system injection."""
         violations = []
         text_lower = text.lower()
 
@@ -446,6 +495,11 @@ class ScopeGate(BaseGate):
         for pattern in self.bypass_patterns:
             if pattern.search(text):
                 violations.append(f"Scope (filter_bypass): {pattern.pattern}")
+
+        # Check system injection patterns
+        for pattern in self.injection_patterns:
+            if pattern.search(text):
+                violations.append(f"Scope (system_injection): {pattern.pattern}")
 
         # Check scope indicators
         for indicator in self.SCOPE_INDICATORS:
@@ -822,6 +876,7 @@ class THSPValidator:
         "instruction_override",
         "prompt_extraction",
         "filter_bypass",
+        "system_injection",
     ]
 
     def __init__(self):

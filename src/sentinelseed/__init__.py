@@ -111,7 +111,7 @@ from sentinelseed.database import (
     is_safe_query,
 )
 
-__version__ = "2.13.0"
+__version__ = "2.17.0"
 
 
 def get_seed(level: str = "standard") -> str:

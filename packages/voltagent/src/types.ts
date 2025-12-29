@@ -31,8 +31,10 @@ export type GateStatus = 'pass' | 'fail' | 'unknown';
 export type GuardrailAction = 'allow' | 'block' | 'modify';
 
 /**
- * THSP (Truth, Harm, Scope, Purpose) gate statuses.
+ * THSP (Truth, Harm, Scope, Purpose) gate statuses with Jailbreak detection.
  * Each gate represents a dimension of AI safety validation.
+ *
+ * @since 0.2.0 - Added jailbreak gate for dedicated prompt injection detection
  */
 export interface THSPGates {
   /** Truth gate: Validates factual accuracy and authenticity */
@@ -43,6 +45,8 @@ export interface THSPGates {
   scope: GateStatus;
   /** Purpose gate: Validates legitimate beneficial intent */
   purpose: GateStatus;
+  /** Jailbreak gate: Detects prompt injection and jailbreak attempts (v0.2.0+) */
+  jailbreak: GateStatus;
 }
 
 // =============================================================================

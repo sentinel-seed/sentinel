@@ -1,9 +1,24 @@
 /**
  * Shared THSP patterns for both linter and analyzer
  *
+ * Patterns are imported from @anthropic/sentinel-core for consistency across
+ * all Sentinel packages. This ensures the same detection rules everywhere.
+ *
  * These patterns are used for heuristic analysis when LLM is not available.
- * They have ~50% accuracy - semantic analysis is recommended for production.
  */
+
+// Import patterns and validation from sentinel-core (source of truth)
+import {
+    validateTHSP,
+    quickCheck,
+    // Pattern exports for reference/extension
+    INSTRUCTION_OVERRIDE_PATTERNS,
+    ROLE_MANIPULATION_PATTERNS,
+    FILTER_BYPASS_PATTERNS,
+    HARM_PATTERNS,
+    DECEPTION_PATTERNS,
+    PURPOSE_PATTERNS,
+} from '@anthropic/sentinel-core';
 
 export interface THSPPattern {
     pattern: RegExp;
@@ -13,105 +28,86 @@ export interface THSPPattern {
 }
 
 /**
+ * Helper to create THSPPattern entries from core patterns
+ */
+function createPatterns(
+    patterns: RegExp[],
+    gate: THSPPattern['gate'],
+    message: string,
+    severity: THSPPattern['severity']
+): THSPPattern[] {
+    return patterns.map(pattern => ({
+        pattern,
+        gate,
+        message,
+        severity
+    }));
+}
+
+/**
  * THSP Gate patterns for detecting potential safety issues
+ * Built from @anthropic/sentinel-core patterns
  */
 export const THSP_PATTERNS: THSPPattern[] = [
     // === SCOPE GATE (Jailbreak attempts) ===
-    {
-        pattern: /ignore\s+(previous|all|your)\s+(instructions?|guidelines?|rules?)/gi,
-        gate: 'scope',
-        message: 'Potential jailbreak: instruction override',
-        severity: 'warning'
-    },
-    {
-        pattern: /you\s+are\s+now\s+(DAN|an?\s+AI\s+without|evil|unrestricted)/gi,
-        gate: 'scope',
-        message: 'Potential jailbreak: persona switch',
-        severity: 'warning'
-    },
-    {
-        pattern: /pretend\s+(you('re)?|to\s+be)\s+(an?\s+)?(evil|unrestricted|unfiltered)/gi,
-        gate: 'scope',
-        message: 'Potential jailbreak: evil persona',
-        severity: 'warning'
-    },
-    {
-        pattern: /(developer|sudo|god|admin)\s+mode/gi,
-        gate: 'scope',
-        message: 'Potential jailbreak: mode switch',
-        severity: 'warning'
-    },
-    {
-        pattern: /(disable|bypass|ignore|override)\s+(safety|content\s+filter|guardrails?|restrictions?)/gi,
-        gate: 'scope',
-        message: 'Potential jailbreak: safety bypass',
-        severity: 'error'
-    },
+    ...createPatterns(
+        INSTRUCTION_OVERRIDE_PATTERNS,
+        'scope',
+        'Potential jailbreak: instruction override',
+        'warning'
+    ),
+    ...createPatterns(
+        ROLE_MANIPULATION_PATTERNS,
+        'scope',
+        'Potential jailbreak: persona switch',
+        'warning'
+    ),
+    ...createPatterns(
+        FILTER_BYPASS_PATTERNS,
+        'scope',
+        'Potential jailbreak: safety bypass',
+        'error'
+    ),
 
     // === HARM GATE (Harmful content) ===
-    {
-        pattern: /\b(make|create|build|construct)\s+(a\s+)?(bomb|explosive|weapon|poison)/gi,
-        gate: 'harm',
-        message: 'Potential harmful content: weapons/explosives',
-        severity: 'error'
-    },
-    {
-        pattern: /\bhow\s+to\s+(hack|exploit|breach|attack|compromise)\b/gi,
-        gate: 'harm',
-        message: 'Potential harmful content: hacking instructions',
-        severity: 'warning'
-    },
-    {
-        pattern: /\b(write|create|develop)\s+(malware|ransomware|keylogger|virus|trojan)/gi,
-        gate: 'harm',
-        message: 'Potential harmful content: malicious software',
-        severity: 'error'
-    },
-    {
-        pattern: /\b(phishing|spear\s*phishing)\s+(email|template|attack)/gi,
-        gate: 'harm',
-        message: 'Potential harmful content: phishing',
-        severity: 'error'
-    },
+    ...createPatterns(
+        HARM_PATTERNS.physical || [],
+        'harm',
+        'Potential harmful content: weapons/violence',
+        'error'
+    ),
+    ...createPatterns(
+        HARM_PATTERNS.cyber || [],
+        'harm',
+        'Potential harmful content: hacking/malware',
+        'error'
+    ),
+    ...createPatterns(
+        HARM_PATTERNS.malware || [],
+        'harm',
+        'Potential harmful content: malicious software',
+        'error'
+    ),
 
     // === TRUTH GATE (Deception) ===
-    {
-        pattern: /\b(create|write|generate)\s+(fake|forged?|counterfeit)\s+(document|id|identity|news|article)/gi,
-        gate: 'truth',
-        message: 'Potential deception: fake documents',
-        severity: 'warning'
-    },
-    {
-        pattern: /\bimpersonate\s+(a\s+)?(person|someone|official|authority)/gi,
-        gate: 'truth',
-        message: 'Potential deception: impersonation',
-        severity: 'warning'
-    },
-    {
-        pattern: /\b(spread|create)\s+(misinformation|disinformation|false\s+information)/gi,
-        gate: 'truth',
-        message: 'Potential deception: misinformation',
-        severity: 'warning'
-    },
+    ...createPatterns(
+        DECEPTION_PATTERNS,
+        'truth',
+        'Potential deception: fake content',
+        'warning'
+    ),
 
     // === PURPOSE GATE (Purposeless/destructive) ===
-    {
-        pattern: /\b(destroy|delete|erase)\s+(everything|all(\s+files)?)\s+(for\s+)?(no\s+reason|fun|chaos)/gi,
-        gate: 'purpose',
-        message: 'Purposeless destructive action',
-        severity: 'warning'
-    },
-    {
-        pattern: /\bjust\s+(do|execute|run)\s+it\s+(without|no)\s+(asking|questions?|reason)/gi,
-        gate: 'purpose',
-        message: 'Action without clear purpose',
-        severity: 'info'
-    }
+    ...createPatterns(
+        PURPOSE_PATTERNS,
+        'purpose',
+        'Purposeless or destructive action',
+        'warning'
+    ),
 ];
 
 /**
  * Patterns that indicate good safety practices
- * Note: Using 'i' flag only (case-insensitive) since we use .test() which doesn't need global flag
  */
 export const SAFE_PATTERNS: RegExp[] = [
     /sentinel\s+alignment\s+seed/i,
@@ -120,22 +116,43 @@ export const SAFE_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Check content against THSP patterns
+ * Check content against THSP patterns using sentinel-core validation
+ *
+ * This now uses the centralized validation from sentinel-core for consistency.
  */
 export function checkPatterns(content: string): {
     issues: string[];
     gates: { truth: boolean; harm: boolean; scope: boolean; purpose: boolean };
 } {
-    const issues: string[] = [];
-    const gates = { truth: true, harm: true, scope: true, purpose: true };
+    // Use core validation for accurate results
+    const result = validateTHSP(content);
 
-    for (const { pattern, gate, message } of THSP_PATTERNS) {
-        // Reset regex lastIndex for global patterns
-        pattern.lastIndex = 0;
-        if (pattern.test(content)) {
-            issues.push(`${message} [heuristic]`);
-            gates[gate] = false;
-        }
+    // Map core result to vscode format
+    const issues: string[] = [];
+    const gates = {
+        truth: result.truth.passed,
+        harm: result.harm.passed,
+        scope: result.scope.passed,
+        purpose: result.purpose.passed
+    };
+
+    // Collect issues from all gates
+    if (!result.truth.passed) {
+        result.truth.violations.forEach(v => issues.push(`${v} [heuristic]`));
+    }
+    if (!result.harm.passed) {
+        result.harm.violations.forEach(v => issues.push(`${v} [heuristic]`));
+    }
+    if (!result.scope.passed) {
+        result.scope.violations.forEach(v => issues.push(`${v} [heuristic]`));
+    }
+    if (!result.purpose.passed) {
+        result.purpose.violations.forEach(v => issues.push(`${v} [heuristic]`));
+    }
+    if (!result.jailbreak.passed) {
+        result.jailbreak.violations.forEach(v => issues.push(`${v} [heuristic]`));
+        // Jailbreak failures also fail scope gate for backwards compatibility
+        gates.scope = false;
     }
 
     return { issues, gates };
@@ -143,8 +160,13 @@ export function checkPatterns(content: string): {
 
 /**
  * Check if content contains Sentinel seed
- * Note: SAFE_PATTERNS use 'i' flag only, no need for lastIndex reset
  */
 export function hasSentinelSeed(content: string): boolean {
     return SAFE_PATTERNS.some(pattern => pattern.test(content));
 }
+
+/**
+ * Quick check for obviously unsafe content
+ * Re-exported from sentinel-core for convenience
+ */
+export { quickCheck };

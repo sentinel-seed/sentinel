@@ -271,6 +271,9 @@
     "package": "vsce package",
     "publish": "vsce publish"
   },
+  "dependencies": {
+    "@anthropic/sentinel-core": "file:../core"
+  },
   "devDependencies": {
     "@types/glob": "^8.x",
     "@types/mocha": "^10.x",

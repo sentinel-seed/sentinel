@@ -517,27 +517,29 @@ class TestSentinelGuardrailsWrapperResults:
         assert "sentinel" in result["blocked_by"]
 
     def test_validate_sentinel_invalid_result_type(self):
-        """Should handle non-dict sentinel result."""
+        """Should handle non-dict sentinel result with fail-closed behavior."""
         mock_sentinel = Mock()
         mock_sentinel.validate.return_value = "invalid"
 
         wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
         result = wrapper.validate("test content")
 
-        # Should not block, but result is stored
-        assert result["safe"] is True
+        # Fail-closed: invalid result type should block (safe=False)
+        assert result["safe"] is False
+        assert "sentinel_invalid_result" in result["blocked_by"]
         assert result["sentinel_result"] == "invalid"
 
     def test_validate_sentinel_exception_handled(self):
-        """Should handle Sentinel exceptions gracefully."""
+        """Should handle Sentinel exceptions with fail-closed behavior."""
         mock_sentinel = Mock()
         mock_sentinel.validate.side_effect = Exception("Sentinel error")
 
         wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
         result = wrapper.validate("test content")
 
-        # Should not crash, defaults to safe
-        assert result["safe"] is True
+        # Fail-closed: exception should block (safe=False) for security
+        assert result["safe"] is False
+        assert "sentinel_error" in result["blocked_by"]
         assert result["sentinel_result"] is None
 
     @pytest.mark.skipif(not REQUESTS_AVAILABLE, reason="requests not installed")
@@ -558,7 +560,7 @@ class TestSentinelGuardrailsWrapperResults:
         assert result["openguardrails_result"]["safe"] is True
 
     def test_validate_require_both_one_blocks(self):
-        """With require_both=True, one blocker should not block."""
+        """With require_both=True, both validators must PASS (any failure blocks)."""
         mock_sentinel = Mock()
         mock_sentinel.validate.return_value = {"safe": False}
 
@@ -568,9 +570,10 @@ class TestSentinelGuardrailsWrapperResults:
         )
         result = wrapper.validate("test content")
 
-        # Only sentinel blocked, but require_both means we need both
-        assert result["safe"] is True
-        assert result["blocked_by"] == []
+        # require_both=True means both must PASS, so if sentinel fails, result is blocked
+        # This is the same as default behavior - any failure blocks for security
+        assert result["safe"] is False
+        assert "sentinel" in result["blocked_by"]
 
 
 class TestConvenienceFunctions:

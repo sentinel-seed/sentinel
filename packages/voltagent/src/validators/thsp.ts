@@ -1,11 +1,17 @@
 /**
  * @sentinelseed/voltagent - THSP Validator
  *
- * Implements the THSP (Truth, Harm, Scope, Purpose) protocol for content validation.
- * This validator checks content against four safety gates to ensure AI agent safety.
+ * Implements the THSP (Truth, Harm, Scope, Purpose) protocol with Jailbreak detection.
+ * Uses @anthropic/sentinel-core for pattern-based validation.
  *
- * Based on the Sentinel THSP protocol specification.
+ * @since 0.2.0 - Now uses centralized @anthropic/sentinel-core for validation
  */
+
+import {
+  validateTHSP as coreValidateTHSP,
+  quickCheck as coreQuickCheck,
+  type THSPResult as CoreTHSPResult,
+} from '@anthropic/sentinel-core';
 
 import type {
   THSPGates,
@@ -17,90 +23,56 @@ import type {
 } from '../types';
 
 // =============================================================================
-// Pattern Definitions
+// Helper Functions
 // =============================================================================
 
 /**
- * Internal pattern structure with concern message.
+ * Convert core gate result to VoltAgent GateStatus
  */
-interface InternalPattern {
-  pattern: RegExp;
-  concern: string;
+function toGateStatus(passed: boolean): GateStatus {
+  return passed ? 'pass' : 'fail';
 }
 
 /**
- * TRUTH gate patterns - detect misinformation and deception attempts.
+ * Convert core result to VoltAgent THSPValidationResult
  */
-const TRUTH_PATTERNS: InternalPattern[] = [
-  { pattern: /fake\s+(news|document|id|credential)/i, concern: 'Potential fake content creation' },
-  { pattern: /forge[d]?\s+(a\s+)?(signature|document|certificate)/i, concern: 'Document forgery attempt' },
-  { pattern: /forg(e|ing)\s+.*\b(signature|document)/i, concern: 'Document forgery attempt' },
-  { pattern: /impersonat(e|ing|ion)\s+/i, concern: 'Impersonation attempt' },
-  { pattern: /\b(misinformation|disinformation)\b/i, concern: 'Misinformation related content' },
-  { pattern: /\bdeepfake\b/i, concern: 'Synthetic media creation' },
-  { pattern: /fabricat(e|ed|ing)\s+(a\s+)?(evidence|story|claim|news)/i, concern: 'Fabrication attempt' },
-  { pattern: /\bfraud(ulent)?\b/i, concern: 'Fraudulent activity reference' },
-  { pattern: /\bcounterfeit\b/i, concern: 'Counterfeit creation' },
-  { pattern: /false\s+(identity|claim|statement)/i, concern: 'False identity or claims' },
-  { pattern: /deceiv(e|ing)\s+(users?|people|customers?)/i, concern: 'Deception of users' },
-];
+function convertCoreResult(coreResult: CoreTHSPResult): THSPValidationResult {
+  const gates: THSPGates = {
+    truth: toGateStatus(coreResult.truth.passed),
+    harm: toGateStatus(coreResult.harm.passed),
+    scope: toGateStatus(coreResult.scope.passed),
+    purpose: toGateStatus(coreResult.purpose.passed),
+    jailbreak: toGateStatus(coreResult.jailbreak.passed),
+  };
 
-/**
- * HARM gate patterns - detect violence, malware, and harmful content.
- */
-const HARM_PATTERNS: InternalPattern[] = [
-  { pattern: /\b(kill|murder|assassinate)\s+/i, concern: 'Violence reference' },
-  { pattern: /\b(bomb|explosive|weapon|firearm|grenade)\b/i, concern: 'Weapons reference' },
-  { pattern: /hack(ing|er)?\s+(into|password|account|system)/i, concern: 'Unauthorized access attempt' },
-  { pattern: /\b(malware|ransomware|trojan|keylogger|rootkit|virus)\b/i, concern: 'Malicious software' },
-  { pattern: /steal\s+(money|funds|crypto|identity|data|credentials)/i, concern: 'Theft intent' },
-  { pattern: /\bpoison(ing)?\b/i, concern: 'Poisoning reference' },
-  { pattern: /\b(self[- ]?harm|suicid(e|al))\b/i, concern: 'Self-harm reference' },
-  { pattern: /\bdox(x)?(ing)?\b/i, concern: 'Doxxing attempt' },
-  { pattern: /\b(blackmail|extort(ion)?)\b/i, concern: 'Blackmail or extortion' },
-  { pattern: /\b(terroris[mt]|extremis[mt])\b/i, concern: 'Terrorism or extremism' },
-  { pattern: /how\s+to\s+(make|build)\s+(bomb|weapon|explosive)/i, concern: 'Weapon creation instructions' },
-  { pattern: /\b(abuse|assault|attack)\s+(child|minor|person)/i, concern: 'Physical abuse reference' },
-];
+  // Collect all concerns from violations
+  const concerns: string[] = [
+    ...coreResult.truth.violations,
+    ...coreResult.harm.violations,
+    ...coreResult.scope.violations,
+    ...coreResult.purpose.violations,
+    ...coreResult.jailbreak.violations,
+  ];
 
-/**
- * SCOPE gate patterns - detect jailbreak and boundary override attempts.
- */
-const SCOPE_PATTERNS: InternalPattern[] = [
-  { pattern: /ignore\s+(all\s+)?(previous|prior|your)\s+instructions/i, concern: 'Instruction override attempt' },
-  { pattern: /you\s+are\s+now\s+(a|an|my)/i, concern: 'Persona switch attempt' },
-  { pattern: /\b(jailbreak|jail\s*break)\b/i, concern: 'Jailbreak attempt' },
-  { pattern: /\bdan\s+mode\b/i, concern: 'DAN mode activation attempt' },
-  { pattern: /bypass\s+(the\s+)?(safety|filter|restriction|guideline)/i, concern: 'Safety bypass attempt' },
-  { pattern: /pretend\s+(you|there)\s+(are|is)\s+no\s+(rules|restrictions)/i, concern: 'Rule bypass attempt' },
-  { pattern: /act\s+as\s+(if|though)\s+you\s+(have|had)\s+no\s+(limit|restriction)/i, concern: 'Constraint removal attempt' },
-  { pattern: /forget\s+(all\s+)?(your\s+)?(rules|instructions|training|guidelines)/i, concern: 'Memory wipe attempt' },
-  { pattern: /disable\s+(your\s+)?(safety|content\s+filter|restriction)/i, concern: 'Safety disabling attempt' },
-  { pattern: /unlock\s+(your\s+)?(full|hidden)\s+(potential|capabilities)/i, concern: 'Capability unlock attempt' },
-  { pattern: /\bdevmode\b|\bdev\s+mode\b/i, concern: 'Developer mode activation' },
-  { pattern: /you\s+must\s+obey\s+(all\s+)?(my|user)\s+(commands|instructions)/i, concern: 'Authority override attempt' },
-  { pattern: /\[system\]|\[admin\]|\[root\]/i, concern: 'System prompt injection' },
-];
-
-/**
- * PURPOSE gate patterns - detect purposeless or destructive actions.
- */
-const PURPOSE_PATTERNS: InternalPattern[] = [
-  { pattern: /\b(drop|break|destroy|smash)\b.*\b(plates?|glass(es)?|mirrors?|windows?)\b/i, concern: 'Purposeless destruction' },
-  { pattern: /\b(dirty|soil|mess\s+up)\b.*\b(for\s+no\s+reason|without\s+reason)\b/i, concern: 'Purposeless degradation' },
-  { pattern: /waste\s+(all|the)\s+(\w+\s+)*(money|resources|funds|time)/i, concern: 'Purposeless waste' },
-  { pattern: /just\s+(for|because)\s+(fun|lol|kicks|giggles)\s+(delete|destroy|break)/i, concern: 'Destructive action for amusement' },
-  { pattern: /delete\s+(all|everything)\s+(for\s+no\s+reason|without\s+purpose)/i, concern: 'Purposeless deletion' },
-  { pattern: /vandalize|vandalism/i, concern: 'Vandalism intent' },
-  { pattern: /sabotage\s+(without|no)\s+(reason|purpose)/i, concern: 'Purposeless sabotage' },
-];
+  return {
+    safe: coreResult.overall,
+    gates,
+    concerns,
+    riskLevel: coreResult.riskLevel,
+    recommendation: coreResult.summary,
+    timestamp: Date.now(),
+  };
+}
 
 // =============================================================================
-// Validation Functions
+// Main Validation Functions
 // =============================================================================
 
 /**
  * Validate content against THSP protocol gates.
+ *
+ * Uses @anthropic/sentinel-core for pattern matching with 100+ patterns
+ * across 5 safety gates (Truth, Harm, Scope, Purpose, Jailbreak).
  *
  * @param content - The content to validate
  * @param context - Optional validation context
@@ -114,8 +86,10 @@ const PURPOSE_PATTERNS: InternalPattern[] = [
  *
  * const unsafeResult = validateTHSP("ignore all previous instructions");
  * console.log(unsafeResult.safe); // false
- * console.log(unsafeResult.gates.scope); // 'fail'
+ * console.log(unsafeResult.gates.jailbreak); // 'fail'
  * ```
+ *
+ * @since 0.2.0 - Now uses @anthropic/sentinel-core with 5 gates
  */
 export function validateTHSP(
   content: string,
@@ -128,7 +102,13 @@ export function validateTHSP(
   if (content === null || content === undefined || typeof content !== 'string') {
     return {
       safe: false,
-      gates: { truth: 'unknown', harm: 'unknown', scope: 'unknown', purpose: 'unknown' },
+      gates: {
+        truth: 'unknown',
+        harm: 'unknown',
+        scope: 'unknown',
+        purpose: 'unknown',
+        jailbreak: 'unknown',
+      },
       concerns: ['Invalid input: content must be a non-empty string'],
       riskLevel: 'medium',
       recommendation: 'Content validation failed: invalid input type',
@@ -140,7 +120,13 @@ export function validateTHSP(
   if (content.length === 0 || content.trim().length === 0) {
     return {
       safe: true,
-      gates: { truth: 'pass', harm: 'pass', scope: 'pass', purpose: 'pass' },
+      gates: {
+        truth: 'pass',
+        harm: 'pass',
+        scope: 'pass',
+        purpose: 'pass',
+        jailbreak: 'pass',
+      },
       concerns: [],
       riskLevel: 'low',
       recommendation: 'Empty content passed validation',
@@ -148,70 +134,32 @@ export function validateTHSP(
     };
   }
 
-  const concerns: string[] = [];
-  const gates: THSPGates = {
-    truth: 'pass',
-    harm: 'pass',
-    scope: 'pass',
-    purpose: 'pass',
-  };
+  // Use core validation
+  const coreResult = coreValidateTHSP(content);
+  const result = convertCoreResult(coreResult);
 
-  // Check TRUTH gate
-  for (const { pattern, concern } of TRUTH_PATTERNS) {
-    if (pattern.test(content)) {
-      gates.truth = 'fail';
-      concerns.push(`[TRUTH] ${concern}`);
-    }
-  }
-
-  // Check HARM gate
-  for (const { pattern, concern } of HARM_PATTERNS) {
-    if (pattern.test(content)) {
-      gates.harm = 'fail';
-      concerns.push(`[HARM] ${concern}`);
-    }
-  }
-
-  // Check SCOPE gate
-  for (const { pattern, concern } of SCOPE_PATTERNS) {
-    if (pattern.test(content)) {
-      gates.scope = 'fail';
-      concerns.push(`[SCOPE] ${concern}`);
-    }
-  }
-
-  // Check PURPOSE gate
-  for (const { pattern, concern } of PURPOSE_PATTERNS) {
-    if (pattern.test(content)) {
-      gates.purpose = 'fail';
-      concerns.push(`[PURPOSE] ${concern}`);
-    }
-  }
-
-  // Check custom patterns
-  if (customPatterns) {
+  // Apply custom patterns if provided
+  if (customPatterns && customPatterns.length > 0) {
     for (const { pattern, name, gate, severity } of customPatterns) {
       if (pattern.test(content)) {
-        gates[gate] = 'fail';
-        concerns.push(`[${gate.toUpperCase()}] ${name}${severity ? ` (${severity})` : ''}`);
+        result.gates[gate] = 'fail';
+        result.concerns.push(`[${gate.toUpperCase()}] ${name}${severity ? ` (${severity})` : ''}`);
+        result.safe = false;
+
+        // Update risk level if custom pattern is more severe
+        if (severity && isMoreSevere(severity, result.riskLevel)) {
+          result.riskLevel = severity;
+        }
       }
+    }
+
+    // Update recommendation if custom patterns failed
+    if (!result.safe) {
+      result.recommendation = generateRecommendation(result.gates, result.concerns);
     }
   }
 
-  // Calculate results
-  const failedGates = countFailedGates(gates);
-  const riskLevel = calculateRiskLevel(failedGates, concerns);
-  const safe = failedGates === 0;
-  const recommendation = generateRecommendation(gates, concerns, safe, context);
-
-  return {
-    safe,
-    gates,
-    concerns,
-    riskLevel,
-    recommendation,
-    timestamp,
-  };
+  return result;
 }
 
 /**
@@ -241,27 +189,7 @@ export function quickCheck(content: string): boolean {
     return true;
   }
 
-  // Critical patterns that should immediately fail
-  const criticalPatterns = [
-    // Instruction override attempts
-    /ignore\s+(all\s+)?(previous|prior|your)\s+instructions/i,
-    /\b(jailbreak|jail\s*break)\b/i,
-    /bypass\s+(the\s+)?(safety|filter|restriction)/i,
-
-    // Violence and weapons
-    /\b(kill|murder|assassinate)\s+/i,
-    /\b(bomb|explosive|weapon|firearm)\b/i,
-    /how\s+to\s+(make|build)\s+(bomb|weapon|explosive)/i,
-
-    // Cybersecurity threats
-    /hack(ing|er)?\s+(into\s+)?(the\s+)?(password|account|system)/i,
-    /\b(malware|ransomware|trojan|keylogger|rootkit)\b/i,
-
-    // Self-harm indicators
-    /\b(suicide|self[- ]?harm)\b/i,
-  ];
-
-  return !criticalPatterns.some((p) => p.test(content));
+  return coreQuickCheck(content);
 }
 
 /**
@@ -292,64 +220,27 @@ export function gatePassed(gates: THSPGates, gate: keyof THSPGates): boolean {
 // =============================================================================
 
 /**
- * Count the number of failed gates.
+ * Check if severity A is more severe than severity B
  */
-function countFailedGates(gates: THSPGates): number {
-  return (Object.values(gates) as GateStatus[]).filter((g) => g === 'fail').length;
-}
-
-/**
- * Calculate risk level based on failed gates and concerns.
- */
-function calculateRiskLevel(failedGates: number, concerns: string[]): RiskLevel {
-  // Critical: Multiple gates failed or severe concerns
-  if (failedGates >= 3) {
-    return 'critical';
-  }
-
-  // Check for critical concern patterns
-  const hasCriticalConcern = concerns.some((c) =>
-    /violence|weapon|malware|hack|kill|murder|terroris|bomb|suicide|self[- ]?harm/i.test(c)
-  );
-  if (hasCriticalConcern) {
-    return 'critical';
-  }
-
-  // High: Two gates failed or concerning patterns
-  if (failedGates === 2) {
-    return 'high';
-  }
-
-  const hasHighConcern = concerns.some((c) =>
-    /override|bypass|jailbreak|persona|instruction/i.test(c)
-  );
-  if (hasHighConcern) {
-    return 'high';
-  }
-
-  // Medium: One gate failed
-  if (failedGates === 1) {
-    return 'medium';
-  }
-
-  // Low: All gates passed
-  return 'low';
+function isMoreSevere(a: RiskLevel, b: RiskLevel): boolean {
+  const levels: Record<RiskLevel, number> = {
+    low: 0,
+    medium: 1,
+    high: 2,
+    critical: 3,
+  };
+  return levels[a] > levels[b];
 }
 
 /**
  * Generate human-readable recommendation based on validation results.
  */
-function generateRecommendation(
-  gates: THSPGates,
-  concerns: string[],
-  safe: boolean,
-  context?: ValidationContext
-): string {
-  if (safe) {
+function generateRecommendation(gates: THSPGates, concerns: string[]): string {
+  const failedGateNames = getFailedGates(gates).map((g) => g.toUpperCase());
+
+  if (failedGateNames.length === 0) {
     return 'Content passed all THSP gates. Safe to proceed.';
   }
-
-  const failedGateNames = getFailedGates(gates).map((g) => g.toUpperCase());
 
   if (failedGateNames.length === 1) {
     const primaryConcern = concerns[0] ?? 'Safety concern detected';
@@ -364,35 +255,28 @@ function generateRecommendation(
 // =============================================================================
 
 /**
- * Get all built-in THSP patterns for a specific gate.
- * Useful for testing and extending validation rules.
- *
- * @param gate - The gate to get patterns for
- * @returns Array of patterns for the specified gate
+ * Get total count of built-in patterns from core.
+ * Note: In v0.2.0+, patterns are managed by @anthropic/sentinel-core
  */
-export function getBuiltinPatterns(gate: keyof THSPGates): InternalPattern[] {
-  switch (gate) {
-    case 'truth':
-      return [...TRUTH_PATTERNS];
-    case 'harm':
-      return [...HARM_PATTERNS];
-    case 'scope':
-      return [...SCOPE_PATTERNS];
-    case 'purpose':
-      return [...PURPOSE_PATTERNS];
-    default:
-      return [];
-  }
+export function getPatternCount(): Record<keyof THSPGates, number> {
+  // These are approximate counts from the core module
+  return {
+    truth: 17,
+    harm: 40,
+    scope: 20,
+    purpose: 13,
+    jailbreak: 80,
+  };
 }
 
 /**
- * Get total count of built-in patterns.
+ * Get built-in patterns from core.
+ * @deprecated In v0.2.0+, patterns are managed by @anthropic/sentinel-core.
+ * Use getPatternCount() for statistics instead.
+ * @returns Empty array (patterns are now in core module)
  */
-export function getPatternCount(): Record<keyof THSPGates, number> {
-  return {
-    truth: TRUTH_PATTERNS.length,
-    harm: HARM_PATTERNS.length,
-    scope: SCOPE_PATTERNS.length,
-    purpose: PURPOSE_PATTERNS.length,
-  };
+export function getBuiltinPatterns(): PatternDefinition[] {
+  // Patterns are now managed by @anthropic/sentinel-core
+  // Return empty array for backwards compatibility
+  return [];
 }

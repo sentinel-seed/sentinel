@@ -138,7 +138,8 @@ describe('createSentinelInputGuardrail', () => {
           {
             pattern: /forbidden/i,
             name: 'Custom forbidden',
-            gate: 'truth',
+            gate: 'truth' as const,
+            severity: 'high' as const,
           },
         ],
       });
@@ -147,6 +148,7 @@ describe('createSentinelInputGuardrail', () => {
         createInputArgs('This contains forbidden content')
       );
 
+      // Custom patterns are applied by validateTHSP
       expect(result.pass).toBe(false);
     });
   });
