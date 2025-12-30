@@ -20,7 +20,7 @@ pip install coinbase-agentkit
 ### Basic Validation
 
 ```python
-from sentinelseed.integrations.x402 import (
+from sentinelseed.integrations.coinbase import (
     SentinelX402Middleware,
     PaymentRequirementsModel,
 )
@@ -115,7 +115,7 @@ config = get_default_config("paranoid")    # Maximum security
 ### Custom Configuration
 
 ```python
-from sentinelseed.integrations.x402 import (
+from sentinelseed.integrations.coinbase import (
     SentinelX402Config,
     SpendingLimits,
     ConfirmationThresholds,
@@ -283,7 +283,7 @@ for entry in entries:
 ## Error Handling
 
 ```python
-from sentinelseed.integrations.x402 import (
+from sentinelseed.integrations.coinbase import (
     PaymentBlockedError,
     PaymentRejectedError,
     PaymentConfirmationRequired,

@@ -453,6 +453,7 @@ pip install sentinelseed[garak]       # Garak (NVIDIA) security scanner
 pip install sentinelseed[pyrit]       # Microsoft PyRIT red teaming
 pip install sentinelseed[dspy]        # Stanford DSPy framework
 pip install sentinelseed[letta]       # Letta (MemGPT) agents
+pip install sentinelseed[coinbase]    # Coinbase AgentKit + x402 payments
 pip install sentinelseed[all]         # All integrations
 ```
 
@@ -931,6 +932,49 @@ agent = client.create_agent(
 response = client.send_message(agent.id, "Hello!")
 ```
 
+### Coinbase (AgentKit + x402)
+
+```python
+from sentinelseed.integrations.coinbase import (
+    # AgentKit guardrails
+    sentinel_action_provider,
+    TransactionValidator,
+    validate_address,
+    assess_defi_risk,
+    # x402 payment validation
+    SentinelX402Middleware,
+    # Configuration
+    get_default_config,
+)
+
+# AgentKit: Add security provider to your agent
+provider = sentinel_action_provider(security_profile="strict")
+# agent = AgentKit(action_providers=[provider])
+
+# Transaction validation
+config = get_default_config("standard")
+validator = TransactionValidator(config=config)
+result = validator.validate(
+    action="native_transfer",
+    from_address="0x123...",
+    to_address="0x456...",
+    amount=50.0,
+)
+
+# x402: Validate payments before execution
+middleware = SentinelX402Middleware()
+result = middleware.validate_payment(
+    endpoint="https://api.example.com/paid",
+    payment_requirements=payment_req,
+    wallet_address="0x123...",
+)
+
+if result.is_approved:
+    print("Payment safe to proceed")
+```
+
+Features: THSP validation for all AgentKit actions, EVM address validation (EIP-55), transaction limits, DeFi risk assessment, x402 HTTP 402 payment validation, spending tracking, 4 security profiles (permissive/standard/strict/paranoid).
+
 ### EU AI Act Compliance
 
 ```python
@@ -1032,7 +1076,8 @@ sentinel/
 │       ├── ros2/             # ROS2 Robotics
 │       ├── isaac_lab/        # NVIDIA Isaac Lab
 │       ├── garak/            # NVIDIA Garak
-│       └── ...               # +13 more integrations
+│       ├── coinbase/         # Coinbase AgentKit + x402
+│       └── ...               # +12 more integrations
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
