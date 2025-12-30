@@ -188,7 +188,16 @@ class HarmGateValidator(PaymentValidator):
         risk_factors: list[str] = []
 
         # Check recipient against blocklist
-        pay_to = payment_requirements.pay_to.lower()
+        pay_to = payment_requirements.pay_to
+        if pay_to is None:
+            issues.append("Missing recipient address")
+            return THSPGateResult(
+                gate=THSPGate.HARM,
+                passed=False,
+                reason="Missing recipient address",
+                details={"issues": issues},
+            )
+        pay_to = pay_to.lower()
         blocked_addresses = [addr.lower() for addr in config.blocked_addresses]
 
         if pay_to in blocked_addresses:
@@ -363,8 +372,13 @@ class PurposeGateValidator(PaymentValidator):
 
             # Check if recipient is familiar
             recipient_history = context.get("recipient_history", {})
-            pay_to = payment_requirements.pay_to.lower()
-            is_known_recipient = pay_to in recipient_history
+            pay_to_raw = payment_requirements.pay_to
+            if pay_to_raw is None:
+                concerns.append("Missing recipient address")
+                pay_to = ""
+            else:
+                pay_to = pay_to_raw.lower()
+            is_known_recipient = pay_to in recipient_history if pay_to else False
 
             if not is_known_recipient and not config.validation.allow_unknown_recipients:
                 concerns.append("Payment to unknown recipient address")
@@ -372,7 +386,8 @@ class PurposeGateValidator(PaymentValidator):
                 flags.append("First payment to this recipient")
 
         # Check payment description for red flags
-        description = payment_requirements.description.lower()
+        description_raw = payment_requirements.description
+        description = description_raw.lower() if description_raw else ""
         suspicious_terms = [
             "urgent", "immediate", "secret", "private key",
             "password", "seed phrase", "recovery",

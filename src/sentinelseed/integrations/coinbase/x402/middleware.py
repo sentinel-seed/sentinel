@@ -496,6 +496,8 @@ class SentinelX402Middleware:
 
     def _record_recipient_interaction(self, recipient: str) -> None:
         """Record interaction with a recipient address."""
+        if recipient is None:
+            return
         recipient = recipient.lower()
         self._recipient_history[recipient].append(datetime.utcnow())
 
