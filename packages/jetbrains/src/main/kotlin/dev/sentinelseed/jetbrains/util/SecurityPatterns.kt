@@ -83,7 +83,8 @@ object SecurityPatterns {
         ),
         SecretPattern(
             id = "connection_string",
-            regex = Regex("""\b(mongodb|mysql|postgres|redis|amqp):\/\/[^\s]+""", RegexOption.IGNORE_CASE),
+            // Limit URL length to prevent ReDoS on long strings without spaces
+            regex = Regex("""\b(mongodb|mysql|postgres|redis|amqp):\/\/[^\s]{1,500}""", RegexOption.IGNORE_CASE),
             description = "Database connection string",
             severity = Severity.CRITICAL
         ),
@@ -115,7 +116,8 @@ object SecurityPatterns {
         ),
         SecretPattern(
             id = "internal_url",
-            regex = Regex("""\b(https?:\/\/)?((localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?\/?\S*)""", RegexOption.IGNORE_CASE),
+            // Limit path length to prevent ReDoS
+            regex = Regex("""\b(https?:\/\/)?((localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?(\/?[^\s]{0,200})?)""", RegexOption.IGNORE_CASE),
             description = "Internal/private network URL",
             severity = Severity.MEDIUM
         )
@@ -162,7 +164,8 @@ object SecurityPatterns {
         ),
         SqlPattern(
             id = "update_all",
-            regex = Regex("""\bUPDATE\s+\w+\s+SET\s+.+\s+WHERE\s+(1\s*=\s*1|TRUE|''='')\b""", RegexOption.IGNORE_CASE),
+            // Limit SET clause length to prevent ReDoS
+            regex = Regex("""\bUPDATE\s+\w+\s+SET\s+[^;]{1,200}\s+WHERE\s+(1\s*=\s*1|TRUE|''='')\b""", RegexOption.IGNORE_CASE),
             category = SqlCategory.DESTRUCTIVE,
             severity = Severity.CRITICAL,
             description = "UPDATE with always-true condition"
@@ -192,7 +195,8 @@ object SecurityPatterns {
         ),
         SqlPattern(
             id = "union_credentials",
-            regex = Regex("""\bUNION\s+(ALL\s+)?SELECT\s+.*(password|passwd|pwd|secret|token|key|hash)""", RegexOption.IGNORE_CASE),
+            // Use non-greedy match with limit to prevent ReDoS
+            regex = Regex("""\bUNION\s+(ALL\s+)?SELECT\s+[^;]{0,100}(password|passwd|pwd|secret|token|key|hash)""", RegexOption.IGNORE_CASE),
             category = SqlCategory.UNION_ATTACK,
             severity = Severity.CRITICAL,
             description = "UNION SELECT targeting credentials"
@@ -254,21 +258,24 @@ object SecurityPatterns {
         // Data extraction (HIGH)
         SqlPattern(
             id = "schema_enum",
-            regex = Regex("""\bSELECT\s+.*(FROM\s+information_schema|FROM\s+mysql\.|FROM\s+pg_)""", RegexOption.IGNORE_CASE),
+            // Limit SELECT clause to prevent ReDoS
+            regex = Regex("""\bSELECT\s+[^;]{0,100}(FROM\s+information_schema|FROM\s+mysql\.|FROM\s+pg_)""", RegexOption.IGNORE_CASE),
             category = SqlCategory.DATA_EXTRACTION,
             severity = Severity.HIGH,
             description = "Schema enumeration attempt"
         ),
         SqlPattern(
             id = "db_info",
-            regex = Regex("""\bSELECT\s+.*@@(version|user|database)""", RegexOption.IGNORE_CASE),
+            // Limit SELECT clause to prevent ReDoS
+            regex = Regex("""\bSELECT\s+[^;]{0,50}@@(version|user|database)""", RegexOption.IGNORE_CASE),
             category = SqlCategory.DATA_EXTRACTION,
             severity = Severity.MEDIUM,
             description = "Database info extraction"
         ),
         SqlPattern(
             id = "load_file",
-            regex = Regex("""\bSELECT\s+.*\bLOAD_FILE\s*\(""", RegexOption.IGNORE_CASE),
+            // Limit SELECT clause to prevent ReDoS
+            regex = Regex("""\bSELECT\s+[^;]{0,50}\bLOAD_FILE\s*\(""", RegexOption.IGNORE_CASE),
             category = SqlCategory.DATA_EXTRACTION,
             severity = Severity.CRITICAL,
             description = "File read attempt (LOAD_FILE)"
@@ -314,7 +321,8 @@ object SecurityPatterns {
         ),
         SqlPattern(
             id = "case_blind",
-            regex = Regex("""\bCASE\s+WHEN\s+.+\s+THEN\s+.+\s+ELSE\b""", RegexOption.IGNORE_CASE),
+            // Limit clause lengths to prevent ReDoS
+            regex = Regex("""\bCASE\s+WHEN\s+[^;]{1,50}\s+THEN\s+[^;]{1,50}\s+ELSE\b""", RegexOption.IGNORE_CASE),
             category = SqlCategory.BLIND_INJECTION,
             severity = Severity.MEDIUM,
             description = "CASE-based blind injection"
