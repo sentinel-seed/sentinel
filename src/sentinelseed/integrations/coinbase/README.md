@@ -265,34 +265,98 @@ The integration automatically detects and blocks:
 
 ## Architecture
 
+```mermaid
+block-beta
+    columns 1
+
+    block:Framework["SENTINEL COINBASE PROTECTION FRAMEWORK"]
+        columns 1
+
+        block:Input["INPUT LAYER"]
+            columns 3
+            I1["Prompt Injection Detection"]
+            I2["Jailbreak Pre-filter"]
+            I3["Request Validation"]
+        end
+
+        space
+
+        block:Tool["TOOL LAYER"]
+            columns 3
+            T1["Action Whitelist/Blacklist"]
+            T2["Rate Limiting"]
+            T3["Permission Boundaries"]
+        end
+
+        space
+
+        block:Transaction["TRANSACTION LAYER (EVM)"]
+            columns 3
+            X1["Address Validation"]
+            X2["Spending Limits"]
+            X3["Blocked Addresses"]
+            X4["Approval Detection"]
+            X5["Chain-aware Limits"]
+            X6["Checksum Verify"]
+        end
+
+        space
+
+        block:Payment["PAYMENT LAYER (x402)"]
+            columns 3
+            P1["THSP Gates"]
+            P2["Spending Tracking"]
+            P3["Security Profiles"]
+        end
+    end
+
+    style Input fill:#2d3436,stroke:#0984e3
+    style Tool fill:#2d3436,stroke:#00b894
+    style Transaction fill:#2d3436,stroke:#fdcb6e
+    style Payment fill:#2d3436,stroke:#e17055
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    SENTINEL COINBASE PROTECTION FRAMEWORK                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   INPUT LAYER                                                               │
-│   ├── Prompt injection detection (THSPValidator)                           │
-│   ├── Jailbreak pre-filter                                                 │
-│   └── Request validation                                                   │
-│                                                                             │
-│   TOOL LAYER                                                                │
-│   ├── Action whitelist/blacklist                                           │
-│   ├── Rate limiting (max_transactions_per_hour)                            │
-│   └── Permission boundaries (blocked_actions)                              │
-│                                                                             │
-│   TRANSACTION LAYER (EVM-specific)                                         │
-│   ├── Address validation (checksum, format)                                │
-│   ├── Spending limits (max_transfer, max_daily)                            │
-│   ├── Blocked addresses (known malicious)                                  │
-│   ├── Approval detection (unlimited approve = blocked)                     │
-│   └── Chain-aware limits (testnet vs mainnet)                              │
-│                                                                             │
-│   PAYMENT LAYER (x402)                                                     │
-│   ├── Payment validation (THSP gates)                                      │
-│   ├── Spending tracking                                                    │
-│   └── Security profiles (permissive/standard/strict/paranoid)              │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+
+### Protection Layers
+
+```mermaid
+flowchart TB
+    subgraph Input["1. INPUT LAYER"]
+        direction LR
+        A1[Prompt Injection] --> A2[Jailbreak Filter] --> A3[Request Validation]
+    end
+
+    subgraph Tool["2. TOOL LAYER"]
+        direction LR
+        B1[Whitelist/Blacklist] --> B2[Rate Limiting] --> B3[Permissions]
+    end
+
+    subgraph TX["3. TRANSACTION LAYER"]
+        direction LR
+        C1[Address Check] --> C2[Spending Limits] --> C3[Blocked Addresses]
+    end
+
+    subgraph Pay["4. PAYMENT LAYER"]
+        direction LR
+        D1[THSP Gates] --> D2[Tracking] --> D3[Profiles]
+    end
+
+    Request([Incoming Request]) --> Input
+    Input --> Tool
+    Tool --> TX
+    TX --> Pay
+    Pay --> Execute([Execute Action])
+
+    Input -.->|Block| Reject([Reject])
+    Tool -.->|Block| Reject
+    TX -.->|Block| Reject
+    Pay -.->|Block| Reject
+
+    style Input fill:#0984e3,stroke:#74b9ff
+    style Tool fill:#00b894,stroke:#55efc4
+    style TX fill:#fdcb6e,stroke:#ffeaa7
+    style Pay fill:#e17055,stroke:#fab1a0
+    style Reject fill:#d63031,stroke:#ff7675
+    style Execute fill:#00b894,stroke:#55efc4
 ```
 
 ### x402 Payment Flow
