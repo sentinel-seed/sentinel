@@ -48,10 +48,12 @@ describe('BadgeManager', () => {
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: 'OFF' });
     });
 
-    it('clears badge when no pending, no alerts, not disabled', async () => {
+    it('shows active badge when no pending, no alerts, not disabled', async () => {
       await badgeManager.initialize(0, 0, false);
 
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
+      // Should show green checkmark indicating protection is active
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
+      expect(mockSetBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#10b981' });
     });
   });
 
@@ -92,10 +94,11 @@ describe('BadgeManager', () => {
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '99+' });
     });
 
-    it('clamps negative values to 0', async () => {
+    it('clamps negative values to 0 and shows active', async () => {
       await badgeManager.setPendingCount(-5);
 
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
+      // No pending = show active protection badge
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
     });
   });
 
@@ -124,8 +127,8 @@ describe('BadgeManager', () => {
 
       await badgeManager.decrementPending();
 
-      // Should still show empty (pending = 0)
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
+      // pending = 0, so should show active protection badge
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
     });
   });
 
@@ -251,7 +254,7 @@ describe('BadgeManager', () => {
   });
 
   describe('clear', () => {
-    it('clears all state', async () => {
+    it('clears all state and shows active badge', async () => {
       await badgeManager.setPendingCount(5);
       await badgeManager.setAlertCount(3);
       await badgeManager.setDisabled(true);
@@ -259,7 +262,8 @@ describe('BadgeManager', () => {
 
       await badgeManager.clear();
 
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
+      // After clear, protection is active with no pending items
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
     });
   });
 
@@ -287,13 +291,13 @@ describe('BadgeManager', () => {
       expect(state.isDisabled).toBe(true);
     });
 
-    it('returns clear state when nothing set', async () => {
+    it('returns active state when nothing blocking', async () => {
       await badgeManager.clear();
 
       const state = badgeManager.getState();
 
       expect(state).toEqual({
-        state: 'clear',
+        state: 'active',
         pendingCount: 0,
         alertCount: 0,
         isDisabled: false,
@@ -302,7 +306,7 @@ describe('BadgeManager', () => {
   });
 
   describe('priority order', () => {
-    it('disabled > pending > alert > clear', async () => {
+    it('disabled > pending > alert > active', async () => {
       // Set all states
       await badgeManager.setPendingCount(3);
       await badgeManager.setAlertCount(2);
@@ -321,10 +325,10 @@ describe('BadgeManager', () => {
       state = badgeManager.getState();
       expect(state.state).toBe('alert');
 
-      // Remove alerts
+      // Remove alerts - now shows active (protection running)
       await badgeManager.setAlertCount(0);
       state = badgeManager.getState();
-      expect(state.state).toBe('clear');
+      expect(state.state).toBe('active');
     });
   });
 });

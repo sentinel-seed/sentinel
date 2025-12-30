@@ -25,6 +25,10 @@ import type { BadgeState, BadgeConfig } from './types';
  */
 const BADGE_CONFIGS: Record<BadgeState, BadgeConfig | null> = {
   clear: null,
+  active: {
+    text: '✓',
+    backgroundColor: '#10b981', // Green - protection active
+  },
   pending: {
     text: '',
     backgroundColor: '#6366f1', // Indigo
@@ -69,7 +73,7 @@ class BadgeManager {
    * Updates the badge based on current state
    */
   private async updateBadge(): Promise<void> {
-    // Priority order: disabled > error > pending > alert > clear
+    // Priority order: disabled > error > pending > alert > active
     let config: BadgeConfig | null = null;
 
     if (this.isDisabled) {
@@ -85,8 +89,9 @@ class BadgeManager {
       };
       this.currentState = 'alert';
     } else {
-      config = null;
-      this.currentState = 'clear';
+      // Protection is active with no pending items - show green checkmark
+      config = BADGE_CONFIGS.active;
+      this.currentState = 'active';
     }
 
     await this.applyBadgeConfig(config);

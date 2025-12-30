@@ -328,6 +328,7 @@ export interface BadgeConfig {
  */
 export type BadgeState =
   | 'clear'           // No badge
+  | 'active'          // Protection active (green checkmark)
   | 'pending'         // Has pending approvals
   | 'alert'           // Has unacknowledged alerts
   | 'error'           // Error state
