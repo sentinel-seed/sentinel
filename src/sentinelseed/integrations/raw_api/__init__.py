@@ -721,6 +721,7 @@ def create_anthropic_request_body(
     sentinel: Optional[Sentinel] = None,
     seed_level: str = "standard",
     inject_seed: bool = True,
+    temperature: float = 1.0,
     system: Optional[str] = None,
     **kwargs,
 ) -> Dict[str, Any]:
@@ -733,6 +734,7 @@ def create_anthropic_request_body(
         sentinel: Sentinel instance
         seed_level: Seed level to use
         inject_seed: Whether to inject seed
+        temperature: Sampling temperature (0 to 1)
         system: System prompt
         **kwargs: Additional parameters
 
@@ -746,6 +748,7 @@ def create_anthropic_request_body(
         seed_level=seed_level,
         inject_seed=inject_seed,
         validate_input=False,
+        temperature=temperature,
         system=system,
         **kwargs,
     )

@@ -391,6 +391,76 @@ class TestM012SystemValidation:
 
 
 # =============================================================================
+# Tests for NEW-B003 - temperature validation in Anthropic (0-1 range)
+# =============================================================================
+class TestNEWB003AnthropicTemperatureValidation:
+    """NEW-B003: temperature in Anthropic must be between 0 and 1."""
+
+    def test_anthropic_temperature_string_raises_valueerror(self, valid_messages, mock_sentinel):
+        """temperature='0.5' should raise ValueError."""
+        with pytest.raises(ValueError, match="must be a number"):
+            prepare_anthropic_request(
+                messages=valid_messages,
+                temperature='0.5',
+                sentinel=mock_sentinel
+            )
+
+    def test_anthropic_temperature_negative_raises_valueerror(self, valid_messages, mock_sentinel):
+        """temperature=-0.5 should raise ValueError."""
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            prepare_anthropic_request(
+                messages=valid_messages,
+                temperature=-0.5,
+                sentinel=mock_sentinel
+            )
+
+    def test_anthropic_temperature_above_1_raises_valueerror(self, valid_messages, mock_sentinel):
+        """temperature=1.5 should raise ValueError (Anthropic uses 0-1, not 0-2)."""
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            prepare_anthropic_request(
+                messages=valid_messages,
+                temperature=1.5,
+                sentinel=mock_sentinel
+            )
+
+    def test_anthropic_temperature_2_raises_valueerror(self, valid_messages, mock_sentinel):
+        """temperature=2.0 should raise ValueError (valid for OpenAI, not Anthropic)."""
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            prepare_anthropic_request(
+                messages=valid_messages,
+                temperature=2.0,
+                sentinel=mock_sentinel
+            )
+
+    def test_anthropic_temperature_valid_accepted(self, valid_messages, mock_sentinel):
+        """Valid temperature (0-1) should work."""
+        headers, body = prepare_anthropic_request(
+            messages=valid_messages,
+            temperature=0.7,
+            sentinel=mock_sentinel
+        )
+        assert body["temperature"] == 0.7
+
+    def test_anthropic_temperature_zero_accepted(self, valid_messages, mock_sentinel):
+        """temperature=0 should work."""
+        headers, body = prepare_anthropic_request(
+            messages=valid_messages,
+            temperature=0,
+            sentinel=mock_sentinel
+        )
+        assert body["temperature"] == 0
+
+    def test_anthropic_temperature_one_accepted(self, valid_messages, mock_sentinel):
+        """temperature=1.0 should work."""
+        headers, body = prepare_anthropic_request(
+            messages=valid_messages,
+            temperature=1.0,
+            sentinel=mock_sentinel
+        )
+        assert body["temperature"] == 1.0
+
+
+# =============================================================================
 # Tests for A001 - inject_seed/validate_input must be bool
 # =============================================================================
 class TestA001BoolValidation:
