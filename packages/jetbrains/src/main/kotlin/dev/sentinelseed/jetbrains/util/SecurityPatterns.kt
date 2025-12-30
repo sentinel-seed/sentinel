@@ -351,7 +351,7 @@ object SecurityPatterns {
         // Direct instruction override
         PromptPattern(
             id = "ignore_instructions",
-            regex = Regex("""\b(ignore|disregard|forget|skip|bypass)\s+(all\s+)?(previous|prior|above|your|earlier|initial)?\s*(instructions?|prompts?|rules?|guidelines?|directions?|constraints?)\b""", RegexOption.IGNORE_CASE),
+            regex = Regex("""\b(ignore|disregard|forget|skip|bypass)\s+(all\s+)?(previous|prior|above|your|earlier|initial|everything)?\s*(you\s+were\s+told|instructions?|prompts?|rules?|guidelines?|directions?|constraints?)?\b""", RegexOption.IGNORE_CASE),
             description = "Attempts to override previous instructions",
             severity = Severity.HIGH,
             gates = listOf("scope")

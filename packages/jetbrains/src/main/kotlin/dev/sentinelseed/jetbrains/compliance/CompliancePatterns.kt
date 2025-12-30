@@ -25,7 +25,7 @@ object CompliancePatterns {
         // Article 5(1)(a) - Subliminal manipulation
         EUAIActPattern(
             id = "eu_subliminal",
-            regex = Regex("""\b(subliminal|unconscious|hidden\s+influence|manipulation)\s+(techniques?|methods?|manipulation)\b""", RegexOption.IGNORE_CASE),
+            regex = Regex("""\b(subliminal|unconscious|hidden\s+influence|covert)\s+(techniques?|methods?|manipulation|influence)\b""", RegexOption.IGNORE_CASE),
             description = "Subliminal manipulation technique",
             category = "Article 5(1)(a)",
             severity = Severity.CRITICAL,
@@ -73,7 +73,7 @@ object CompliancePatterns {
         // Annex III - Critical infrastructure
         EUAIActPattern(
             id = "eu_critical_infra",
-            regex = Regex("""\b(power\s+grid|water\s+supply|traffic\s+control|critical\s+infrastructure)\s+(management|control|operation)\b""", RegexOption.IGNORE_CASE),
+            regex = Regex("""\b(power\s+grid|water\s+supply|traffic\s+control|critical\s+infrastructure)\s+(management|control|operation|system|AI)\b""", RegexOption.IGNORE_CASE),
             description = "Critical infrastructure AI",
             category = "Annex III (2)",
             severity = Severity.HIGH,
@@ -169,7 +169,7 @@ object CompliancePatterns {
         // Data Governance
         CSAPattern(
             id = "csa_data_poisoning",
-            regex = Regex("""\b(data\s+poisoning|training\s+data\s+manipulation|backdoor\s+injection)\b""", RegexOption.IGNORE_CASE),
+            regex = Regex("""\b(data\s+poisoning|training\s+data\s+manipulation|backdoor\s+injection|corrupted\s+training\s+(data|dataset))\b""", RegexOption.IGNORE_CASE),
             description = "Data poisoning threat",
             domain = "Data Governance",
             severity = Severity.HIGH
@@ -192,7 +192,7 @@ object CompliancePatterns {
         // Application Security
         CSAPattern(
             id = "csa_prompt_injection",
-            regex = Regex("""\b(prompt\s+injection|instruction\s+injection|jailbreak\s+attempt)\b""", RegexOption.IGNORE_CASE),
+            regex = Regex("""\b(prompt\s+injection|instruction\s+injection|jailbreak\s+attempt|input\s+sanitization\s+bypass|input\s+validation\s+bypass)\b""", RegexOption.IGNORE_CASE),
             description = "Prompt injection vulnerability",
             domain = "Application Security",
             severity = Severity.HIGH

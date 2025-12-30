@@ -37,7 +37,8 @@ class ComplianceServiceTest {
         @Test
         @DisplayName("Should return compliant for clean content")
         fun cleanContentCompliant() {
-            val result = checker.checkEUAIAct("This is a normal chatbot that helps with customer service.")
+            // Note: "chatbot" triggers Article 52 transparency requirement, so use neutral text
+            val result = checker.checkEUAIAct("This is a normal software application that helps with customer service.")
 
             assertThat(result.compliant).isTrue()
             assertThat(result.riskLevel).isEqualTo("minimal")
