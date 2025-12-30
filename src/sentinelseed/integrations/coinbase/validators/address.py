@@ -22,6 +22,9 @@ from enum import Enum
 from typing import Optional, Tuple
 
 # Try to import keccak from various sources
+# IMPORTANT: Keccak-256 (used by Ethereum) is NOT the same as SHA3-256!
+# SHA3-256 is the NIST-standardized version which produces different hashes.
+# We must use the original Keccak algorithm, not hashlib.sha3_256.
 try:
     from Crypto.Hash import keccak as pycryptodome_keccak
 
@@ -32,6 +35,7 @@ try:
         return k.digest()
 
     KECCAK_AVAILABLE = True
+    _KECCAK_BACKEND = "pycryptodome"
 except ImportError:
     try:
         from eth_hash.auto import keccak as eth_keccak
@@ -41,23 +45,32 @@ except ImportError:
             return eth_keccak(data)
 
         KECCAK_AVAILABLE = True
+        _KECCAK_BACKEND = "eth-hash"
     except ImportError:
         try:
-            import hashlib
+            # Try pysha3 which provides the original Keccak
+            import sha3 as pysha3
 
             def keccak256(data: bytes) -> bytes:
-                """Compute keccak256 hash using hashlib (Python 3.11+)."""
-                return hashlib.new("sha3_256", data).digest()
+                """Compute keccak256 hash using pysha3."""
+                k = pysha3.keccak_256()
+                k.update(data)
+                return k.digest()
 
             KECCAK_AVAILABLE = True
-        except (ImportError, ValueError):
+            _KECCAK_BACKEND = "pysha3"
+        except ImportError:
+            # No valid Keccak implementation available
+            # DO NOT use hashlib.sha3_256 - it's NOT compatible with Ethereum!
             KECCAK_AVAILABLE = False
+            _KECCAK_BACKEND = None
 
             def keccak256(data: bytes) -> bytes:
                 """Fallback - no keccak available."""
                 raise ImportError(
-                    "No keccak implementation available. "
-                    "Install pycryptodome or eth-hash: pip install pycryptodome"
+                    "No Keccak-256 implementation available. "
+                    "EIP-55 checksum requires Keccak-256 (NOT SHA3-256). "
+                    "Install one of: pip install pycryptodome OR pip install pysha3 OR pip install eth-hash[pycryptodome]"
                 )
 
 
@@ -346,4 +359,5 @@ __all__ = [
     "validate_address",
     "normalize_address",
     "KECCAK_AVAILABLE",
+    "_KECCAK_BACKEND",
 ]

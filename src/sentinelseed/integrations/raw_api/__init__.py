@@ -142,15 +142,20 @@ def _validate_timeout(timeout: Any, param_name: str = "timeout") -> None:
         raise ValueError(f"{param_name} must be positive, got {timeout}")
 
 
-def _validate_temperature(temperature: Any) -> None:
-    """Validate temperature parameter is a number between 0 and 2."""
+def _validate_temperature(temperature: Any, max_value: float = 2.0) -> None:
+    """Validate temperature parameter is a number between 0 and max_value.
+
+    Args:
+        temperature: The temperature value to validate
+        max_value: Maximum allowed value (2.0 for OpenAI, 1.0 for Anthropic)
+    """
     if not isinstance(temperature, (int, float)):
         raise ValueError(
             f"temperature must be a number, got {type(temperature).__name__}"
         )
-    if temperature < 0 or temperature > 2:
+    if temperature < 0 or temperature > max_value:
         raise ValueError(
-            f"temperature must be between 0 and 2, got {temperature}"
+            f"temperature must be between 0 and {max_value}, got {temperature}"
         )
 
 
@@ -373,6 +378,7 @@ def prepare_anthropic_request(
     inject_seed: bool = True,
     validate_input: bool = True,
     max_tokens: int = 1024,
+    temperature: float = 1.0,
     system: Optional[str] = None,
     **kwargs,
 ) -> Tuple[Dict[str, str], Dict[str, Any]]:
@@ -388,6 +394,7 @@ def prepare_anthropic_request(
         inject_seed: Whether to inject seed into system prompt
         validate_input: Whether to validate input messages
         max_tokens: Maximum tokens in response
+        temperature: Sampling temperature (0 to 1 for Anthropic)
         system: System prompt (seed will be prepended)
         **kwargs: Additional API parameters
 
@@ -420,6 +427,7 @@ def prepare_anthropic_request(
     _validate_model(model)
     _validate_api_key(api_key)
     _validate_max_tokens(max_tokens)
+    _validate_temperature(temperature, max_value=1.0)  # Anthropic uses 0-1
     _validate_system(system)
     _validate_bool(inject_seed, "inject_seed")
     _validate_bool(validate_input, "validate_input")
@@ -487,6 +495,7 @@ def prepare_anthropic_request(
         "model": model,
         "messages": filtered_messages,
         "max_tokens": max_tokens,
+        "temperature": temperature,
         **kwargs,
     }
 

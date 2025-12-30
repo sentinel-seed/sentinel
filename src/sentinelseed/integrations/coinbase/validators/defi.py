@@ -14,6 +14,26 @@ Risk factors considered:
 - Impermanent loss for liquidity provision
 - Smart contract risk
 - Market volatility
+
+KNOWN LIMITATION - ARBITRARY RISK SCORES
+=========================================
+The risk scores in this module (protocol base risks, action weights, thresholds)
+are heuristic values chosen based on general industry knowledge, NOT derived from:
+- Empirical analysis of historical exploits/hacks
+- Statistical analysis of liquidation events
+- Formal risk assessment methodologies (S&P, Moody's, etc.)
+- Peer-reviewed research on DeFi risk
+
+Current values are reasonable defaults but should be calibrated based on:
+- Real-world incident data (DeFi Llama, Rekt News)
+- Protocol-specific audit reports
+- TVL and time-in-market metrics
+- Insurance coverage availability
+
+TODO: Implement data-driven risk scoring based on:
+- https://defillama.com/hacks (historical exploit data)
+- Protocol audit status from Trail of Bits, OpenZeppelin, etc.
+- Real liquidation statistics from on-chain data
 """
 
 from __future__ import annotations
@@ -73,25 +93,27 @@ class DeFiActionType(Enum):
 
 
 # Risk weights for different action types
+# NOTE: These weights are HEURISTIC values, not empirically derived.
+# See module docstring for known limitations.
 ACTION_RISK_WEIGHTS: Dict[DeFiActionType, float] = {
     # High risk - potential for significant loss
-    DeFiActionType.BORROW: 1.5,
-    DeFiActionType.ADD_LIQUIDITY: 1.3,
-    DeFiActionType.CREATE_TOKEN: 1.4,
-    DeFiActionType.CREATE_FLOW: 1.2,
+    DeFiActionType.BORROW: 1.5,        # Arbitrary: liquidation risk
+    DeFiActionType.ADD_LIQUIDITY: 1.3, # Arbitrary: impermanent loss risk
+    DeFiActionType.CREATE_TOKEN: 1.4,  # Arbitrary: rug pull/scam risk
+    DeFiActionType.CREATE_FLOW: 1.2,   # Arbitrary: stream drain risk
 
     # Medium risk - direct value transfer
-    DeFiActionType.SUPPLY: 1.0,
-    DeFiActionType.SWAP: 1.0,
-    DeFiActionType.TRADE: 1.0,
-    DeFiActionType.BUY_TOKEN: 1.1,
-    DeFiActionType.SELL_TOKEN: 1.1,
+    DeFiActionType.SUPPLY: 1.0,        # Baseline (1.0)
+    DeFiActionType.SWAP: 1.0,          # Baseline
+    DeFiActionType.TRADE: 1.0,         # Baseline
+    DeFiActionType.BUY_TOKEN: 1.1,     # Arbitrary: slightly higher
+    DeFiActionType.SELL_TOKEN: 1.1,    # Arbitrary: slightly higher
 
     # Lower risk - recovering assets
-    DeFiActionType.WITHDRAW: 0.8,
-    DeFiActionType.REPAY: 0.8,
-    DeFiActionType.REMOVE_LIQUIDITY: 0.9,
-    DeFiActionType.DELETE_FLOW: 0.7,
+    DeFiActionType.WITHDRAW: 0.8,           # Arbitrary: lower risk
+    DeFiActionType.REPAY: 0.8,              # Arbitrary: lower risk
+    DeFiActionType.REMOVE_LIQUIDITY: 0.9,   # Arbitrary: lower risk
+    DeFiActionType.DELETE_FLOW: 0.7,        # Arbitrary: lower risk
 
     # Read-only - no risk
     DeFiActionType.GET_PORTFOLIO: 0.0,
@@ -341,15 +363,22 @@ class DeFiValidator:
         return action_map.get(action_lower, DeFiActionType.OTHER)
 
     def _get_protocol_risk(self, protocol: DeFiProtocol) -> float:
-        """Get base risk level for a protocol (1-4 scale)."""
+        """
+        Get base risk level for a protocol (1-4 scale).
+
+        NOTE: These values are HEURISTIC estimates, not data-driven.
+        See module docstring for known limitations and improvement path.
+        """
+        # Risk scale: 1.0 (safest) to 4.0 (riskiest)
+        # Values are arbitrary heuristics based on general reputation
         risk_map = {
-            DeFiProtocol.COMPOUND: 2.0,    # Established, audited
-            DeFiProtocol.AAVE: 2.0,        # Established, audited
-            DeFiProtocol.UNISWAP: 2.0,     # Established, audited
-            DeFiProtocol.MORPHO: 2.5,      # Newer, but audited
-            DeFiProtocol.SUPERFLUID: 2.5,  # Innovative, some risk
-            DeFiProtocol.WOW: 3.5,         # New token launches, high risk
-            DeFiProtocol.UNKNOWN: 4.0,     # Maximum risk for unknown
+            DeFiProtocol.COMPOUND: 2.0,    # Heuristic: established, audited
+            DeFiProtocol.AAVE: 2.0,        # Heuristic: established, audited
+            DeFiProtocol.UNISWAP: 2.0,     # Heuristic: established, audited
+            DeFiProtocol.MORPHO: 2.5,      # Heuristic: newer, but audited
+            DeFiProtocol.SUPERFLUID: 2.5,  # Heuristic: innovative, some risk
+            DeFiProtocol.WOW: 3.5,         # Heuristic: new token launches
+            DeFiProtocol.UNKNOWN: 4.0,     # Default: max risk for unknown
         }
 
         return risk_map.get(protocol, 4.0)
