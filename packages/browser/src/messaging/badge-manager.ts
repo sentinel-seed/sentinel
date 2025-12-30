@@ -26,7 +26,7 @@ import type { BadgeState, BadgeConfig } from './types';
 const BADGE_CONFIGS: Record<BadgeState, BadgeConfig | null> = {
   clear: null,
   active: {
-    text: 'ON',
+    text: ' ',  // Single space creates small colored dot
     backgroundColor: '#10b981', // Green - protection active
   },
   pending: {
@@ -38,12 +38,12 @@ const BADGE_CONFIGS: Record<BadgeState, BadgeConfig | null> = {
     backgroundColor: '#ef4444', // Red
   },
   error: {
-    text: 'ERR',
+    text: '!',
     backgroundColor: '#ef4444', // Red
   },
   disabled: {
-    text: 'OFF',
-    backgroundColor: '#6b7280', // Gray
+    text: ' ',  // Single space creates small colored dot
+    backgroundColor: '#6b7280', // Gray - protection disabled
   },
 };
 
