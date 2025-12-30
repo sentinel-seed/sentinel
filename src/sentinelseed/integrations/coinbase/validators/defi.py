@@ -324,6 +324,8 @@ class DeFiValidator:
 
     def _parse_protocol(self, protocol: str) -> DeFiProtocol:
         """Parse protocol string to enum."""
+        if protocol is None:
+            return DeFiProtocol.UNKNOWN
         protocol_lower = protocol.lower().strip()
 
         protocol_map = {
@@ -339,6 +341,8 @@ class DeFiValidator:
 
     def _parse_action(self, action: str) -> DeFiActionType:
         """Parse action string to enum."""
+        if action is None:
+            return DeFiActionType.OTHER
         action_lower = action.lower().strip().replace("_", " ").replace("-", " ")
 
         action_map = {

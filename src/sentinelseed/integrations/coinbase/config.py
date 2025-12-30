@@ -272,16 +272,22 @@ class ChainConfig:
 
     def block_contract(self, address: str) -> "ChainConfig":
         """Add a contract to the blocklist. Returns self for chaining."""
+        if address is None:
+            return self
         self.blocked_contracts.add(address.lower())
         return self
 
     def unblock_contract(self, address: str) -> "ChainConfig":
         """Remove a contract from the blocklist. Returns self for chaining."""
+        if address is None:
+            return self
         self.blocked_contracts.discard(address.lower())
         return self
 
     def allow_contract(self, address: str) -> "ChainConfig":
         """Add a contract to the allowlist. Returns self for chaining."""
+        if address is None:
+            return self
         self.allowed_contracts.add(address.lower())
         return self
 
@@ -292,12 +298,16 @@ class ChainConfig:
 
     def is_contract_blocked(self, address: str) -> bool:
         """Check if a contract is blocked."""
+        if address is None:
+            return False
         return address.lower() in self.blocked_contracts
 
     def is_contract_allowed(self, address: str) -> bool:
         """Check if a contract is allowed (or if allowlist is empty = all allowed)."""
         if not self.allowed_contracts:
             return True
+        if address is None:
+            return False
         return address.lower() in self.allowed_contracts
 
     @classmethod
@@ -558,6 +568,8 @@ class SentinelCoinbaseConfig:
 
     def is_action_allowed(self, action: str) -> bool:
         """Check if an action is allowed."""
+        if action is None:
+            return False
         action_lower = action.lower()
 
         # Check blocked first
@@ -572,14 +584,20 @@ class SentinelCoinbaseConfig:
 
     def is_high_risk_action(self, action: str) -> bool:
         """Check if an action is considered high risk."""
+        if action is None:
+            return True  # Unknown actions are high risk
         return action.lower() in HIGH_RISK_ACTIONS
 
     def is_safe_action(self, action: str) -> bool:
         """Check if an action is read-only/safe."""
+        if action is None:
+            return False  # Unknown actions are not safe
         return action.lower() in SAFE_ACTIONS
 
     def is_address_blocked(self, address: str) -> bool:
         """Check if an address is blocked."""
+        if address is None:
+            return False
         return address.lower() in {a.lower() for a in self.blocked_addresses}
 
     # =========================================================================
@@ -672,16 +690,22 @@ class SentinelCoinbaseConfig:
         Example:
             config.block_address("0xbad...")
         """
+        if address is None:
+            return self
         self.blocked_addresses.add(address.lower())
         return self
 
     def unblock_address(self, address: str) -> "SentinelCoinbaseConfig":
         """Remove an address from the global blocklist."""
+        if address is None:
+            return self
         self.blocked_addresses.discard(address.lower())
         return self
 
     def block_action(self, action: str) -> "SentinelCoinbaseConfig":
         """Block an action globally."""
+        if action is None:
+            return self
         self.blocked_actions.add(action.lower())
         return self
 
@@ -690,6 +714,8 @@ class SentinelCoinbaseConfig:
         Add action to allowlist. When allowlist is non-empty,
         only listed actions are permitted.
         """
+        if action is None:
+            return self
         self.allowed_actions.add(action.lower())
         return self
 
@@ -703,6 +729,8 @@ class SentinelCoinbaseConfig:
             config.use_profile("strict")
             config.use_profile(SecurityProfile.PARANOID)
         """
+        if profile is None:
+            return self
         if isinstance(profile, str):
             profile = SecurityProfile(profile.lower())
         self.security_profile = profile
@@ -747,6 +775,8 @@ def get_default_config(profile: str = "standard") -> SentinelCoinbaseConfig:
     Example:
         config = get_default_config("strict")
     """
+    if profile is None:
+        profile = "standard"
     profile_enum = SecurityProfile(profile.lower())
     return SentinelCoinbaseConfig(security_profile=profile_enum)
 

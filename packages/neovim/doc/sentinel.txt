@@ -6,7 +6,7 @@
 Author:   Sentinel Team <team@sentinelseed.dev>
 License:  MIT
 Homepage: https://sentinelseed.dev
-GitHub:   https://github.com/sentinel-seed/sentinel.nvim
+GitHub:   https://github.com/sentinel-seed/sentinel
 
 ==============================================================================
 CONTENTS                                               *sentinel-contents*
@@ -60,7 +60,7 @@ Using packer.nvim: >lua
 
 Manual installation:
 Clone the repository to your Neovim packages directory: >bash
-  git clone https://github.com/sentinel-seed/sentinel.nvim \
+  git clone https://github.com/sentinel-seed/sentinel \
     ~/.local/share/nvim/site/pack/plugins/start/sentinel
 <
 

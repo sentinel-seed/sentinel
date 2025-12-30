@@ -43,7 +43,7 @@ def example_address_validation() -> None:
 
     for addr in addresses:
         result = validate_address(addr)
-        status = "✓" if result.valid else "✗"
+        status = "[OK]" if result.valid else "[FAIL]"
         print(f"\n{status} {addr[:20]}...")
         print(f"   Status: {result.status.value}")
         print(f"   Checksummed: {result.is_checksummed}")
@@ -96,7 +96,7 @@ def example_transaction_validation() -> None:
 
     for i, tx in enumerate(transactions, 1):
         result = validator.validate(**tx)
-        status = "✓" if result.is_approved else "✗"
+        status = "[OK]" if result.is_approved else "[FAIL]"
         print(f"\nTransaction {i}: {tx['action']} ${tx['amount']}")
         print(f"   {status} Decision: {result.decision.value}")
         print(f"   Risk Level: {result.risk_level.value}")
@@ -145,7 +145,7 @@ def example_defi_risk_assessment() -> None:
 
     for op in operations:
         assessment = assess_defi_risk(**op)
-        status = "⚠️" if assessment.is_high_risk else "✓"
+        status = "[WARN]" if assessment.is_high_risk else "[OK]"
         print(f"\n{status} {op['protocol']}.{op['action']}(${op['amount']})")
         print(f"   Risk Level: {assessment.risk_level.value}")
         print(f"   Risk Score: {assessment.risk_score:.1f}/100")
@@ -237,9 +237,9 @@ def example_action_wrappers() -> None:
             amount=10.0,
             from_address="0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
         )
-        print(f"\n✓ Transfer succeeded: {result}")
+        print(f"\n[OK] Transfer succeeded: {result}")
     except Exception as e:
-        print(f"\n✗ Transfer blocked: {e}")
+        print(f"\n[FAIL] Transfer blocked: {e}")
 
     # Try a blocked transaction (high amount with strict config)
     wrapper = create_safe_action_wrapper(
@@ -256,9 +256,9 @@ def example_action_wrappers() -> None:
             to="0x1234567890123456789012345678901234567890",
             amount=100.0,  # Exceeds strict limit of $25
         )
-        print(f"\n✓ Strict transfer: {result}")
+        print(f"\n[OK] Strict transfer: {result}")
     except Exception as e:
-        print(f"\n✗ Strict transfer blocked (expected): {type(e).__name__}")
+        print(f"\n[FAIL] Strict transfer blocked (expected): {type(e).__name__}")
 
 
 def example_security_profiles() -> None:
@@ -294,7 +294,7 @@ def example_security_profiles() -> None:
         chain_config = config.get_chain_config(ChainType.BASE_MAINNET)
         limits = chain_config.spending_limits
 
-        status = "✓" if result.is_approved else "✗"
+        status = "[OK]" if result.is_approved else "[FAIL]"
         print(f"\n{profile.upper()}:")
         print(f"   Max Single: ${limits.max_single_transaction:.2f}")
         print(f"   Max Daily: ${limits.max_daily_total:.2f}")
@@ -336,7 +336,7 @@ def example_x402_integration() -> None:
         wallet_address="0x1234567890123456789012345678901234567890",
     )
 
-    status = "✓" if result.is_approved else "✗"
+    status = "[OK]" if result.is_approved else "[FAIL]"
     print(f"\nPayment Validation:")
     print(f"   Amount: ${payment_req.get_amount_float():.2f}")
     print(f"   {status} Decision: {result.decision.value}")
@@ -365,7 +365,7 @@ def main() -> None:
     try:
         example_x402_integration()
     except ImportError as e:
-        print(f"\n⚠️ x402 example skipped: {e}")
+        print(f"\n[WARN] x402 example skipped: {e}")
 
     print("\n" + "=" * 60)
     print("All examples completed!")

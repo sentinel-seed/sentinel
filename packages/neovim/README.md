@@ -20,7 +20,7 @@ AI Safety validation for Neovim using the THSP protocol.
 
 ```lua
 {
-  'sentinel-seed/sentinel.nvim',
+  'sentinel-seed/sentinel',
   opts = {
     semantic_mode = true,
     llm_provider = 'openai',
@@ -33,7 +33,7 @@ AI Safety validation for Neovim using the THSP protocol.
 
 ```lua
 use {
-  'sentinel-seed/sentinel.nvim',
+  'sentinel-seed/sentinel',
   config = function()
     require('sentinel').setup({
       semantic_mode = true,
@@ -46,7 +46,7 @@ use {
 ### vim-plug
 
 ```vim
-Plug 'sentinel-seed/sentinel.nvim'
+Plug 'sentinel-seed/sentinel'
 
 " In your init.lua or after/plugin:
 lua require('sentinel').setup({})
@@ -55,7 +55,7 @@ lua require('sentinel').setup({})
 ### Manual
 
 ```bash
-git clone https://github.com/sentinel-seed/sentinel.nvim \
+git clone https://github.com/sentinel-seed/sentinel \
   ~/.local/share/nvim/site/pack/plugins/start/sentinel
 ```
 
@@ -197,8 +197,8 @@ Verify your installation:
 Insert alignment seeds to configure AI behavior:
 
 ```vim
-:SentinelInsertSeed standard  " Full THSP protocol (~1K tokens)
-:SentinelInsertSeed minimal   " Compact version (~360 tokens)
+:SentinelInsertSeed standard  " Full THSP protocol (~4K tokens)
+:SentinelInsertSeed minimal   " Compact version (~2K tokens)
 ```
 
 ## Requirements

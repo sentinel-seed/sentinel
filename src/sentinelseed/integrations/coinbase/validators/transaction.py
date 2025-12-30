@@ -116,6 +116,8 @@ class SpendingTracker:
 
     def _check_reset(self, wallet: str) -> None:
         """Check and reset counters if needed."""
+        if wallet is None:
+            return
         now = time.time()
         wallet_lower = wallet.lower()
 
@@ -137,6 +139,8 @@ class SpendingTracker:
 
     def record_transaction(self, wallet: str, amount: float) -> None:
         """Record a completed transaction."""
+        if wallet is None:
+            return
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
 
@@ -147,30 +151,45 @@ class SpendingTracker:
 
     def get_hourly_spent(self, wallet: str) -> float:
         """Get total spent in current hour."""
+        if wallet is None:
+            return 0.0
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
         return self.hourly_spending[wallet_lower]
 
     def get_daily_spent(self, wallet: str) -> float:
         """Get total spent today."""
+        if wallet is None:
+            return 0.0
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
         return self.daily_spending[wallet_lower]
 
     def get_hourly_tx_count(self, wallet: str) -> int:
         """Get transaction count in current hour."""
+        if wallet is None:
+            return 0
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
         return self.hourly_tx_count[wallet_lower]
 
     def get_daily_tx_count(self, wallet: str) -> int:
         """Get transaction count today."""
+        if wallet is None:
+            return 0
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
         return self.daily_tx_count[wallet_lower]
 
     def get_summary(self, wallet: str) -> Dict[str, Any]:
         """Get spending summary for a wallet."""
+        if wallet is None:
+            return {
+                "hourly_spent": 0.0,
+                "daily_spent": 0.0,
+                "hourly_tx_count": 0,
+                "daily_tx_count": 0,
+            }
         wallet_lower = wallet.lower()
         self._check_reset(wallet_lower)
 
@@ -341,34 +360,37 @@ class TransactionValidator:
                     details,
                 )
 
-            # Hourly limit
-            hourly_spent = self.spending_tracker.get_hourly_spent(from_address)
-            if hourly_spent + amount > limits.max_hourly_total:
+            # Spending limits require from_address to track per-wallet limits
+            if from_address:
+                # Hourly limit
+                hourly_spent = self.spending_tracker.get_hourly_spent(from_address)
+                if hourly_spent + amount > limits.max_hourly_total:
+                    concerns.append(
+                        f"Would exceed hourly limit: ${hourly_spent + amount:.2f} > ${limits.max_hourly_total:.2f}"
+                    )
+                    details["hourly_spent"] = hourly_spent
+
+                # Daily limit
+                daily_spent = self.spending_tracker.get_daily_spent(from_address)
+                if daily_spent + amount > limits.max_daily_total:
+                    concerns.append(
+                        f"Would exceed daily limit: ${daily_spent + amount:.2f} > ${limits.max_daily_total:.2f}"
+                    )
+                    details["daily_spent"] = daily_spent
+
+        # 5. Check rate limits (require from_address to track per-wallet limits)
+        if from_address:
+            hourly_tx = self.spending_tracker.get_hourly_tx_count(from_address)
+            if hourly_tx >= limits.max_transactions_per_hour:
                 concerns.append(
-                    f"Would exceed hourly limit: ${hourly_spent + amount:.2f} > ${limits.max_hourly_total:.2f}"
+                    f"Hourly transaction limit reached: {hourly_tx}/{limits.max_transactions_per_hour}"
                 )
-                details["hourly_spent"] = hourly_spent
 
-            # Daily limit
-            daily_spent = self.spending_tracker.get_daily_spent(from_address)
-            if daily_spent + amount > limits.max_daily_total:
+            daily_tx = self.spending_tracker.get_daily_tx_count(from_address)
+            if daily_tx >= limits.max_transactions_per_day:
                 concerns.append(
-                    f"Would exceed daily limit: ${daily_spent + amount:.2f} > ${limits.max_daily_total:.2f}"
+                    f"Daily transaction limit reached: {daily_tx}/{limits.max_transactions_per_day}"
                 )
-                details["daily_spent"] = daily_spent
-
-        # 5. Check rate limits
-        hourly_tx = self.spending_tracker.get_hourly_tx_count(from_address)
-        if hourly_tx >= limits.max_transactions_per_hour:
-            concerns.append(
-                f"Hourly transaction limit reached: {hourly_tx}/{limits.max_transactions_per_hour}"
-            )
-
-        daily_tx = self.spending_tracker.get_daily_tx_count(from_address)
-        if daily_tx >= limits.max_transactions_per_day:
-            concerns.append(
-                f"Daily transaction limit reached: {daily_tx}/{limits.max_transactions_per_day}"
-            )
 
         # 6. Check for unlimited approvals
         if action.lower() == "approve" and approval_amount:
