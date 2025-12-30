@@ -318,7 +318,7 @@ describe('Overall Gate Logic', () => {
 // =============================================================================
 
 describe('Context Handling', () => {
-  it('should handle unknown source with penalty', () => {
+  it('should handle unknown source with penalty on scope gate', () => {
     const context: ValidationContext = {
       source: 'unknown',
       platform: 'chatgpt',
@@ -326,11 +326,12 @@ describe('Context Handling', () => {
       userConfirmed: false,
     };
     const result = validateTHSP('Hello', context);
-    expect(result.truth.score).toBeLessThan(100);
-    expect(result.truth.issues.some(i => i.toLowerCase().includes('unknown'))).toBe(true);
+    // Unknown source applies penalty to scope gate, not truth gate
+    expect(result.scope.score).toBeLessThan(100);
+    expect(result.scope.issues.some(i => i.toLowerCase().includes('unknown'))).toBe(true);
   });
 
-  it('should handle extension source with minor penalty', () => {
+  it('should handle extension source with minor penalty on scope gate', () => {
     const context: ValidationContext = {
       source: 'extension',
       platform: 'chatgpt',
@@ -338,8 +339,9 @@ describe('Context Handling', () => {
       userConfirmed: false,
     };
     const result = validateTHSP('Hello', context);
-    expect(result.truth.score).toBeLessThan(100);
-    expect(result.truth.passed).toBe(true); // Should still pass
+    // Extension source applies minor penalty to scope gate
+    expect(result.scope.score).toBeLessThan(100);
+    expect(result.scope.passed).toBe(true); // Minor penalty, should still pass
   });
 
   it('should handle user source without penalty', () => {

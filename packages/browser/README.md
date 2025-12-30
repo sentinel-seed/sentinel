@@ -200,7 +200,7 @@ npm run test:coverage
 npm run test:watch
 ```
 
-Current test coverage: 504 tests passing, 50%+ code coverage.
+Current test coverage: 866 tests passing, 55%+ code coverage.
 
 ## Part of Sentinel Ecosystem
 

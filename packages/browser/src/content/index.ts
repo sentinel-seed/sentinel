@@ -12,7 +12,7 @@ import { setupBotDetectionListeners, detectBot } from '../lib/bot-detector';
 import { scanForHighConfidencePII } from '../lib/pii-guard';
 import { setupClipboardGuard } from '../lib/clipboard-guard';
 import { scanForWalletThreats } from '../lib/wallet-guard';
-import { setLanguage, t } from '../lib/i18n';
+import { setLanguage, t, type Language } from '../lib/i18n';
 
 /**
  * Escape HTML to prevent XSS attacks
