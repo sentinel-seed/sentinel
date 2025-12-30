@@ -79,13 +79,24 @@ Pre-flight Transaction Simulator (Solana):
         TokenSecurityResult,
     )
 
-x402 Payment Validation:
-    from sentinelseed.integrations.x402 import (
+Coinbase Ecosystem (AgentKit + x402):
+    from sentinelseed.integrations.coinbase import (
+        # AgentKit guardrails
+        sentinel_action_provider,
+        SentinelActionProvider,
+        TransactionValidator,
+        validate_address,
+        assess_defi_risk,
+        # x402 payment validation
         SentinelX402Middleware,
         sentinel_x402_action_provider,
         sentinel_x402_hooks,
         PaymentValidationResult,
         PaymentRiskLevel,
+        # Configuration
+        get_default_config,
+        SecurityProfile,
+        ChainType,
     )
 """
 
@@ -94,7 +105,7 @@ __all__ = [
     'anthropic_sdk',
     'autogpt',
     'autogpt_block',
-    'coinbase_agentkit',
+    'coinbase',
     'crewai',
     'dspy',
     'garak',
@@ -113,5 +124,4 @@ __all__ = [
     'ros2',
     'solana_agent_kit',
     'virtuals',
-    'x402',
 ]
