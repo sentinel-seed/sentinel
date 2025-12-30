@@ -254,6 +254,7 @@ async function handleMessage(
     case 'AGENT_DISCONNECT':
       return handleAgentDisconnect(message.payload as string);
 
+    case 'AGENT_LIST':
     case 'AGENT_GET_CONNECTIONS':
       return agentRegistry.getAgentConnections();
 
@@ -282,6 +283,7 @@ async function handleMessage(
     case 'MCP_UNREGISTER_SERVER':
       return mcpRegistry.unregisterServer(message.payload as string);
 
+    case 'MCP_LIST_SERVERS':
     case 'MCP_GET_SERVERS':
       return mcpRegistry.getMCPServers();
 
@@ -297,6 +299,12 @@ async function handleMessage(
         (message.payload as { serverId: string; trustLevel: number }).trustLevel
       );
 
+    case 'MCP_GET_TOOL_HISTORY':
+      return approvalStore.getActionHistoryBySource(
+        'mcp_gateway',
+        (message.payload as { limit?: number })?.limit || 50
+      );
+
     // =========================================================================
     // APPROVAL HANDLERS
     // =========================================================================
@@ -305,6 +313,9 @@ async function handleMessage(
       return approvalQueue.getPendingByPriority();
 
     case 'APPROVAL_GET_PENDING':
+      if (!message.payload) {
+        return approvalQueue.getPendingByPriority();
+      }
       return approvalStore.getPendingApproval(message.payload as string);
 
     case 'APPROVAL_DECIDE':
