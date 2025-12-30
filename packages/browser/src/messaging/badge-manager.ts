@@ -73,7 +73,8 @@ class BadgeManager {
    * Updates the badge based on current state
    */
   private async updateBadge(): Promise<void> {
-    // Priority order: disabled > error > pending > alert > active
+    // Priority order: disabled > pending > alert > clear (no badge when active)
+    // Badge only shows when user attention is needed
     let config: BadgeConfig | null = null;
 
     if (this.isDisabled) {
@@ -89,8 +90,8 @@ class BadgeManager {
       };
       this.currentState = 'alert';
     } else {
-      // Protection is active with no pending items - show green checkmark
-      config = BADGE_CONFIGS.active;
+      // Protection active - no badge needed (clean icon = all good)
+      config = null;
       this.currentState = 'active';
     }
 

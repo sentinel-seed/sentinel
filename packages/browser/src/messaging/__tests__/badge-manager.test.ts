@@ -46,14 +46,14 @@ describe('BadgeManager', () => {
       await badgeManager.initialize(0, 0, true);
 
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
+      expect(mockSetBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#6b7280' });
     });
 
-    it('shows active badge when no pending, no alerts, not disabled', async () => {
+    it('clears badge when active (no pending, no alerts, not disabled)', async () => {
       await badgeManager.initialize(0, 0, false);
 
-      // Should show green checkmark indicating protection is active
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
-      expect(mockSetBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#10b981' });
+      // Active state = no badge (clean icon)
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
     });
   });
 
@@ -94,11 +94,11 @@ describe('BadgeManager', () => {
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '99+' });
     });
 
-    it('clamps negative values to 0 and shows active', async () => {
+    it('clears badge when count is 0', async () => {
       await badgeManager.setPendingCount(-5);
 
-      // No pending = show active protection badge
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
+      // No pending = clear badge (active state)
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
     });
   });
 
@@ -121,14 +121,14 @@ describe('BadgeManager', () => {
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '2' });
     });
 
-    it('does not decrement below zero', async () => {
+    it('clears badge when decremented to zero', async () => {
       await badgeManager.setPendingCount(0);
       jest.clearAllMocks();
 
       await badgeManager.decrementPending();
 
-      // pending = 0, so should show active protection badge
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
+      // pending = 0, badge cleared
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
     });
   });
 
@@ -180,7 +180,7 @@ describe('BadgeManager', () => {
   });
 
   describe('setDisabled', () => {
-    it('shows OFF when disabled', async () => {
+    it('shows gray dot when disabled', async () => {
       await badgeManager.setDisabled(true);
 
       expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
@@ -254,7 +254,7 @@ describe('BadgeManager', () => {
   });
 
   describe('clear', () => {
-    it('clears all state and shows active badge', async () => {
+    it('clears all state and removes badge', async () => {
       await badgeManager.setPendingCount(5);
       await badgeManager.setAlertCount(3);
       await badgeManager.setDisabled(true);
@@ -262,8 +262,8 @@ describe('BadgeManager', () => {
 
       await badgeManager.clear();
 
-      // After clear, protection is active with no pending items
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: ' ' });
+      // After clear, badge is removed (active state)
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '' });
     });
   });
 
