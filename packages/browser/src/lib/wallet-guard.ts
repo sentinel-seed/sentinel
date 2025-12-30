@@ -162,6 +162,88 @@ const BIP39_WORDS = new Set([
 ]);
 
 /**
+ * Simple Keccak-256 implementation for EIP-55 checksum validation
+ * Optimized for Ethereum address checksums (40 hex chars)
+ */
+function keccak256(input: string): string {
+  // Keccak-256 constants
+  const RC = [
+    0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
+    0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
+    0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
+    0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
+    0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
+    0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n
+  ];
+  const ROTC = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44];
+  const PILN = [10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];
+
+  const rotl64 = (x: bigint, n: number): bigint => ((x << BigInt(n)) | (x >> BigInt(64 - n))) & 0xffffffffffffffffn;
+
+  const keccakf = (state: bigint[]): void => {
+    for (let round = 0; round < 24; round++) {
+      const C: bigint[] = [];
+      for (let x = 0; x < 5; x++) {
+        C[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20];
+      }
+      for (let x = 0; x < 5; x++) {
+        const D = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
+        for (let y = 0; y < 25; y += 5) state[x + y] ^= D;
+      }
+      let current = state[1];
+      for (let i = 0; i < 24; i++) {
+        const j = PILN[i];
+        const temp = state[j];
+        state[j] = rotl64(current, ROTC[i]);
+        current = temp;
+      }
+      for (let y = 0; y < 25; y += 5) {
+        const T = [state[y], state[y + 1], state[y + 2], state[y + 3], state[y + 4]];
+        for (let x = 0; x < 5; x++) {
+          state[y + x] = T[x] ^ (~T[(x + 1) % 5] & T[(x + 2) % 5]);
+        }
+      }
+      state[0] ^= RC[round];
+    }
+  };
+
+  // Convert input string to bytes
+  const bytes = new Uint8Array(input.length);
+  for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i);
+
+  // Keccak-256: rate=136 bytes (1088 bits), capacity=64 bytes (512 bits)
+  const rate = 136;
+  const state = new Array(25).fill(0n);
+
+  // Absorb with padding
+  const padded = new Uint8Array(Math.ceil((bytes.length + 1) / rate) * rate);
+  padded.set(bytes);
+  padded[bytes.length] = 0x01;
+  padded[padded.length - 1] |= 0x80;
+
+  for (let i = 0; i < padded.length; i += rate) {
+    for (let j = 0; j < rate && j + i < padded.length; j += 8) {
+      let val = 0n;
+      for (let k = 0; k < 8 && j + k < rate; k++) {
+        val |= BigInt(padded[i + j + k]) << BigInt(8 * k);
+      }
+      state[Math.floor(j / 8)] ^= val;
+    }
+    keccakf(state);
+  }
+
+  // Squeeze (32 bytes for 256 bits)
+  let hash = '';
+  for (let i = 0; i < 4; i++) {
+    const val = state[i];
+    for (let j = 0; j < 8; j++) {
+      hash += ((val >> BigInt(8 * j)) & 0xffn).toString(16).padStart(2, '0');
+    }
+  }
+  return hash;
+}
+
+/**
  * Validate Ethereum address checksum (EIP-55)
  */
 function validateEthereumChecksum(address: string): boolean {
@@ -172,8 +254,19 @@ function validateEthereumChecksum(address: string): boolean {
     return true;
   }
 
-  // TODO: Implement actual keccak256 checksum validation
-  // For now, return true for mixed case (assumes valid)
+  // EIP-55 checksum validation using keccak256
+  const addressLower = address.slice(2).toLowerCase();
+  const hash = keccak256(addressLower);
+
+  for (let i = 0; i < 40; i++) {
+    const char = addressLower[i];
+    const hashNibble = parseInt(hash[i], 16);
+    const expectedCase = hashNibble >= 8 ? char.toUpperCase() : char.toLowerCase();
+    if (address[i + 2] !== expectedCase) {
+      return false;
+    }
+  }
+
   return true;
 }
 

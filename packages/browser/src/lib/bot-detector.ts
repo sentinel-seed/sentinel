@@ -62,14 +62,6 @@ const AUTOMATION_SIGNATURES = {
   ],
 };
 
-// Suspicious navigator properties (used as reference for checkNavigatorProperties)
-const _SUSPICIOUS_NAVIGATOR_PROPS = [
-  'webdriver',
-  'languages', // Empty or single language can indicate automation
-  'plugins', // Empty plugins array is suspicious
-  'hardwareConcurrency', // Unusual values
-];
-
 /**
  * Check for automation framework signatures in window object
  */

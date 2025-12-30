@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 // M009: Import types from centralized location instead of duplicating
 import {
   Settings,
@@ -9,9 +9,21 @@ import {
   DEFAULT_APPROVAL_SETTINGS,
 } from '../types';
 import { setLanguage, t, detectBrowserLanguage } from '../lib/i18n';
-import { AgentsTab, MCPTab, RulesTab, HistoryTab, SettingsTab } from './components';
+// M001: Code splitting - lazy load heavy components to reduce bundle size
+const AgentsTab = lazy(() => import('./components/AgentsTab').then(m => ({ default: m.AgentsTab })));
+const MCPTab = lazy(() => import('./components/MCPTab').then(m => ({ default: m.MCPTab })));
+const RulesTab = lazy(() => import('./components/RulesTab').then(m => ({ default: m.RulesTab })));
+const HistoryTab = lazy(() => import('./components/HistoryTab').then(m => ({ default: m.HistoryTab })));
+const SettingsTab = lazy(() => import('./components/SettingsTab').then(m => ({ default: m.SettingsTab })));
 import { SkipLink } from './components/ui';
 import { useAnnouncer, useAccessibilityPreferences } from './hooks';
+
+// Loading fallback for lazy-loaded components
+const TabLoading: React.FC = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 40, color: '#666' }}>
+    Loading...
+  </div>
+);
 
 type TabType = 'dashboard' | 'agents' | 'mcp' | 'rules' | 'history' | 'alerts' | 'settings';
 
@@ -196,12 +208,14 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main id="main-content" style={styles.content} tabIndex={-1} className={animationClass}>
         {activeTab === 'dashboard' && <Dashboard stats={stats} settings={settings} />}
-        {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
-        {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
-        {activeTab === 'rules' && <RulesTab onStatsUpdate={loadData} />}
-        {activeTab === 'history' && <HistoryTab onStatsUpdate={loadData} />}
+        <Suspense fallback={<TabLoading />}>
+          {activeTab === 'agents' && <AgentsTab onStatsUpdate={loadData} />}
+          {activeTab === 'mcp' && <MCPTab onStatsUpdate={loadData} />}
+          {activeTab === 'rules' && <RulesTab onStatsUpdate={loadData} />}
+          {activeTab === 'history' && <HistoryTab onStatsUpdate={loadData} />}
+          {activeTab === 'settings' && <SettingsTab settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
+        </Suspense>
         {activeTab === 'alerts' && <Alerts alerts={alerts} onRefresh={loadData} />}
-        {activeTab === 'settings' && <SettingsTab settings={settings} onUpdate={setSettings} onLanguageChange={() => forceUpdate({})} />}
       </main>
 
       {/* Footer */}
