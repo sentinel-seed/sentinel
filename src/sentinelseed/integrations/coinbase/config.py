@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, FrozenSet, List, Optional, Set
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Union
 
 
 class ChainType(Enum):
@@ -98,12 +98,28 @@ class RiskLevel(Enum):
         return self == other or self < other
 
 
-@dataclass(frozen=True)
+@dataclass
 class SpendingLimits:
     """
     Spending limits configuration.
 
     All amounts are in USD equivalent for consistency across chains.
+    Fully customizable - modify any field directly or use helper methods.
+
+    Example:
+        # Create with defaults
+        limits = SpendingLimits()
+
+        # Customize directly
+        limits.max_single_transaction = 500.0
+        limits.max_daily_total = 2000.0
+
+        # Or use fluent API
+        limits = SpendingLimits().configure(
+            max_single=500.0,
+            max_daily=2000.0,
+            confirm_above=50.0,
+        )
     """
 
     max_single_transaction: float = 100.0
@@ -121,22 +137,168 @@ class SpendingLimits:
         """Check if amount requires human confirmation."""
         return amount > self.confirmation_threshold
 
+    def configure(
+        self,
+        max_single: Optional[float] = None,
+        max_daily: Optional[float] = None,
+        max_hourly: Optional[float] = None,
+        max_tx_per_hour: Optional[int] = None,
+        max_tx_per_day: Optional[int] = None,
+        confirm_above: Optional[float] = None,
+    ) -> "SpendingLimits":
+        """
+        Configure limits with a fluent API. Returns self for chaining.
 
-@dataclass(frozen=True)
+        Args:
+            max_single: Maximum single transaction amount (USD)
+            max_daily: Maximum daily total (USD)
+            max_hourly: Maximum hourly total (USD)
+            max_tx_per_hour: Maximum transactions per hour
+            max_tx_per_day: Maximum transactions per day
+            confirm_above: Require confirmation for amounts above this (USD)
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            limits = SpendingLimits().configure(
+                max_single=1000.0,
+                max_daily=5000.0,
+                confirm_above=100.0,
+            )
+        """
+        if max_single is not None:
+            self.max_single_transaction = max_single
+        if max_daily is not None:
+            self.max_daily_total = max_daily
+        if max_hourly is not None:
+            self.max_hourly_total = max_hourly
+        if max_tx_per_hour is not None:
+            self.max_transactions_per_hour = max_tx_per_hour
+        if max_tx_per_day is not None:
+            self.max_transactions_per_day = max_tx_per_day
+        if confirm_above is not None:
+            self.confirmation_threshold = confirm_above
+        return self
+
+    def copy(self) -> "SpendingLimits":
+        """Create a copy of these limits."""
+        return SpendingLimits(
+            max_single_transaction=self.max_single_transaction,
+            max_daily_total=self.max_daily_total,
+            max_hourly_total=self.max_hourly_total,
+            max_transactions_per_hour=self.max_transactions_per_hour,
+            max_transactions_per_day=self.max_transactions_per_day,
+            confirmation_threshold=self.confirmation_threshold,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "max_single_transaction": self.max_single_transaction,
+            "max_daily_total": self.max_daily_total,
+            "max_hourly_total": self.max_hourly_total,
+            "max_transactions_per_hour": self.max_transactions_per_hour,
+            "max_transactions_per_day": self.max_transactions_per_day,
+            "confirmation_threshold": self.confirmation_threshold,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SpendingLimits":
+        """Create from dictionary."""
+        return cls(
+            max_single_transaction=data.get("max_single_transaction", 100.0),
+            max_daily_total=data.get("max_daily_total", 500.0),
+            max_hourly_total=data.get("max_hourly_total", 200.0),
+            max_transactions_per_hour=data.get("max_transactions_per_hour", 10),
+            max_transactions_per_day=data.get("max_transactions_per_day", 50),
+            confirmation_threshold=data.get("confirmation_threshold", 25.0),
+        )
+
+
+@dataclass
 class ChainConfig:
     """
     Chain-specific configuration.
 
     Different chains may have different security requirements.
-    Testnets are more permissive by default.
+    Testnets are more permissive by default. Fully editable at runtime.
+
+    Example:
+        # Get config and customize
+        config = ChainConfig.for_mainnet(ChainType.BASE_MAINNET, SecurityProfile.STANDARD)
+
+        # Edit limits directly
+        config.spending_limits.max_single_transaction = 500.0
+
+        # Or use fluent API
+        config.set_limits(max_single=500.0, max_daily=2000.0)
+
+        # Block a contract
+        config.block_contract("0xbad...")
     """
 
     chain_type: ChainType
-    spending_limits: SpendingLimits
-    blocked_contracts: FrozenSet[str] = field(default_factory=frozenset)
-    allowed_contracts: FrozenSet[str] = field(default_factory=frozenset)  # Empty = all allowed
+    spending_limits: SpendingLimits = field(default_factory=SpendingLimits)
+    blocked_contracts: Set[str] = field(default_factory=set)
+    allowed_contracts: Set[str] = field(default_factory=set)  # Empty = all allowed
     max_gas_price_gwei: Optional[float] = None  # None = no limit
     require_verified_contracts: bool = False
+
+    def set_limits(
+        self,
+        max_single: Optional[float] = None,
+        max_daily: Optional[float] = None,
+        max_hourly: Optional[float] = None,
+        max_tx_per_hour: Optional[int] = None,
+        max_tx_per_day: Optional[int] = None,
+        confirm_above: Optional[float] = None,
+    ) -> "ChainConfig":
+        """
+        Set spending limits with a fluent API. Returns self for chaining.
+
+        Example:
+            config.set_limits(max_single=500.0, max_daily=2000.0)
+        """
+        self.spending_limits.configure(
+            max_single=max_single,
+            max_daily=max_daily,
+            max_hourly=max_hourly,
+            max_tx_per_hour=max_tx_per_hour,
+            max_tx_per_day=max_tx_per_day,
+            confirm_above=confirm_above,
+        )
+        return self
+
+    def block_contract(self, address: str) -> "ChainConfig":
+        """Add a contract to the blocklist. Returns self for chaining."""
+        self.blocked_contracts.add(address.lower())
+        return self
+
+    def unblock_contract(self, address: str) -> "ChainConfig":
+        """Remove a contract from the blocklist. Returns self for chaining."""
+        self.blocked_contracts.discard(address.lower())
+        return self
+
+    def allow_contract(self, address: str) -> "ChainConfig":
+        """Add a contract to the allowlist. Returns self for chaining."""
+        self.allowed_contracts.add(address.lower())
+        return self
+
+    def set_gas_limit(self, max_gwei: Optional[float]) -> "ChainConfig":
+        """Set maximum gas price in gwei. None = no limit."""
+        self.max_gas_price_gwei = max_gwei
+        return self
+
+    def is_contract_blocked(self, address: str) -> bool:
+        """Check if a contract is blocked."""
+        return address.lower() in self.blocked_contracts
+
+    def is_contract_allowed(self, address: str) -> bool:
+        """Check if a contract is allowed (or if allowlist is empty = all allowed)."""
+        if not self.allowed_contracts:
+            return True
+        return address.lower() in self.allowed_contracts
 
     @classmethod
     def for_testnet(cls, chain_type: ChainType) -> "ChainConfig":
@@ -419,6 +581,157 @@ class SentinelCoinbaseConfig:
     def is_address_blocked(self, address: str) -> bool:
         """Check if an address is blocked."""
         return address.lower() in {a.lower() for a in self.blocked_addresses}
+
+    # =========================================================================
+    # Fluent Configuration API
+    # =========================================================================
+
+    def set_limits(
+        self,
+        chain: Optional[ChainType] = None,
+        max_single: Optional[float] = None,
+        max_daily: Optional[float] = None,
+        max_hourly: Optional[float] = None,
+        max_tx_per_hour: Optional[int] = None,
+        max_tx_per_day: Optional[int] = None,
+        confirm_above: Optional[float] = None,
+    ) -> "SentinelCoinbaseConfig":
+        """
+        Set spending limits for a specific chain or all chains.
+
+        Args:
+            chain: Specific chain to configure, or None for all mainnets
+            max_single: Maximum single transaction (USD)
+            max_daily: Maximum daily total (USD)
+            max_hourly: Maximum hourly total (USD)
+            max_tx_per_hour: Maximum transactions per hour
+            max_tx_per_day: Maximum transactions per day
+            confirm_above: Require confirmation above this amount (USD)
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            # Set limits for all mainnets
+            config.set_limits(max_single=500.0, max_daily=2000.0)
+
+            # Set limits for specific chain
+            config.set_limits(
+                chain=ChainType.BASE_MAINNET,
+                max_single=1000.0,
+            )
+        """
+        if chain:
+            # Configure specific chain
+            chain_config = self.get_chain_config(chain)
+            chain_config.set_limits(
+                max_single=max_single,
+                max_daily=max_daily,
+                max_hourly=max_hourly,
+                max_tx_per_hour=max_tx_per_hour,
+                max_tx_per_day=max_tx_per_day,
+                confirm_above=confirm_above,
+            )
+        else:
+            # Configure all mainnet chains
+            for chain_type, chain_config in self.chain_configs.items():
+                if not chain_type.is_testnet:
+                    chain_config.set_limits(
+                        max_single=max_single,
+                        max_daily=max_daily,
+                        max_hourly=max_hourly,
+                        max_tx_per_hour=max_tx_per_hour,
+                        max_tx_per_day=max_tx_per_day,
+                        confirm_above=confirm_above,
+                    )
+        return self
+
+    def set_testnet_limits(
+        self,
+        max_single: Optional[float] = None,
+        max_daily: Optional[float] = None,
+    ) -> "SentinelCoinbaseConfig":
+        """
+        Set spending limits for all testnets.
+
+        Example:
+            config.set_testnet_limits(max_single=50000.0)
+        """
+        for chain_type, chain_config in self.chain_configs.items():
+            if chain_type.is_testnet:
+                chain_config.set_limits(
+                    max_single=max_single,
+                    max_daily=max_daily,
+                )
+        return self
+
+    def block_address(self, address: str) -> "SentinelCoinbaseConfig":
+        """
+        Add an address to the global blocklist.
+
+        Example:
+            config.block_address("0xbad...")
+        """
+        self.blocked_addresses.add(address.lower())
+        return self
+
+    def unblock_address(self, address: str) -> "SentinelCoinbaseConfig":
+        """Remove an address from the global blocklist."""
+        self.blocked_addresses.discard(address.lower())
+        return self
+
+    def block_action(self, action: str) -> "SentinelCoinbaseConfig":
+        """Block an action globally."""
+        self.blocked_actions.add(action.lower())
+        return self
+
+    def allow_action(self, action: str) -> "SentinelCoinbaseConfig":
+        """
+        Add action to allowlist. When allowlist is non-empty,
+        only listed actions are permitted.
+        """
+        self.allowed_actions.add(action.lower())
+        return self
+
+    def use_profile(self, profile: Union[str, SecurityProfile]) -> "SentinelCoinbaseConfig":
+        """
+        Switch to a different security profile.
+
+        This reconfigures all chain limits to match the new profile.
+
+        Example:
+            config.use_profile("strict")
+            config.use_profile(SecurityProfile.PARANOID)
+        """
+        if isinstance(profile, str):
+            profile = SecurityProfile(profile.lower())
+        self.security_profile = profile
+        self._init_default_chain_configs()
+        return self
+
+    def get_limits_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of current limits for easy inspection.
+
+        Returns:
+            Dictionary with limits per chain type (mainnet/testnet)
+        """
+        mainnet_limits = None
+        testnet_limits = None
+
+        for chain_type, chain_config in self.chain_configs.items():
+            if chain_type.is_testnet and testnet_limits is None:
+                testnet_limits = chain_config.spending_limits.to_dict()
+            elif not chain_type.is_testnet and mainnet_limits is None:
+                mainnet_limits = chain_config.spending_limits.to_dict()
+
+        return {
+            "security_profile": self.security_profile.value,
+            "mainnet": mainnet_limits,
+            "testnet": testnet_limits,
+            "blocked_addresses_count": len(self.blocked_addresses),
+            "blocked_actions": list(self.blocked_actions),
+        }
 
 
 def get_default_config(profile: str = "standard") -> SentinelCoinbaseConfig:
