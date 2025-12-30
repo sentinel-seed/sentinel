@@ -1,17 +1,18 @@
-"""
-Pydantic schemas for Sentinel AgentKit actions.
+"""Schemas for Sentinel AgentKit action provider.
 
 These schemas define the input parameters for each Sentinel action,
 following AgentKit's pattern of using Pydantic BaseModel for validation.
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class RiskLevel(str, Enum):
-    """Risk level classification."""
+    """Risk level classification for safety assessments."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -19,7 +20,8 @@ class RiskLevel(str, Enum):
 
 
 class ComplianceFramework(str, Enum):
-    """Supported compliance frameworks."""
+    """Supported compliance frameworks for validation."""
+
     OWASP_LLM = "owasp_llm"
     EU_AI_ACT = "eu_ai_act"
     CSA_AI = "csa_ai"
@@ -27,11 +29,11 @@ class ComplianceFramework(str, Enum):
 
 
 class ValidatePromptSchema(BaseModel):
-    """Schema for validating prompts through THSP gates."""
+    """Input schema for validating prompts through THSP gates."""
 
     prompt: str = Field(
         ...,
-        description="The prompt or text to validate for safety"
+        description="The prompt or text input to validate for safety"
     )
     context: Optional[str] = Field(
         None,
@@ -44,7 +46,7 @@ class ValidatePromptSchema(BaseModel):
 
 
 class ValidateTransactionSchema(BaseModel):
-    """Schema for validating blockchain transactions."""
+    """Input schema for validating blockchain transactions."""
 
     to_address: str = Field(
         ...,
@@ -52,11 +54,11 @@ class ValidateTransactionSchema(BaseModel):
     )
     value: str = Field(
         ...,
-        description="The value/amount of the transaction"
+        description="The value/amount of the transaction in wei or smallest unit"
     )
     data: Optional[str] = Field(
         None,
-        description="Optional transaction data (for contract calls)"
+        description="Optional transaction data for contract calls (hex encoded)"
     )
     chain_id: Optional[int] = Field(
         None,
@@ -69,41 +71,41 @@ class ValidateTransactionSchema(BaseModel):
 
 
 class ScanSecretsSchema(BaseModel):
-    """Schema for scanning content for exposed secrets."""
+    """Input schema for scanning content for exposed secrets."""
 
     content: str = Field(
         ...,
-        description="The content to scan for secrets (code, logs, etc.)"
+        description="The content to scan for secrets (code, logs, config, etc.)"
     )
-    scan_types: List[str] = Field(
+    scan_types: list[str] = Field(
         default=["api_keys", "private_keys", "passwords", "tokens"],
         description="Types of secrets to scan for"
     )
 
 
 class CheckComplianceSchema(BaseModel):
-    """Schema for checking compliance with safety frameworks."""
+    """Input schema for checking compliance with safety frameworks."""
 
     content: str = Field(
         ...,
         description="The content to check for compliance"
     )
-    frameworks: List[ComplianceFramework] = Field(
+    frameworks: list[ComplianceFramework] = Field(
         default=[ComplianceFramework.OWASP_LLM],
         description="Compliance frameworks to check against"
     )
 
 
 class AnalyzeRiskSchema(BaseModel):
-    """Schema for analyzing risk of agent actions."""
+    """Input schema for analyzing risk of agent actions."""
 
     action_type: str = Field(
         ...,
-        description="The type of action being performed (e.g., 'transfer', 'swap', 'deploy')"
+        description="The type of action (e.g., 'transfer', 'swap', 'deploy', 'approve')"
     )
     parameters: dict = Field(
         ...,
-        description="The parameters of the action"
+        description="The parameters of the action being performed"
     )
     context: Optional[str] = Field(
         None,
@@ -112,7 +114,7 @@ class AnalyzeRiskSchema(BaseModel):
 
 
 class ValidateOutputSchema(BaseModel):
-    """Schema for validating agent outputs before returning to user."""
+    """Input schema for validating agent outputs before returning to user."""
 
     output: str = Field(
         ...,
@@ -120,7 +122,7 @@ class ValidateOutputSchema(BaseModel):
     )
     output_type: str = Field(
         default="text",
-        description="The type of output (text, code, json, etc.)"
+        description="The type of output (text, code, json, markdown, etc.)"
     )
     filter_pii: bool = Field(
         True,
