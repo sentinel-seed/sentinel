@@ -1,0 +1,52 @@
+{
+  "name": "@goat-sdk/plugin-sentinel",
+  "version": "0.1.0",
+  "description": "Sentinel safety validation plugin for GOAT SDK - THSP gates for AI agents",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "goat",
+    "goat-sdk",
+    "ai-agents",
+    "blockchain",
+    "safety",
+    "sentinel",
+    "thsp",
+    "guardrails",
+    "alignment"
+  ],
+  "author": "Sentinel Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sentinel-seed/sentinel"
+  },
+  "homepage": "https://sentinelseed.dev",
+  "dependencies": {
+    "@goat-sdk/core": "^0.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@goat-sdk/core": ">=0.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
