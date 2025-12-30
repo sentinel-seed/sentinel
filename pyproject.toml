@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.17.0"
+version = "2.18.0"
 description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - EU AI Act compliance and practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}
@@ -70,6 +70,16 @@ keywords = [
     "slippage",
     "defi-safety",
     "token-security",
+    "coinbase",
+    "coinbase-agentkit",
+    "agentkit",
+    "x402",
+    "http-402",
+    "payment-validation",
+    "evm",
+    "base-chain",
+    "web3",
+    "defi",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -101,6 +111,9 @@ pyrit = ["pyrit>=0.10.0"]
 dspy = ["dspy>=3.0.0"]
 letta = ["letta-client>=1.0.0"]
 preflight = ["httpx>=0.25.0"]
+coinbase = ["httpx>=0.25.0", "pydantic>=2.0.0"]
+coinbase-agentkit = ["coinbase-agentkit>=0.1.0", "httpx>=0.25.0", "pydantic>=2.0.0"]
+x402 = ["httpx>=0.25.0", "pydantic>=2.0.0"]
 all = [
     "openai>=1.0.0",
     "openai-agents>=0.6.0",
@@ -111,6 +124,8 @@ all = [
     "crewai>=0.1.0",
     "llama-index-core>=0.10.0",
     "game-sdk>=0.1.1",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
 ]
 dev = [
     "pytest>=7.0.0",
