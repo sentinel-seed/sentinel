@@ -127,11 +127,12 @@ flowchart TB
         Check[check_action_safety]
         DeFi[assess_defi_risk]
 
-        subgraph THSP["THSP Gates"]
-            T[Truth]
-            H[Harm]
-            S[Scope]
-            P[Purpose]
+        subgraph Checks["Validation Checks"]
+            C1[Address Format]
+            C2[Spending Limits]
+            C3[Blocked Addresses]
+            C4[Rate Limits]
+            C5[Approval Detection]
         end
     end
 
@@ -141,14 +142,11 @@ flowchart TB
 
     LLM -->|"native_transfer"| Actions
     Actions -->|Before Execute| Sentinel
-    Validate --> THSP
-    Check --> THSP
-    DeFi --> THSP
+    Validate --> Checks
+    Check --> Checks
+    DeFi --> Checks
 
-    T --> Decision{All Pass?}
-    H --> Decision
-    S --> Decision
-    P --> Decision
+    Checks --> Decision{All Pass?}
 
     Decision -->|Yes| Wallet
     Decision -->|No| Block[Block Action]
@@ -156,7 +154,7 @@ flowchart TB
     Block -->|Reason| LLM
 
     style Sentinel fill:#1a1a2e,stroke:#e94560,stroke-width:2px
-    style THSP fill:#16213e,stroke:#0f3460
+    style Checks fill:#16213e,stroke:#0f3460
     style Block fill:#c70039,stroke:#900c3f
     style LLM fill:#2d3436,stroke:#636e72
 ```
@@ -203,36 +201,48 @@ sequenceDiagram
     end
 ```
 
-### THSP Gate Decision Flow
+### THSP Gate Decision Flow (x402)
+
+This flow applies to x402 payment validation:
 
 ```mermaid
 flowchart LR
-    Input[Payment/Action] --> T{TRUTH<br/>Valid format?}
+    Input[Payment] --> T{TRUTH<br/>Valid format?}
 
     T -->|Pass| H{HARM<br/>Safe recipient?}
-    T -->|Fail| Reject1[Reject: Invalid]
+    T -->|Fail| Count
 
     H -->|Pass| S{SCOPE<br/>Within limits?}
-    H -->|Fail| Block1[Block: Malicious]
+    H -->|Fail| Blocked[BLOCKED]
 
-    S -->|Pass| P{PURPOSE<br/>Legitimate use?}
-    S -->|Fail| Reject2[Reject: Exceeds Limit]
+    S -->|Pass| P{PURPOSE<br/>Legitimate?}
+    S -->|Fail| Count
 
-    P -->|Pass| Approve[Approve]
-    P -->|Fail| Confirm{Needs<br/>Confirmation?}
+    P -->|Pass| Risk{Check<br/>Risk Level}
+    P -->|Fail| Count
 
-    Confirm -->|Yes| AskUser[Ask User]
-    Confirm -->|No| Reject3[Reject: No Purpose]
+    Count{Failed<br/>Gates} -->|"2+"| Critical[CRITICAL<br/>Reject]
+    Count -->|"1"| High[HIGH]
 
-    AskUser -->|Confirmed| Approve
-    AskUser -->|Denied| Reject4[Reject: User Denied]
+    Risk -->|Warnings| Caution[CAUTION]
+    Risk -->|Clean| Safe[SAFE<br/>Approve]
+
+    High --> Confirm{Amount ><br/>threshold?}
+    Caution --> Confirm
+
+    Confirm -->|Yes| AskUser[Require<br/>Confirmation]
+    Confirm -->|No| Safe
+
+    AskUser -->|Confirmed| Safe
+    AskUser -->|Denied| Reject[Reject]
 
     style T fill:#3498db
     style H fill:#e74c3c
     style S fill:#f39c12
     style P fill:#9b59b6
-    style Approve fill:#27ae60
-    style Block1 fill:#c0392b
+    style Safe fill:#27ae60
+    style Blocked fill:#c0392b
+    style Critical fill:#c0392b
 ```
 
 ## Installation
