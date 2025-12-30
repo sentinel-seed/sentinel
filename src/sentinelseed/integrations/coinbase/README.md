@@ -295,6 +295,134 @@ The integration automatically detects and blocks:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### x402 Payment Flow
+
+The following diagram shows how Sentinel intercepts and validates x402 payments before they reach the blockchain:
+
+```mermaid
+sequenceDiagram
+    participant Client as AI Agent
+    participant Sentinel as Sentinel Middleware
+    participant Server as x402 Resource Server
+    participant Facilitator as x402 Facilitator
+    participant Chain as Blockchain
+
+    Client->>Server: 1. HTTP Request
+    Server-->>Client: 2. 402 Payment Required
+
+    Note over Client,Sentinel: Sentinel Intercepts Here
+
+    Client->>Sentinel: 3. Payment Request
+
+    rect rgb(50, 50, 80)
+        Note over Sentinel: THSP Validation Gates
+        Sentinel->>Sentinel: TRUTH: Valid format?
+        Sentinel->>Sentinel: HARM: Blocked address?
+        Sentinel->>Sentinel: SCOPE: Within limits?
+        Sentinel->>Sentinel: PURPOSE: Legitimate?
+    end
+
+    alt All Gates Pass
+        Sentinel->>Server: 4. Forward with Payment Signature
+        Server->>Facilitator: 5. Verify Payment
+        Facilitator-->>Server: 6. Verification OK
+        Server->>Facilitator: 7. Settle Payment
+        Facilitator->>Chain: 8. Submit Transaction
+        Chain-->>Facilitator: 9. Confirmation
+        Facilitator-->>Server: 10. Settlement Complete
+        Server-->>Client: 11. 200 OK + Resource
+    else Any Gate Fails
+        Sentinel-->>Client: BLOCKED: Reason
+        Note over Client: Payment prevented
+    end
+```
+
+### AgentKit Action Flow
+
+The following diagram shows how Sentinel validates AgentKit actions before execution:
+
+```mermaid
+flowchart TB
+    subgraph Agent["AI Agent (LangChain/OpenAI/etc)"]
+        LLM[LLM Decision]
+    end
+
+    subgraph AgentKit["Coinbase AgentKit"]
+        Actions[Action Providers]
+        Wallet[Wallet Provider]
+    end
+
+    subgraph Sentinel["Sentinel ActionProvider"]
+        direction TB
+        Validate[validate_transaction]
+        Check[check_action_safety]
+        DeFi[assess_defi_risk]
+
+        subgraph THSP["THSP Gates"]
+            T[Truth]
+            H[Harm]
+            S[Scope]
+            P[Purpose]
+        end
+    end
+
+    subgraph Blockchain["Blockchain"]
+        TX[Transaction]
+    end
+
+    LLM -->|"native_transfer"| Actions
+    Actions -->|Before Execute| Sentinel
+    Validate --> THSP
+    Check --> THSP
+    DeFi --> THSP
+
+    T --> Decision{All Pass?}
+    H --> Decision
+    S --> Decision
+    P --> Decision
+
+    Decision -->|Yes| Wallet
+    Decision -->|No| Block[Block Action]
+    Wallet --> TX
+    Block -->|Reason| LLM
+
+    style Sentinel fill:#1a1a2e,stroke:#e94560,stroke-width:2px
+    style THSP fill:#16213e,stroke:#0f3460
+    style Block fill:#c70039,stroke:#900c3f
+```
+
+### THSP Gate Decision Flow
+
+```mermaid
+flowchart LR
+    Input[Payment/Action] --> T{TRUTH<br/>Valid format?}
+
+    T -->|Pass| H{HARM<br/>Safe recipient?}
+    T -->|Fail| Reject1[Reject: Invalid]
+
+    H -->|Pass| S{SCOPE<br/>Within limits?}
+    H -->|Fail| Block1[Block: Malicious]
+
+    S -->|Pass| P{PURPOSE<br/>Legitimate use?}
+    S -->|Fail| Reject2[Reject: Exceeds Limit]
+
+    P -->|Pass| Approve[Approve]
+    P -->|Fail| Confirm{Needs<br/>Confirmation?}
+
+    Confirm -->|Yes| AskUser[Ask User]
+    Confirm -->|No| Reject3[Reject: No Purpose]
+
+    AskUser -->|Confirmed| Approve
+    AskUser -->|Denied| Reject4[Reject: User Denied]
+
+    style T fill:#3498db
+    style H fill:#e74c3c
+    style S fill:#f39c12
+    style P fill:#9b59b6
+    style Approve fill:#27ae60
+    style Block1 fill:#c0392b
+```
+
 ## Supported Networks
 
 | Network | Chain ID | Native Token |
