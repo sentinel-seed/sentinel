@@ -78,6 +78,15 @@ Pre-flight Transaction Simulator (Solana):
         SwapSimulationResult,
         TokenSecurityResult,
     )
+
+x402 Payment Validation:
+    from sentinelseed.integrations.x402 import (
+        SentinelX402Middleware,
+        sentinel_x402_action_provider,
+        sentinel_x402_hooks,
+        PaymentValidationResult,
+        PaymentRiskLevel,
+    )
 """
 
 __all__ = [
@@ -85,6 +94,7 @@ __all__ = [
     'anthropic_sdk',
     'autogpt',
     'autogpt_block',
+    'coinbase_agentkit',
     'crewai',
     'dspy',
     'garak',
@@ -103,4 +113,5 @@ __all__ = [
     'ros2',
     'solana_agent_kit',
     'virtuals',
+    'x402',
 ]
