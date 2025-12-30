@@ -367,6 +367,12 @@ async function updateSettings(updates: Partial<Settings>): Promise<Settings> {
   const current = await getSettings();
   const updated = { ...current, ...updates };
   await chrome.storage.local.set({ settings: updated });
+
+  // Update badge if enabled state changed
+  if ('enabled' in updates) {
+    await badgeManager.setDisabled(!updated.enabled);
+  }
+
   return updated;
 }
 

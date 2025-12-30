@@ -52,7 +52,7 @@ describe('BadgeManager', () => {
       await badgeManager.initialize(0, 0, false);
 
       // Should show green checkmark indicating protection is active
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: 'ON' });
       expect(mockSetBadgeBackgroundColor).toHaveBeenCalledWith({ color: '#10b981' });
     });
   });
@@ -98,7 +98,7 @@ describe('BadgeManager', () => {
       await badgeManager.setPendingCount(-5);
 
       // No pending = show active protection badge
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: 'ON' });
     });
   });
 
@@ -128,7 +128,7 @@ describe('BadgeManager', () => {
       await badgeManager.decrementPending();
 
       // pending = 0, so should show active protection badge
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: 'ON' });
     });
   });
 
@@ -263,7 +263,7 @@ describe('BadgeManager', () => {
       await badgeManager.clear();
 
       // After clear, protection is active with no pending items
-      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: '✓' });
+      expect(mockSetBadgeText).toHaveBeenCalledWith({ text: 'ON' });
     });
   });
 

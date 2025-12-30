@@ -26,7 +26,7 @@ import type { BadgeState, BadgeConfig } from './types';
 const BADGE_CONFIGS: Record<BadgeState, BadgeConfig | null> = {
   clear: null,
   active: {
-    text: '✓',
+    text: 'ON',
     backgroundColor: '#10b981', // Green - protection active
   },
   pending: {
