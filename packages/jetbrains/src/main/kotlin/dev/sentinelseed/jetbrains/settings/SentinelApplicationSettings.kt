@@ -74,6 +74,9 @@ class SentinelApplicationSettings : PersistentStateComponent<SentinelApplication
         set(value) = setSecureKey(COMPATIBLE_KEY_ID, value)
 
     private fun createCredentialAttributes(key: String): CredentialAttributes {
+        // Use single-parameter constructor for compatibility across all IntelliJ versions
+        // Note: This generates a deprecated API warning in plugin verifier for 2024.3+
+        // but is required for compatibility with 2024.1-2024.2
         return CredentialAttributes(generateServiceName("SentinelAISafety", key))
     }
 

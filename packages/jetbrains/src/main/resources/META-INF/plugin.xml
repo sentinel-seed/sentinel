@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>dev.sentinelseed.jetbrains</id>
     <name>Sentinel AI Safety</name>
-    <vendor email="contact@sentinelseed.dev" url="https://sentinelseed.dev">Sentinel Seed Team</vendor>
+    <vendor email="team@sentinelseed.dev" url="https://sentinelseed.dev">Sentinel Seed Team</vendor>
 
     <description><![CDATA[
         <h2>AI Safety Guardrails for LLM Prompts</h2>
@@ -20,6 +20,10 @@
                     <li>Purpose Gate: Validates legitimate purpose</li>
                 </ul>
             </li>
+            <li><strong>Security Scanning</strong> - Detect secrets, SQL injection, and prompt injection</li>
+            <li><strong>Output Validation</strong> - Validate LLM outputs for security issues</li>
+            <li><strong>Compliance Checking</strong> - EU AI Act, OWASP LLM Top 10, CSA AICM</li>
+            <li><strong>Metrics Dashboard</strong> - Track analysis statistics over time</li>
             <li><strong>Semantic Analysis</strong> - Optional LLM-powered deep analysis (OpenAI/Anthropic)</li>
             <li><strong>Seed Insertion</strong> - Insert alignment seeds into your prompts</li>
             <li><strong>Tool Window</strong> - Dedicated panel for analysis results</li>
@@ -40,6 +44,19 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.3.0</h3>
+        <ul>
+            <li>Add Security Scanning: Scan Secrets, Sanitize Prompt, Validate Output, SQL Injection Detection</li>
+            <li>Add Compliance Checking: EU AI Act, OWASP LLM Top 10, CSA AI Controls Matrix</li>
+            <li>New SecurityService for local security pattern matching</li>
+            <li>New ComplianceService with EU AI Act Article 5/6/52 detection</li>
+            <li>OWASP LLM Top 10 pattern detection (LLM01, LLM02, LLM05, LLM06, LLM07)</li>
+            <li>Database Guard: SQL injection detection across 8 categories</li>
+            <li>Add Metrics Dashboard: Track analysis statistics over time</li>
+            <li>New MetricsService with persistent storage</li>
+            <li>10 new commands in Sentinel menu (4 security + 4 compliance + 2 metrics)</li>
+        </ul>
+
         <h3>0.2.1</h3>
         <ul>
             <li>Fix deprecated CredentialAttributes constructor (use named parameters)</li>
@@ -83,6 +100,18 @@
         <!-- Application Service for validation logic -->
         <applicationService
             serviceImplementation="dev.sentinelseed.jetbrains.services.SentinelService"/>
+
+        <!-- Security Service for scanning -->
+        <applicationService
+            serviceImplementation="dev.sentinelseed.jetbrains.services.SecurityService"/>
+
+        <!-- Compliance Service for framework checks -->
+        <applicationService
+            serviceImplementation="dev.sentinelseed.jetbrains.services.ComplianceService"/>
+
+        <!-- Metrics Service for tracking analyses -->
+        <applicationService
+            serviceImplementation="dev.sentinelseed.jetbrains.services.MetricsService"/>
 
         <!-- Project-level settings state -->
         <projectService
@@ -176,6 +205,75 @@
                     text="Settings..."
                     description="Open Sentinel settings"
                     icon="AllIcons.General.Settings"/>
+
+            <separator/>
+
+            <!-- Security Scanning Actions -->
+            <action id="Sentinel.ScanSecrets"
+                    class="dev.sentinelseed.jetbrains.actions.ScanSecretsAction"
+                    text="Scan Secrets"
+                    description="Scan for API keys, tokens, and credentials"
+                    icon="AllIcons.Ide.HectorOff"/>
+
+            <action id="Sentinel.SanitizePrompt"
+                    class="dev.sentinelseed.jetbrains.actions.SanitizePromptAction"
+                    text="Sanitize Prompt"
+                    description="Detect prompt injection attempts"
+                    icon="AllIcons.Actions.Lightning"/>
+
+            <action id="Sentinel.ValidateOutput"
+                    class="dev.sentinelseed.jetbrains.actions.ValidateOutputAction"
+                    text="Validate Output"
+                    description="Validate LLM output for security issues"
+                    icon="AllIcons.Actions.PreviewDetails"/>
+
+            <action id="Sentinel.ScanSQLInjection"
+                    class="dev.sentinelseed.jetbrains.actions.ScanSQLInjectionAction"
+                    text="SQL Injection Scan"
+                    description="Detect SQL injection patterns"
+                    icon="AllIcons.Providers.Postgresql"/>
+
+            <separator/>
+
+            <!-- Compliance Checking Actions -->
+            <action id="Sentinel.CheckComplianceAll"
+                    class="dev.sentinelseed.jetbrains.actions.CheckComplianceAllAction"
+                    text="Check All Compliance"
+                    description="Check against all compliance frameworks"
+                    icon="AllIcons.Actions.ListFiles"/>
+
+            <action id="Sentinel.CheckEUAIAct"
+                    class="dev.sentinelseed.jetbrains.actions.CheckEUAIActAction"
+                    text="Check EU AI Act"
+                    description="Check against EU AI Act requirements"
+                    icon="AllIcons.Nodes.SecurityRole"/>
+
+            <action id="Sentinel.CheckOWASP"
+                    class="dev.sentinelseed.jetbrains.actions.CheckOWASPAction"
+                    text="Check OWASP LLM"
+                    description="Check against OWASP LLM Top 10"
+                    icon="AllIcons.General.Shield"/>
+
+            <action id="Sentinel.CheckCSA"
+                    class="dev.sentinelseed.jetbrains.actions.CheckCSAAction"
+                    text="Check CSA AICM"
+                    description="Check against CSA AI Controls Matrix"
+                    icon="AllIcons.Nodes.Artifact"/>
+
+            <separator/>
+
+            <!-- Metrics Dashboard Actions -->
+            <action id="Sentinel.ShowMetrics"
+                    class="dev.sentinelseed.jetbrains.actions.ShowMetricsAction"
+                    text="Show Metrics Dashboard"
+                    description="Display analysis statistics and metrics"
+                    icon="AllIcons.Toolwindows.ToolWindowAnalyzeDataflow"/>
+
+            <action id="Sentinel.ClearMetrics"
+                    class="dev.sentinelseed.jetbrains.actions.ClearMetricsAction"
+                    text="Clear Metrics"
+                    description="Clear all stored analysis metrics"
+                    icon="AllIcons.Actions.GC"/>
 
             <!-- Add to editor popup menu -->
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>

@@ -22,6 +22,7 @@ dependencies {
         bundledPlugins("com.intellij.java")
         pluginVerifier()
         zipSigner()
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 
     // HTTP client for API calls
@@ -30,7 +31,12 @@ dependencies {
     // JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // Note: Coroutines are already provided by IntelliJ Platform
+    // Testing
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
+    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("org.assertj:assertj-core:3.25.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 kotlin {
@@ -53,7 +59,7 @@ intellijPlatform {
 
         vendor {
             name = "Sentinel Seed Team"
-            email = "contact@sentinelseed.dev"
+            email = "team@sentinelseed.dev"
             url = "https://sentinelseed.dev"
         }
     }
@@ -86,5 +92,19 @@ tasks {
 
     instrumentCode {
         enabled = false
+    }
+
+    instrumentTestCode {
+        enabled = false
+    }
+
+    test {
+        useJUnitPlatform()
+        testLogging {
+            events("passed", "skipped", "failed")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+        }
     }
 }

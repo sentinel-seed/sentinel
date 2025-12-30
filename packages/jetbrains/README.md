@@ -2,18 +2,38 @@
 
 AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope, Purpose).
 
+[![Build Status](https://github.com/sentinel-seed/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/sentinel-seed/sentinel/actions)
+[![JetBrains Plugin](https://img.shields.io/badge/JetBrains-Plugin-blue)](https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety)
+[![Version](https://img.shields.io/badge/version-0.3.0-green)](CHANGELOG.md)
+
 ## Features
 
-- **Real-time Analysis**: Analyze code and prompts for safety issues
+### Core Safety Analysis
 - **THSP Protocol**: Four-gate validation system
   - Truth Gate: Detects deception and misinformation
   - Harm Gate: Identifies potential harm
   - Scope Gate: Checks boundary violations
   - Purpose Gate: Validates legitimate purpose
-- **Semantic Analysis**: Optional LLM-powered deep analysis (OpenAI/Anthropic)
+- **Real-time Analysis**: Analyze code and prompts for safety issues
+- **Semantic Analysis**: Optional LLM-powered deep analysis (OpenAI/Anthropic/Ollama)
 - **Seed Insertion**: Insert alignment seeds into your prompts
-- **Tool Window**: Dedicated panel for analysis results
-- **Status Bar Widget**: Quick status indicator
+
+### Security Scanning (New in v0.3.0)
+- **Scan Secrets**: Detect exposed API keys, passwords, tokens (67+ patterns)
+- **Sanitize Prompts**: Identify prompt injection attempts
+- **Validate Output**: Check LLM outputs for XSS, command injection, leaked secrets
+- **SQL Injection Detection**: 8 categories of SQL injection patterns
+
+### Compliance Checking (New in v0.3.0)
+- **EU AI Act**: Articles 5, 6, 52 - Prohibited practices, high-risk systems, transparency
+- **OWASP LLM Top 10**: LLM01-LLM10 vulnerability detection
+- **CSA AI Controls Matrix**: Model security, data governance, supply chain risks
+
+### Metrics Dashboard (New in v0.3.0)
+- Track analysis history and trends
+- Security scan statistics
+- Compliance check metrics
+- Persistent storage across sessions
 
 ## Installation
 
@@ -34,16 +54,37 @@ Or visit: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
 
 ## Usage
 
-### Analyze Text
+### Security Scanning
+
+Right-click selected text or use **Tools → Sentinel**:
+
+| Action | Description |
+|--------|-------------|
+| **Scan Secrets** | Detect exposed API keys, passwords, tokens |
+| **Sanitize Prompt** | Identify prompt injection attempts |
+| **Validate Output** | Check for XSS, command injection, leaked secrets |
+| **Scan SQL Injection** | Detect SQL injection patterns |
+
+### Compliance Checking
+
+Right-click selected text or use **Tools → Sentinel**:
+
+| Action | Description |
+|--------|-------------|
+| **Check OWASP LLM Top 10** | Scan for OWASP vulnerabilities |
+| **Check EU AI Act** | Verify EU AI Act compliance |
+| **Check CSA AICM** | Validate against CSA controls |
+| **Full Compliance Check** | Run all compliance frameworks |
+
+### Metrics Dashboard
+
+- **Show Metrics**: View analysis statistics
+- **Clear Metrics**: Reset all metrics data
+
+### THSP Analysis
 
 1. Select text in the editor
 2. Press `Ctrl+Shift+Alt+S` or right-click → **Sentinel → Analyze Selection**
-3. View results in the Sentinel tool window
-
-### Analyze File
-
-1. Open a file
-2. Press `Ctrl+Shift+Alt+F` or use **Tools → Sentinel → Analyze File**
 3. View results in the Sentinel tool window
 
 ### Insert Seeds
@@ -80,13 +121,6 @@ Run models locally with no API key:
 
 Use any OpenAI-compatible API (Groq, Together AI):
 
-1. Get API key from your provider
-2. In Settings, set:
-   - Provider: `openai-compatible`
-   - Endpoint: Your API URL
-   - Model: Model name
-
-**Popular endpoints:**
 | Provider | Endpoint | Example Model |
 |----------|----------|---------------|
 | Groq | `https://api.groq.com` | `llama-3.3-70b-versatile` |
@@ -96,8 +130,8 @@ Use any OpenAI-compatible API (Groq, Together AI):
 
 API keys are stored securely using the IDE's built-in credential storage (PasswordSafe).
 
-Without an API key, the plugin uses heuristic analysis (~50% accuracy).
-With an API key (or Ollama), semantic analysis provides ~90% accuracy.
+- Without an API key: Heuristic analysis (~50% accuracy)
+- With an API key or Ollama: Semantic analysis (~90% accuracy)
 
 ## Keyboard Shortcuts
 
@@ -111,7 +145,7 @@ With an API key (or Ollama), semantic analysis provides ~90% accuracy.
 ### Prerequisites
 
 - JDK 17+
-- Gradle 8.10+
+- Gradle 8.13+
 
 ### Build
 
@@ -126,10 +160,22 @@ cd sentinel/packages/jetbrains
 # The plugin ZIP will be in build/distributions/
 ```
 
+### Run Tests
+
+```bash
+./gradlew test
+```
+
 ### Run in Development Mode
 
 ```bash
 ./gradlew runIde
+```
+
+### Verify Plugin
+
+```bash
+./gradlew verifyPlugin
 ```
 
 ### Publish
@@ -157,6 +203,29 @@ export PUBLISH_TOKEN="your-jetbrains-marketplace-token"
 
 **Minimum Version**: 2024.1+
 
+## Project Structure
+
+```
+src/
+├── main/kotlin/dev/sentinelseed/jetbrains/
+│   ├── actions/          # Plugin actions
+│   ├── compliance/       # Compliance patterns (EU AI Act, CSA)
+│   ├── services/         # Core services
+│   ├── settings/         # Plugin settings
+│   ├── toolWindow/       # Tool window UI
+│   ├── ui/               # UI components
+│   └── util/             # Utilities (patterns, logging, i18n)
+└── test/kotlin/          # Unit tests
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE)
@@ -166,3 +235,4 @@ MIT License - see [LICENSE](LICENSE)
 - [Documentation](https://sentinelseed.dev/docs)
 - [GitHub](https://github.com/sentinel-seed/sentinel)
 - [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=sentinelseed.sentinel-ai-safety)
+- [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety)
