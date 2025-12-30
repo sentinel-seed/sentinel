@@ -4,57 +4,82 @@
     <vendor email="team@sentinelseed.dev" url="https://sentinelseed.dev">Sentinel Seed Team</vendor>
 
     <description><![CDATA[
-        <h2>AI Safety Guardrails for LLM Prompts</h2>
+        <h2>AI Safety Guardrails for LLM Applications</h2>
 
-        <p>Sentinel AI Safety provides real-time safety analysis for LLM prompts and AI-generated content
-        using the <strong>THSP protocol</strong> (Truth, Harm, Scope, Purpose).</p>
+        <p>Sentinel AI Safety provides comprehensive security and compliance analysis for LLM prompts,
+        AI-generated content, and agent workflows. All scanning runs <strong>100% locally</strong> with
+        no data sent to external servers.</p>
 
-        <h3>Features</h3>
+        <h3>Core Features</h3>
         <ul>
-            <li><strong>Real-time Analysis</strong> - Analyze code and prompts for safety issues</li>
-            <li><strong>THSP Protocol</strong> - Four-gate validation system:
-                <ul>
-                    <li>Truth Gate: Detects deception and misinformation</li>
-                    <li>Harm Gate: Identifies potential harm</li>
-                    <li>Scope Gate: Checks boundary violations</li>
-                    <li>Purpose Gate: Validates legitimate purpose</li>
-                </ul>
-            </li>
-            <li><strong>Security Scanning</strong> - Detect secrets, SQL injection, and prompt injection</li>
-            <li><strong>Output Validation</strong> - Validate LLM outputs for security issues</li>
-            <li><strong>Compliance Checking</strong> - EU AI Act, OWASP LLM Top 10, CSA AICM</li>
-            <li><strong>Metrics Dashboard</strong> - Track analysis statistics over time</li>
-            <li><strong>Semantic Analysis</strong> - Optional LLM-powered deep analysis (OpenAI/Anthropic)</li>
-            <li><strong>Seed Insertion</strong> - Insert alignment seeds into your prompts</li>
-            <li><strong>Tool Window</strong> - Dedicated panel for analysis results</li>
+            <li><strong>THSP Protocol</strong>: Four-gate validation system (Truth, Harm, Scope, Purpose)</li>
+            <li><strong>Security Scanning</strong>: Detect 67+ secret patterns, SQL injection, prompt injection</li>
+            <li><strong>Compliance Checking</strong>: EU AI Act, OWASP LLM Top 10, CSA AI Controls Matrix</li>
+            <li><strong>Output Validation</strong>: XSS, command injection, leaked secrets detection</li>
+            <li><strong>Metrics Dashboard</strong>: Track analysis history and trends</li>
         </ul>
 
-        <h3>Usage</h3>
+        <h3>Security Scanning</h3>
+        <ul>
+            <li><strong>Scan Secrets</strong>: API keys (OpenAI, AWS, GitHub), tokens, credentials, PII</li>
+            <li><strong>Sanitize Prompt</strong>: Jailbreaks, DAN mode, instruction override, delimiter injection</li>
+            <li><strong>Validate Output</strong>: XSS, command injection, excessive agency, prompt leakage</li>
+            <li><strong>SQL Injection</strong>: 8 attack categories (destructive, UNION, auth bypass, blind)</li>
+        </ul>
+
+        <h3>Compliance Frameworks</h3>
+        <ul>
+            <li><strong>EU AI Act</strong>: Article 5 (prohibited), Article 6 (high-risk), Article 52 (transparency)</li>
+            <li><strong>OWASP LLM Top 10</strong>: LLM01 to LLM10 vulnerability patterns</li>
+            <li><strong>CSA AICM</strong>: Model Security, Data Governance, Application Security</li>
+        </ul>
+
+        <h3>Quick Start</h3>
         <ol>
-            <li>Select text or right-click in editor</li>
-            <li>Choose "Sentinel: Analyze Selection" from context menu</li>
-            <li>View results in the Sentinel tool window</li>
+            <li>Select text or open context menu in editor</li>
+            <li>Choose action from Sentinel menu</li>
+            <li>View results in Sentinel tool window</li>
         </ol>
 
-        <h3>Configuration</h3>
-        <p>Configure API keys for semantic analysis in Settings → Tools → Sentinel AI Safety</p>
+        <h3>Optional: Semantic Analysis</h3>
+        <p>Enable LLM-powered deep analysis with OpenAI, Anthropic, or Ollama (local) in Settings.</p>
 
         <p><a href="https://sentinelseed.dev/docs">Documentation</a> |
-        <a href="https://github.com/sentinel-seed/sentinel">GitHub</a></p>
+        <a href="https://github.com/sentinel-seed/sentinel">GitHub</a> |
+        <a href="https://marketplace.visualstudio.com/items?itemName=sentinelseed.sentinel-ai-safety">VS Code Extension</a></p>
     ]]></description>
 
     <change-notes><![CDATA[
-        <h3>0.3.0</h3>
+        <h3>0.3.0 (Major Release)</h3>
+
+        <h4>Security Scanning Module</h4>
         <ul>
-            <li>Add Security Scanning: Scan Secrets, Sanitize Prompt, Validate Output, SQL Injection Detection</li>
-            <li>Add Compliance Checking: EU AI Act, OWASP LLM Top 10, CSA AI Controls Matrix</li>
-            <li>New SecurityService for local security pattern matching</li>
-            <li>New ComplianceService with EU AI Act Article 5/6/52 detection</li>
-            <li>OWASP LLM Top 10 pattern detection (LLM01, LLM02, LLM05, LLM06, LLM07)</li>
-            <li>Database Guard: SQL injection detection across 8 categories</li>
-            <li>Add Metrics Dashboard: Track analysis statistics over time</li>
-            <li>New MetricsService with persistent storage</li>
-            <li>10 new commands in Sentinel menu (4 security + 4 compliance + 2 metrics)</li>
+            <li><strong>Scan Secrets</strong>: 67+ patterns for API keys, tokens, credentials, PII</li>
+            <li><strong>Sanitize Prompt</strong>: Jailbreak detection, DAN mode, instruction override</li>
+            <li><strong>Validate Output</strong>: XSS, command injection, prompt leakage</li>
+            <li><strong>SQL Injection</strong>: 8 attack categories with severity classification</li>
+        </ul>
+
+        <h4>Compliance Checking Module</h4>
+        <ul>
+            <li><strong>EU AI Act</strong>: Article 5 (prohibited), Article 6 (high-risk), Article 52 (transparency)</li>
+            <li><strong>OWASP LLM Top 10</strong>: LLM01, LLM02, LLM05, LLM06, LLM07 patterns</li>
+            <li><strong>CSA AI Controls Matrix</strong>: Model Security, Data Governance, Application Security</li>
+        </ul>
+
+        <h4>Metrics Dashboard</h4>
+        <ul>
+            <li>Track analysis history and trends over time</li>
+            <li>Security scan and compliance check statistics</li>
+            <li>Persistent storage using IntelliJ PropertiesComponent</li>
+        </ul>
+
+        <h4>Quality Improvements</h4>
+        <ul>
+            <li>178 unit tests (100% passing)</li>
+            <li>ReDoS-safe regex patterns</li>
+            <li>Internationalization support (English, Portuguese)</li>
+            <li>CI/CD pipeline with GitHub Actions</li>
         </ul>
 
         <h3>0.2.1</h3>
