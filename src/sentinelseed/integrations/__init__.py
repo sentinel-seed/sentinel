@@ -8,6 +8,7 @@ Each integration is a subpackage with:
 - example.py: Usage examples
 
 Available integrations:
+    from sentinelseed.integrations.agno import SentinelGuardrail  # Agno multi-agent framework
     from sentinelseed.integrations.langchain import SentinelCallback
     from sentinelseed.integrations.langgraph import SentinelSafetyNode
     from sentinelseed.integrations.crewai import safe_agent, SentinelCrew
@@ -102,6 +103,7 @@ Coinbase Ecosystem (AgentKit + x402):
 
 __all__ = [
     'agent_validation',
+    'agno',
     'anthropic_sdk',
     'autogpt',
     'autogpt_block',
