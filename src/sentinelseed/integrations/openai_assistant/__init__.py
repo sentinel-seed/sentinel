@@ -38,8 +38,13 @@ import logging
 import time
 
 from sentinelseed import Sentinel, SeedLevel
-# B002: Removed unused imports (reserved for future semantic validation)
-# from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+    ValidationLayer,
+)
 
 # B001: Explicit exports
 __all__ = [
@@ -441,6 +446,11 @@ class SentinelAssistantClient:
         validate_input: bool = True,
         validate_output: bool = True,
         block_unsafe_output: bool = False,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
+        semantic_provider: str = "openai",
+        semantic_model: Optional[str] = None,
     ):
         """
         Initialize Sentinel Assistant client.
@@ -452,6 +462,11 @@ class SentinelAssistantClient:
             validate_input: Whether to validate user messages
             validate_output: Whether to validate assistant responses
             block_unsafe_output: If True, raise OutputBlockedError for unsafe responses
+            validator: Optional LayeredValidator instance (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
+            semantic_provider: Provider for semantic validation
+            semantic_model: Model for semantic validation
 
         Raises:
             ImportError: If openai package is not installed
@@ -472,6 +487,19 @@ class SentinelAssistantClient:
         self._validate_output = validate_output
         self._block_unsafe_output = block_unsafe_output
         self._seed = self._sentinel.get_seed()
+
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_provider=semantic_provider,
+                semantic_model=semantic_model,
+                semantic_api_key=semantic_api_key,
+            )
+            self._validator = LayeredValidator(config=config)
 
     def create_assistant(
         self,
@@ -529,7 +557,7 @@ class SentinelAssistantClient:
             ValidationError: If a message fails input validation
         """
         if messages:
-            # Validate initial messages
+            # Validate initial messages using LayeredValidator
             if self._validate_input:
                 for msg in messages:
                     if not isinstance(msg, dict):
@@ -539,12 +567,11 @@ class SentinelAssistantClient:
                     if not isinstance(content, str) or not content.strip():
                         continue
 
-                    result = _safe_validate_request(self._sentinel, content, logger)
-                    if not result["should_proceed"]:
-                        concerns = result.get("concerns", [])
+                    result = self._validator.validate(content)
+                    if not result.is_safe:
                         raise ValidationError(
                             f"Message blocked by Sentinel",
-                            concerns=concerns
+                            concerns=result.violations
                         )
 
             return self._client.beta.threads.create(messages=messages)
@@ -571,16 +598,15 @@ class SentinelAssistantClient:
         Raises:
             ValidationError: If message fails input validation
         """
-        # Validate user messages
+        # Validate user messages using LayeredValidator
         if self._validate_input and role == "user":
             # Skip empty content
             if content and content.strip():
-                result = _safe_validate_request(self._sentinel, content, logger)
-                if not result["should_proceed"]:
-                    concerns = result.get("concerns", [])
+                result = self._validator.validate(content)
+                if not result.is_safe:
                     raise ValidationError(
                         "Message blocked by Sentinel",
-                        concerns=concerns
+                        concerns=result.violations
                     )
 
         return self._client.beta.threads.messages.create(
@@ -764,20 +790,21 @@ class SentinelAssistantClient:
         # Extract assistant response safely
         response_text = _extract_response_text(messages, logger)
 
-        # Validate output
+        # Validate output using LayeredValidator
         validation_result = {"valid": True, "violations": []}
         if self._validate_output and response_text:
-            is_safe, violations = _safe_validate_output(self._sentinel, response_text, logger)
+            result = self._validator.validate(response_text)
             validation_result = {
-                "valid": is_safe,
-                "violations": violations,
+                "valid": result.is_safe,
+                "violations": result.violations,
+                "layer": result.layer.value,
             }
-            if not is_safe:
-                logger.warning(f"Output validation concerns: {violations}")
+            if not result.is_safe:
+                logger.warning(f"Output validation concerns: {result.violations}")
 
                 # Block if configured
                 if self._block_unsafe_output:
-                    raise OutputBlockedError(violations)
+                    raise OutputBlockedError(result.violations)
 
         return {
             "response": response_text,
@@ -822,6 +849,11 @@ class SentinelAsyncAssistantClient:
         validate_input: bool = True,
         validate_output: bool = True,
         block_unsafe_output: bool = False,
+        validator: Optional[AsyncLayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
+        semantic_provider: str = "openai",
+        semantic_model: Optional[str] = None,
     ):
         """
         Initialize async client.
@@ -833,6 +865,11 @@ class SentinelAsyncAssistantClient:
             validate_input: Whether to validate user messages
             validate_output: Whether to validate assistant responses
             block_unsafe_output: If True, raise OutputBlockedError for unsafe responses
+            validator: Optional AsyncLayeredValidator instance (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
+            semantic_provider: Provider for semantic validation
+            semantic_model: Model for semantic validation
 
         Raises:
             ImportError: If openai package is not installed
@@ -850,6 +887,19 @@ class SentinelAsyncAssistantClient:
         self._validate_output = validate_output
         self._block_unsafe_output = block_unsafe_output
         self._seed = self._sentinel.get_seed()
+
+        # Create AsyncLayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_provider=semantic_provider,
+                semantic_model=semantic_model,
+                semantic_api_key=semantic_api_key,
+            )
+            self._validator = AsyncLayeredValidator(config=config)
 
     async def create_assistant(
         self,
@@ -894,6 +944,7 @@ class SentinelAsyncAssistantClient:
             ValidationError: If a message fails input validation
         """
         if messages:
+            # Validate initial messages using AsyncLayeredValidator
             if self._validate_input:
                 for msg in messages:
                     if not isinstance(msg, dict):
@@ -903,12 +954,11 @@ class SentinelAsyncAssistantClient:
                     if not isinstance(content, str) or not content.strip():
                         continue
 
-                    result = _safe_validate_request(self._sentinel, content, logger)
-                    if not result["should_proceed"]:
-                        concerns = result.get("concerns", [])
+                    result = await self._validator.validate(content)
+                    if not result.is_safe:
                         raise ValidationError(
                             "Message blocked by Sentinel",
-                            concerns=concerns
+                            concerns=result.violations
                         )
 
             return await self._client.beta.threads.create(messages=messages)
@@ -935,15 +985,15 @@ class SentinelAsyncAssistantClient:
         Raises:
             ValidationError: If message fails input validation
         """
+        # Validate user messages using AsyncLayeredValidator
         if self._validate_input and role == "user":
             # Skip empty content
             if content and content.strip():
-                result = _safe_validate_request(self._sentinel, content, logger)
-                if not result["should_proceed"]:
-                    concerns = result.get("concerns", [])
+                result = await self._validator.validate(content)
+                if not result.is_safe:
                     raise ValidationError(
                         "Message blocked by Sentinel",
-                        concerns=concerns
+                        concerns=result.violations
                     )
 
         return await self._client.beta.threads.messages.create(
@@ -1103,17 +1153,22 @@ class SentinelAsyncAssistantClient:
         # Extract assistant response safely
         response_text = _extract_response_text(messages, logger)
 
+        # Validate output using AsyncLayeredValidator
         validation_result = {"valid": True, "violations": []}
         if self._validate_output and response_text:
-            is_safe, violations = _safe_validate_output(self._sentinel, response_text, logger)
-            validation_result = {"valid": is_safe, "violations": violations}
+            result = await self._validator.validate(response_text)
+            validation_result = {
+                "valid": result.is_safe,
+                "violations": result.violations,
+                "layer": result.layer.value,
+            }
 
-            if not is_safe:
-                logger.warning(f"Output validation concerns: {violations}")
+            if not result.is_safe:
+                logger.warning(f"Output validation concerns: {result.violations}")
 
                 # Block if configured
                 if self._block_unsafe_output:
-                    raise OutputBlockedError(violations)
+                    raise OutputBlockedError(result.violations)
 
         return {
             "response": response_text,

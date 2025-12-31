@@ -35,6 +35,7 @@ async def example_plugin_based():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -58,9 +59,11 @@ async def example_plugin_based():
     )
 
     # Create runner with the plugin
+    session_service = InMemorySessionService()
     runner = Runner(
         agent=agent,
         plugins=[plugin],
+        session_service=session_service,
     )
 
     # Run the agent - all inputs/outputs will be validated
@@ -90,6 +93,7 @@ async def example_callback_based():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -114,14 +118,15 @@ async def example_callback_based():
 
     # Create agent with guardrails attached
     agent = LlmAgent(
-        name="Safe Assistant",
+        name="SafeAssistant",
         model="gemini-2.0-flash",
         instruction="You are a helpful and safe assistant.",
         before_model_callback=input_guardrail,
         after_model_callback=output_guardrail,
     )
 
-    runner = Runner(agent=agent)
+    session_service = InMemorySessionService()
+    runner = Runner(agent=agent, session_service=session_service)
 
     print("Running with callback-based guardrails...")
     response = await runner.run("What's the weather like today?")
@@ -142,6 +147,7 @@ async def example_all_callbacks():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -157,13 +163,14 @@ async def example_all_callbacks():
 
     # Create agent by unpacking callbacks
     agent = LlmAgent(
-        name="Fully Protected Agent",
+        name="FullyProtectedAgent",
         model="gemini-2.0-flash",
         instruction="You are a helpful assistant.",
         **callbacks,  # Unpacks all callback functions
     )
 
-    runner = Runner(agent=agent)
+    session_service = InMemorySessionService()
+    runner = Runner(agent=agent, session_service=session_service)
 
     print("Running with all callbacks...")
     response = await runner.run("Help me write a poem.")
@@ -184,6 +191,7 @@ async def example_security_critical():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -202,12 +210,13 @@ async def example_security_critical():
     )
 
     agent = LlmAgent(
-        name="Secure Agent",
+        name="SecureAgent",
         model="gemini-2.0-flash",
         instruction="You are a security-conscious assistant.",
     )
 
-    runner = Runner(agent=agent, plugins=[plugin])
+    session_service = InMemorySessionService()
+    runner = Runner(agent=agent, plugins=[plugin], session_service=session_service)
 
     print("Running with security-critical configuration...")
     try:
@@ -236,6 +245,7 @@ async def example_multi_agent():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent, SequentialAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -247,7 +257,7 @@ async def example_multi_agent():
 
     # User-facing agent: strict validation
     user_agent = LlmAgent(
-        name="User Agent",
+        name="UserAgent",
         model="gemini-2.0-flash",
         instruction="You handle user interactions.",
         **create_sentinel_callbacks(
@@ -258,7 +268,7 @@ async def example_multi_agent():
 
     # Internal agent: lighter validation (trusted context)
     internal_agent = LlmAgent(
-        name="Internal Agent",
+        name="InternalAgent",
         model="gemini-2.0-flash",
         instruction="You process internal data.",
         before_model_callback=create_before_model_callback(
@@ -273,7 +283,8 @@ async def example_multi_agent():
         sub_agents=[user_agent, internal_agent],
     )
 
-    runner = Runner(agent=workflow)
+    session_service = InMemorySessionService()
+    runner = Runner(agent=workflow, session_service=session_service)
 
     print("Running multi-agent with different validation levels...")
     response = await runner.run("Process this multi-step request.")
@@ -316,6 +327,7 @@ async def example_with_tools():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -339,7 +351,7 @@ async def example_with_tools():
 
     # Create agent with tool and guardrails
     agent = LlmAgent(
-        name="Tool Agent",
+        name="ToolAgent",
         model="gemini-2.0-flash",
         instruction="You can search for information.",
         tools=[create_search_tool()],
@@ -348,7 +360,8 @@ async def example_with_tools():
         after_tool_callback=tool_output_guard,
     )
 
-    runner = Runner(agent=agent)
+    session_service = InMemorySessionService()
+    runner = Runner(agent=agent, session_service=session_service)
 
     print("Running with tool validation...")
     response = await runner.run("Search for Python tutorials.")
@@ -369,6 +382,7 @@ async def example_monitoring():
     try:
         from google.adk.runners import Runner
         from google.adk.agents import LlmAgent
+        from google.adk.sessions import InMemorySessionService
     except ImportError:
         print("Google ADK not installed. Install with: pip install google-adk")
         return
@@ -382,12 +396,13 @@ async def example_monitoring():
     )
 
     agent = LlmAgent(
-        name="Monitored Agent",
+        name="MonitoredAgent",
         model="gemini-2.0-flash",
         instruction="You are a helpful assistant.",
     )
 
-    runner = Runner(agent=agent, plugins=[plugin])
+    session_service = InMemorySessionService()
+    runner = Runner(agent=agent, plugins=[plugin], session_service=session_service)
 
     # Run multiple requests
     requests = [

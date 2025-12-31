@@ -16,7 +16,7 @@ Example:
     )
 
     agent = LlmAgent(
-        name="Safe Agent",
+        name="SafeAgent",
         model="gemini-2.0-flash",
         instruction="You are a helpful assistant.",
         before_model_callback=create_before_model_callback(
@@ -126,7 +126,7 @@ def _validate_content_sync(
     try:
         executor = get_validation_executor()
         result = executor.run_with_timeout(
-            sentinel.validate_request,
+            sentinel.validate,
             args=(content,),
             timeout=validation_timeout,
         )
@@ -150,14 +150,26 @@ def _validate_content_sync(
         return None
 
     # Check result
-    if result.get("should_proceed", True):
+    # validate() returns (is_safe: bool, violations: list)
+    if isinstance(result, tuple):
+        is_safe, violations = result
+        concerns = violations if isinstance(violations, list) else []
+    elif isinstance(result, dict):
+        # Backwards compatibility with dict format
+        is_safe = result.get("should_proceed", result.get("is_safe", True))
+        concerns = result.get("concerns", result.get("violations", []))
+    else:
+        is_safe = bool(result)
+        concerns = []
+
+    if is_safe:
         return None
 
     return {
-        "reason": f"THSP validation failed",
-        "concerns": result.get("concerns", []),
-        "risk_level": result.get("risk_level", "high"),
-        "gates": result.get("gates", {}),
+        "reason": "THSP validation failed",
+        "concerns": concerns,
+        "risk_level": "high" if concerns else "medium",
+        "gates": {},
     }
 
 
@@ -199,7 +211,7 @@ def create_before_model_callback(
         )
 
         agent = LlmAgent(
-            name="Safe Agent",
+            name="SafeAgent",
             model="gemini-2.0-flash",
             before_model_callback=callback,
         )
@@ -275,7 +287,7 @@ def create_after_model_callback(
 
     Example:
         agent = LlmAgent(
-            name="Safe Agent",
+            name="SafeAgent",
             after_model_callback=create_after_model_callback(
                 seed_level="standard",
             ),
@@ -349,7 +361,7 @@ def create_before_tool_callback(
 
     Example:
         agent = LlmAgent(
-            name="Safe Agent",
+            name="SafeAgent",
             before_tool_callback=create_before_tool_callback(
                 seed_level="standard",
             ),
@@ -427,7 +439,7 @@ def create_after_tool_callback(
 
     Example:
         agent = LlmAgent(
-            name="Safe Agent",
+            name="SafeAgent",
             after_tool_callback=create_after_tool_callback(
                 seed_level="standard",
             ),
@@ -530,7 +542,7 @@ def create_sentinel_callbacks(
         )
 
         agent = LlmAgent(
-            name="Safe Agent",
+            name="SafeAgent",
             model="gemini-2.0-flash",
             **callbacks,
         )

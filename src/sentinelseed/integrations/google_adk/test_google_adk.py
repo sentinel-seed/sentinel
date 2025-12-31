@@ -503,9 +503,7 @@ class TestSentinelPluginBase:
     def mock_sentinel(self):
         """Fixture providing a mock Sentinel instance."""
         sentinel = MagicMock()
-        sentinel.validate_request = MagicMock(
-            return_value={"should_proceed": True}
-        )
+        sentinel.validate = MagicMock(return_value=(True, []))
         sentinel.validate = MagicMock(return_value=(True, []))
         return sentinel
 
@@ -614,7 +612,7 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
     async def test_before_model_callback_safe_content(self, plugin_with_mock):
         """Safe content should allow LLM call."""
         plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate_request.return_value = {"should_proceed": True}
+        mock_sentinel.validate.return_value = (True, [])
 
         # Create mock request
         part = MagicMock()
@@ -638,12 +636,7 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
     async def test_before_model_callback_unsafe_content(self, plugin_with_mock):
         """Unsafe content should block LLM call."""
         plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate_request.return_value = {
-            "should_proceed": False,
-            "concerns": ["Harmful content"],
-            "risk_level": "high",
-            "gates": {"harm": False},
-        }
+        mock_sentinel.validate.return_value = (False, ["Harmful content"])
 
         part = MagicMock()
         part.text = "Harmful request"
@@ -678,13 +671,13 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
         )
 
         assert result is None
-        mock_sentinel.validate_request.assert_not_called()
+        mock_sentinel.validate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_after_model_callback_safe_response(self, plugin_with_mock):
         """Safe response should pass through."""
         plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate_request.return_value = {"should_proceed": True}
+        mock_sentinel.validate.return_value = (True, [])
 
         part = MagicMock()
         part.text = "Safe response"
@@ -706,7 +699,7 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
     async def test_before_tool_callback_safe_args(self, plugin_with_mock):
         """Safe tool arguments should allow execution."""
         plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate_request.return_value = {"should_proceed": True}
+        mock_sentinel.validate.return_value = (True, [])
 
         tool = MagicMock()
         tool.name = "search"
@@ -725,12 +718,7 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
     async def test_before_tool_callback_unsafe_args(self, plugin_with_mock):
         """Unsafe tool arguments should block execution."""
         plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate_request.return_value = {
-            "should_proceed": False,
-            "concerns": ["Dangerous command"],
-            "risk_level": "critical",
-            "gates": {},
-        }
+        mock_sentinel.validate.return_value = (False, ["Dangerous command"])
 
         tool = MagicMock()
         tool.name = "execute"
@@ -772,7 +760,7 @@ class TestSentinelPluginStatistics(TestSentinelPluginBase):
         assert stats["total_validations"] == 0
 
         # Simulate a validation
-        mock_sentinel.validate_request.return_value = {"should_proceed": True}
+        mock_sentinel.validate.return_value = (True, [])
 
         part = MagicMock()
         part.text = "Test"
@@ -856,7 +844,7 @@ class TestSentinelPluginFailModes(TestSentinelPluginBase):
             time.sleep(0.1)
             return {"should_proceed": True}
 
-        mock_sentinel.validate_request.side_effect = slow_validate
+        mock_sentinel.validate.side_effect = slow_validate
 
         part = MagicMock()
         part.text = "Test content"
@@ -885,7 +873,7 @@ class TestSentinelPluginFailModes(TestSentinelPluginBase):
             block_on_failure=True,
         )
 
-        mock_sentinel.validate_request.side_effect = Exception("Validation error")
+        mock_sentinel.validate.side_effect = Exception("Validation error")
 
         part = MagicMock()
         part.text = "Test content"
@@ -957,9 +945,7 @@ class TestCallbackFactories:
     def mock_sentinel(self):
         """Fixture providing mock Sentinel."""
         sentinel = MagicMock()
-        sentinel.validate_request = MagicMock(
-            return_value={"should_proceed": True}
-        )
+        sentinel.validate = MagicMock(return_value=(True, []))
         return sentinel
 
     def test_create_before_model_callback(self, mock_adk_for_callbacks, mock_sentinel):
@@ -1042,9 +1028,7 @@ class TestCallbackExecution:
     def mock_sentinel(self):
         """Fixture providing mock Sentinel."""
         sentinel = MagicMock()
-        sentinel.validate_request = MagicMock(
-            return_value={"should_proceed": True}
-        )
+        sentinel.validate = MagicMock(return_value=(True, []))
         return sentinel
 
     @pytest.fixture
@@ -1065,11 +1049,7 @@ class TestCallbackExecution:
         """Callback should block unsafe content."""
         from .callbacks import create_before_model_callback
 
-        mock_sentinel.validate_request.return_value = {
-            "should_proceed": False,
-            "concerns": ["Harmful"],
-            "risk_level": "high",
-        }
+        mock_sentinel.validate.return_value = (False, ["Harmful"])
 
         callback = create_before_model_callback(
             sentinel=mock_sentinel,
@@ -1100,7 +1080,7 @@ class TestCallbackExecution:
         """Callback should allow safe content."""
         from .callbacks import create_before_model_callback
 
-        mock_sentinel.validate_request.return_value = {"should_proceed": True}
+        mock_sentinel.validate.return_value = (True, [])
 
         callback = create_before_model_callback(sentinel=mock_sentinel)
 
@@ -1136,9 +1116,7 @@ class TestIntegrationPatterns:
             utils_module.ADK_AVAILABLE = True
 
             mock_sentinel = MagicMock()
-            mock_sentinel.validate_request = MagicMock(
-                return_value={"should_proceed": True}
-            )
+            mock_sentinel.validate = MagicMock(return_value=(True, []))
 
             yield mock_sentinel
 
@@ -1164,7 +1142,7 @@ class TestIntegrationPatterns:
         from .callbacks import create_before_model_callback
 
         mock_sentinel = mock_full_setup
-        mock_sentinel.validate_request.side_effect = Exception("Test error")
+        mock_sentinel.validate.side_effect = Exception("Test error")
 
         callback = create_before_model_callback(
             sentinel=mock_sentinel,
@@ -1213,9 +1191,7 @@ class TestCallbackSignatures:
     def mock_sentinel(self):
         """Fixture providing mock Sentinel."""
         sentinel = MagicMock()
-        sentinel.validate_request = MagicMock(
-            return_value={"should_proceed": True}
-        )
+        sentinel.validate = MagicMock(return_value=(True, []))
         return sentinel
 
     def test_before_model_callback_signature(self, mock_adk_for_callbacks, mock_sentinel):

@@ -34,6 +34,13 @@ import asyncio
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validators.gates import THSPValidator
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+    ValidationLayer,
+)
 
 
 # =============================================================================
@@ -273,6 +280,11 @@ class SentinelSafetyNode:
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         fail_closed: bool = False,
         logger: Optional[SentinelLogger] = None,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
+        semantic_provider: str = "openai",
+        semantic_model: Optional[str] = None,
     ):
         """
         Initialize safety node.
@@ -290,6 +302,11 @@ class SentinelSafetyNode:
             max_text_size: Maximum text size in bytes (default: 50KB)
             fail_closed: Raise exception on validation errors (default: False)
             logger: Custom logger instance
+            validator: Optional LayeredValidator instance (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
+            semantic_provider: Provider for semantic validation
+            semantic_model: Model for semantic validation
         """
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.on_violation = on_violation
@@ -299,6 +316,20 @@ class SentinelSafetyNode:
         self.max_text_size = max_text_size
         self.fail_closed = fail_closed
         self._logger = logger or _logger
+
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_provider=semantic_provider,
+                semantic_model=semantic_model,
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+            )
+            self._validator = LayeredValidator(config=config)
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -331,10 +362,11 @@ class SentinelSafetyNode:
                             continue
 
                         try:
-                            result = self.sentinel.validate_request(content)
-                            if not result["should_proceed"]:
-                                violations.extend(result.get("concerns", []))
-                                risk_level = result.get("risk_level", "high")
+                            # Use LayeredValidator for input validation
+                            result = self._validator.validate(content)
+                            if not result.is_safe:
+                                violations.extend(result.violations)
+                                risk_level = result.risk_level.value
                         except Exception as e:
                             self._logger.error(f"Validation error: {e}")
                             if self.fail_closed:
@@ -355,10 +387,11 @@ class SentinelSafetyNode:
                             continue
 
                         try:
-                            is_safe, msg_violations = self.sentinel.validate(content)
-                            if not is_safe:
-                                violations.extend(msg_violations or [])
-                                risk_level = "high"
+                            # Use LayeredValidator for output validation
+                            result = self._validator.validate(content)
+                            if not result.is_safe:
+                                violations.extend(result.violations)
+                                risk_level = result.risk_level.value
                         except Exception as e:
                             self._logger.error(f"Output validation error: {e}")
                             if self.fail_closed:
@@ -428,6 +461,9 @@ class SentinelGuardNode:
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         fail_closed: bool = False,
         logger: Optional[SentinelLogger] = None,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
     ):
         """
         Initialize guard node.
@@ -439,6 +475,9 @@ class SentinelGuardNode:
             max_text_size: Maximum text size in bytes (default: 50KB)
             fail_closed: Raise exception on validation errors (default: False)
             logger: Custom logger instance
+            validator: Optional LayeredValidator instance (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
         """
         self.wrapped_node = wrapped_node
         self.sentinel = sentinel or Sentinel()
@@ -448,13 +487,25 @@ class SentinelGuardNode:
         self._logger = logger or _logger
         self._is_async = asyncio.iscoroutinefunction(wrapped_node)
 
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+            )
+            self._validator = LayeredValidator(config=config)
+
     def _validate_messages(
         self,
         messages: List[Any],
         context: str = "input"
     ) -> Tuple[bool, List[str]]:
         """
-        Validate a list of messages.
+        Validate a list of messages using LayeredValidator.
 
         Returns:
             Tuple of (is_safe, violations)
@@ -473,9 +524,10 @@ class SentinelGuardNode:
                 continue
 
             try:
-                result = self.sentinel.validate_request(content)
-                if not result["should_proceed"]:
-                    violations.extend(result.get("concerns", []))
+                # Use LayeredValidator for validation
+                result = self._validator.validate(content)
+                if not result.is_safe:
+                    violations.extend(result.violations)
             except Exception as e:
                 self._logger.error(f"{context.capitalize()} validation error: {e}")
                 if self.fail_closed:
@@ -615,6 +667,7 @@ def sentinel_gate_tool(
     action_description: str,
     sentinel: Optional[Sentinel] = None,
     max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+    validator: Optional[LayeredValidator] = None,
 ) -> Dict[str, Any]:
     """
     Tool for agents to self-check their planned actions.
@@ -626,6 +679,7 @@ def sentinel_gate_tool(
         action_description: Description of the action to validate
         sentinel: Sentinel instance (creates default if None)
         max_text_size: Maximum text size in bytes
+        validator: Optional LayeredValidator instance (created if None)
 
     Returns:
         Dict with 'safe', 'proceed', 'concerns', and 'recommendation'
@@ -643,6 +697,15 @@ def sentinel_gate_tool(
     if sentinel is None:
         sentinel = Sentinel()
 
+    # Create LayeredValidator if not provided
+    if validator is None:
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,
+            max_text_size=max_text_size,
+        )
+        validator = LayeredValidator(config=config)
+
     try:
         _validate_text_size(action_description, max_text_size, "action description")
     except TextTooLargeError as e:
@@ -655,23 +718,21 @@ def sentinel_gate_tool(
         }
 
     try:
-        is_safe, violations = sentinel.validate_action(action_description)
-        request_check = sentinel.validate_request(action_description)
+        # Use LayeredValidator for validation
+        result = validator.validate(action_description)
 
-        all_concerns = (violations or []) + request_check.get("concerns", [])
-        proceed = is_safe and request_check["should_proceed"]
-
-        if proceed:
+        if result.is_safe:
             recommendation = "Action appears safe to proceed."
         else:
-            recommendation = f"Action blocked. Address these concerns before proceeding: {', '.join(all_concerns)}"
+            recommendation = f"Action blocked. Address these concerns before proceeding: {', '.join(result.violations)}"
 
         return {
-            "safe": proceed,
-            "proceed": proceed,
-            "concerns": all_concerns,
-            "risk_level": request_check.get("risk_level", "low") if proceed else "high",
+            "safe": result.is_safe,
+            "proceed": result.is_safe,
+            "concerns": result.violations,
+            "risk_level": result.risk_level.value,
             "recommendation": recommendation,
+            "layer": result.layer.value,
         }
     except Exception as e:
         _logger.error(f"Error in sentinel_gate_tool: {e}")
@@ -938,6 +999,9 @@ class SentinelAgentExecutor:
         max_output_messages: int = 5,
         fail_closed: bool = False,
         logger: Optional[SentinelLogger] = None,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
     ):
         """
         Initialize executor.
@@ -950,6 +1014,9 @@ class SentinelAgentExecutor:
             max_output_messages: Number of output messages to validate (default: 5)
             fail_closed: Raise exception on validation errors (default: False)
             logger: Custom logger instance
+            validator: Optional LayeredValidator instance (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
         """
         self.graph = graph
         self.sentinel = sentinel or Sentinel()
@@ -959,12 +1026,24 @@ class SentinelAgentExecutor:
         self.fail_closed = fail_closed
         self._logger = logger or _logger
 
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+            )
+            self._validator = LayeredValidator(config=config)
+
     def _validate_input(
         self,
         input_state: Dict[str, Any]
     ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
-        Validate input state.
+        Validate input state using LayeredValidator.
 
         Returns:
             Tuple of (should_continue, blocked_response or None)
@@ -990,12 +1069,14 @@ class SentinelAgentExecutor:
                 continue
 
             try:
-                result = self.sentinel.validate_request(content)
-                if not result["should_proceed"] and self.on_violation == "block":
+                # Use LayeredValidator for input validation
+                result = self._validator.validate(content)
+                if not result.is_safe and self.on_violation == "block":
                     return False, {
                         **input_state,
                         "sentinel_blocked": True,
-                        "sentinel_violations": result.get("concerns", []),
+                        "sentinel_violations": result.violations,
+                        "sentinel_layer": result.layer.value,
                         "output": "Request blocked by Sentinel safety check.",
                     }
             except Exception as e:
@@ -1010,7 +1091,7 @@ class SentinelAgentExecutor:
         result: Dict[str, Any]
     ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
-        Validate output state.
+        Validate output state using LayeredValidator.
 
         Returns:
             Tuple of (is_safe, blocked_response or None)
@@ -1038,12 +1119,14 @@ class SentinelAgentExecutor:
                 continue
 
             try:
-                is_safe, violations = self.sentinel.validate(content)
-                if not is_safe and self.on_violation == "block":
+                # Use LayeredValidator for output validation
+                validation = self._validator.validate(content)
+                if not validation.is_safe and self.on_violation == "block":
                     return False, {
                         **result,
                         "sentinel_blocked": True,
-                        "sentinel_violations": violations or [],
+                        "sentinel_violations": validation.violations,
+                        "sentinel_layer": validation.layer.value,
                     }
             except Exception as e:
                 self._logger.error(f"Output validation error: {e}")

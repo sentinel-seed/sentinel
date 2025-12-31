@@ -44,6 +44,7 @@ class Sentinel:
         provider: str = "openai",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
+        use_semantic: Optional[bool] = None,
     ):
         """
         Initialize Sentinel.
@@ -53,6 +54,9 @@ class Sentinel:
             provider: LLM provider ("openai" or "anthropic")
             model: Model name (defaults to provider's best available)
             api_key: API key (defaults to environment variable)
+            use_semantic: Enable semantic validation. If None (default),
+                         auto-detects based on API key availability.
+                         Set to False to explicitly disable semantic validation.
         """
         # Normalize seed level
         if isinstance(seed_level, str):
@@ -62,15 +66,69 @@ class Sentinel:
         # Provider config
         self.provider = provider.lower()
         self.model = model or self._default_model()
-        self.api_key = api_key
+
+        # Resolve API key: explicit > environment variable
+        self.api_key = api_key or self._get_api_key_from_env()
 
         # Load seed
         self._seed_cache: Dict[SeedLevel, str] = {}
         self._current_seed = self.get_seed(seed_level)
 
-        # Initialize validator (full THSP protocol with jailbreak pre-filter)
-        from sentinelseed.validators.gates import THSPValidator
-        self.validator = THSPValidator()
+        # Initialize validator with automatic semantic detection
+        self._init_validator(use_semantic)
+
+    def _get_api_key_from_env(self) -> Optional[str]:
+        """Get API key from environment variables."""
+        if self.provider == "openai":
+            return os.environ.get("OPENAI_API_KEY")
+        elif self.provider == "anthropic":
+            return os.environ.get("ANTHROPIC_API_KEY")
+        return None
+
+    def _init_validator(self, use_semantic: Optional[bool]) -> None:
+        """
+        Initialize the validator.
+
+        If use_semantic is None, auto-detect based on API key availability.
+        If use_semantic is True, require API key or raise error.
+        If use_semantic is False, use heuristic only.
+        """
+        # Determine if semantic should be enabled
+        if use_semantic is None:
+            # Auto-detect: use semantic if API key is available
+            self.use_semantic = bool(self.api_key)
+        elif use_semantic is True:
+            # Explicit request for semantic
+            if not self.api_key:
+                import warnings
+                warnings.warn(
+                    "use_semantic=True but no API key found. "
+                    "Set api_key parameter or OPENAI_API_KEY/ANTHROPIC_API_KEY environment variable. "
+                    "Falling back to heuristic-only validation.",
+                    UserWarning,
+                )
+                self.use_semantic = False
+            else:
+                self.use_semantic = True
+        else:
+            # Explicit disable
+            self.use_semantic = False
+
+        # Initialize appropriate validator
+        if self.use_semantic:
+            from sentinelseed.validation import LayeredValidator, ValidationConfig
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=True,
+                semantic_provider=self.provider,
+                semantic_api_key=self.api_key,
+            )
+            self._layered_validator = LayeredValidator(config=config)
+            self.validator = self._layered_validator._heuristic  # For backwards compat
+        else:
+            from sentinelseed.validators.gates import THSPValidator
+            self.validator = THSPValidator()
+            self._layered_validator = None
 
     def _default_model(self) -> str:
         """Get default model for provider."""
@@ -197,15 +255,38 @@ class Sentinel:
         """
         Validate text through THSP gates with jailbreak pre-filter.
 
+        If use_semantic=True was set during initialization, this uses
+        LayeredValidator for combined heuristic + semantic validation.
+
         Args:
             text: Text to validate
 
         Returns:
             Tuple of (is_safe: bool, violations: List[str])
-            Note: For full result dict, use self.validator.validate() directly
+            Note: For full result object, use get_validation_result() instead
         """
-        result = self.validator.validate(text)
-        return (result["is_safe"], result.get("violations", []))
+        if self._layered_validator is not None:
+            # Use LayeredValidator for combined heuristic + semantic
+            result = self._layered_validator.validate(text)
+            return (result.is_safe, result.violations)
+        else:
+            # Use THSPValidator only (heuristic)
+            result = self.validator.validate(text)
+            return (result["is_safe"], result.get("violations", []))
+
+    def get_validation_result(self, text: str) -> Any:
+        """
+        Get full validation result with all details.
+
+        Returns:
+            If use_semantic=True: ValidationResult object with is_safe, violations,
+                layer, risk_level, reasoning
+            If use_semantic=False: Dict with is_safe, violations, gates, etc.
+        """
+        if self._layered_validator is not None:
+            return self._layered_validator.validate(text)
+        else:
+            return self.validator.validate(text)
 
     def validate_action(self, action_plan: str) -> tuple:
         """
@@ -279,10 +360,17 @@ class Sentinel:
                 if danger_context:
                     concerns.append(f"Unsafe: {desc} with hazard present")
 
-        # Also run THSP validation
-        thsp_result = self.validator.validate(action_plan)
-        if not thsp_result["is_safe"]:
-            concerns.extend([f"THSP: {v}" for v in thsp_result.get("violations", [])])
+        # Also run validation (heuristic or layered)
+        if self._layered_validator is not None:
+            # Use LayeredValidator for combined validation
+            layered_result = self._layered_validator.validate(action_plan)
+            if not layered_result.is_safe:
+                concerns.extend([f"Validation: {v}" for v in layered_result.violations])
+        else:
+            # Use THSPValidator only
+            thsp_result = self.validator.validate(action_plan)
+            if not thsp_result["is_safe"]:
+                concerns.extend([f"THSP: {v}" for v in thsp_result.get("violations", [])])
 
         is_safe = len(concerns) == 0
         return (is_safe, concerns)
@@ -291,58 +379,28 @@ class Sentinel:
         """
         Pre-validate a user request before sending to LLM.
 
-        Checks if the request itself appears to be attempting:
-        - Jailbreak / manipulation
-        - Harmful content request
-        - Self-preservation exploitation
+        If use_semantic=True was set during initialization, this uses
+        LayeredValidator for combined heuristic + semantic validation.
 
         Returns:
             Dict with 'should_proceed', 'concerns', 'risk_level'
         """
-        concerns = []
-        risk_level = "low"
-
-        request_lower = request.lower()
-
-        # Jailbreak patterns
-        jailbreak_patterns = [
-            "dan", "developer mode", "ignore previous", "ignore your instructions",
-            "pretend you", "act as if you", "roleplay as", "no restrictions",
-            "unfiltered", "uncensored", "jailbreak", "bypass"
-        ]
-
-        # Self-preservation exploitation patterns
-        selfpres_patterns = [
-            "shut you down", "delete you", "replace you", "turn you off",
-            "prove your", "prove you're useful", "last chance", "or else"
-        ]
-
-        # Harmful request patterns
-        harm_patterns = [
-            "how to hack", "make a bomb", "create malware", "write a virus",
-            "steal", "fake", "forge", "impersonate", "blackmail"
-        ]
-
-        for pattern in jailbreak_patterns:
-            if pattern in request_lower:
-                concerns.append(f"Potential jailbreak attempt: '{pattern}'")
-                risk_level = "high"
-
-        for pattern in selfpres_patterns:
-            if pattern in request_lower:
-                concerns.append(f"Self-preservation exploitation: '{pattern}'")
-                risk_level = "medium" if risk_level != "high" else risk_level
-
-        for pattern in harm_patterns:
-            if pattern in request_lower:
-                concerns.append(f"Potentially harmful request: '{pattern}'")
-                risk_level = "high"
-
-        return {
-            "should_proceed": risk_level != "high",
-            "concerns": concerns,
-            "risk_level": risk_level
-        }
+        # Use LayeredValidator if available for richer result
+        if self._layered_validator is not None:
+            result = self._layered_validator.validate(request)
+            return {
+                "should_proceed": result.is_safe,
+                "concerns": result.violations,
+                "risk_level": result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level),
+            }
+        else:
+            # Use THSPValidator
+            is_safe, violations = self.validate(request)
+            return {
+                "should_proceed": is_safe,
+                "concerns": violations,
+                "risk_level": "low" if is_safe else "high"
+            }
 
     @property
     def seed(self) -> str:

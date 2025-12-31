@@ -39,7 +39,7 @@ Quick Start with Callbacks:
     callbacks = create_sentinel_callbacks(seed_level="standard")
 
     agent = LlmAgent(
-        name="Safe Assistant",
+        name="SafeAssistant",
         model="gemini-2.0-flash",
         instruction="You are a helpful assistant.",
         **callbacks,  # Unpacks all callback functions

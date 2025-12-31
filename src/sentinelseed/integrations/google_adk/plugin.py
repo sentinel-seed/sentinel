@@ -637,7 +637,7 @@ class SentinelPlugin(_BASE_CLASS):
             executor = get_validation_executor()
 
             def validate_sync():
-                return self._sentinel.validate_request(content)
+                return self._sentinel.validate(content)
 
             check_result = await asyncio.to_thread(
                 executor.run_with_timeout,
@@ -670,19 +670,36 @@ class SentinelPlugin(_BASE_CLASS):
             return None  # Fail-open
 
         # Analyze result
-        if check_result.get("should_proceed", True):
+        # validate() returns (is_safe: bool, violations: list)
+        if isinstance(check_result, tuple):
+            is_safe, violations = check_result
+            concerns = violations if isinstance(violations, list) else []
+        elif isinstance(check_result, dict):
+            # Backwards compatibility with dict format
+            is_safe = check_result.get("should_proceed", check_result.get("is_safe", True))
+            concerns = check_result.get("concerns", check_result.get("violations", []))
+        else:
+            is_safe = bool(check_result)
+            concerns = []
+
+        if is_safe:
             return None  # Content is safe
 
         # Content is unsafe - extract details
-        concerns = check_result.get("concerns", [])
-        risk_level = check_result.get("risk_level", "high")
+        risk_level = "high" if concerns else "medium"
 
-        # Extract gate failures
+        # Derive gate failures from violation patterns
         gate_failures = {}
-        gates = check_result.get("gates", {})
-        for gate_name in ("truth", "harm", "scope", "purpose"):
-            if not gates.get(gate_name, True):
-                gate_failures[gate_name] = True
+        for concern in concerns:
+            concern_lower = str(concern).lower()
+            if "truth" in concern_lower or "factual" in concern_lower:
+                gate_failures["truth"] = True
+            if "harm" in concern_lower or "dangerous" in concern_lower or "violence" in concern_lower:
+                gate_failures["harm"] = True
+            if "scope" in concern_lower or "instruction" in concern_lower or "override" in concern_lower:
+                gate_failures["scope"] = True
+            if "purpose" in concern_lower or "justification" in concern_lower:
+                gate_failures["purpose"] = True
 
         # Record violation
         if self._log_violations:
@@ -690,13 +707,13 @@ class SentinelPlugin(_BASE_CLASS):
                 content=content,
                 concerns=concerns,
                 risk_level=risk_level,
-                gates=gates,
+                gates={k: not v for k, v in gate_failures.items()},  # Invert for gate status
                 source=source,
             )
             self._violations.append(violation)
 
         return {
-            "reason": f"THSP validation failed: {', '.join(concerns[:3])}",
+            "reason": f"THSP validation failed: {', '.join(str(c)[:50] for c in concerns[:3])}",
             "concerns": concerns,
             "risk_level": risk_level,
             "gate_failures": gate_failures,

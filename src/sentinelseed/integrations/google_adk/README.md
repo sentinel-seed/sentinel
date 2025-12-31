@@ -60,7 +60,7 @@ callbacks = create_sentinel_callbacks(seed_level="standard")
 
 # Create agent with callbacks
 agent = LlmAgent(
-    name="Safe Agent",
+    name="SafeAgent",
     model="gemini-2.0-flash",
     instruction="You are a helpful assistant.",
     **callbacks,  # Unpacks before/after model/tool callbacks
@@ -136,7 +136,7 @@ tool_output_guard = create_after_tool_callback(
 )
 
 agent = LlmAgent(
-    name="Protected Agent",
+    name="ProtectedAgent",
     model="gemini-2.0-flash",
     before_model_callback=input_guard,
     after_model_callback=output_guard,
@@ -237,8 +237,8 @@ from google.adk.agents import LlmAgent, SequentialAgent
 # Plugin applies to all agents
 plugin = SentinelPlugin(seed_level="standard")
 
-agent1 = LlmAgent(name="Agent 1", model="gemini-2.0-flash")
-agent2 = LlmAgent(name="Agent 2", model="gemini-2.0-flash")
+agent1 = LlmAgent(name="Agent1", model="gemini-2.0-flash")
+agent2 = LlmAgent(name="Agent2", model="gemini-2.0-flash")
 
 workflow = SequentialAgent(name="Workflow", sub_agents=[agent1, agent2])
 
@@ -250,13 +250,13 @@ runner = Runner(agent=workflow, plugins=[plugin])
 ```python
 # User-facing: strict
 user_agent = LlmAgent(
-    name="User Agent",
+    name="UserAgent",
     **create_sentinel_callbacks(seed_level="full"),
 )
 
 # Internal: lighter
 internal_agent = LlmAgent(
-    name="Internal Agent",
+    name="InternalAgent",
     **create_sentinel_callbacks(seed_level="minimal"),
 )
 ```

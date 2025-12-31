@@ -275,11 +275,18 @@ class TestSentinelMessagesWrapper:
     def setup_method(self):
         """Setup mocks for each test."""
         from sentinelseed import Sentinel
-        from sentinelseed.validators.gates import THSPValidator
+        from sentinelseed.validation import LayeredValidator, ValidationConfig
 
         self.mock_messages_api = Mock()
         self.sentinel = Sentinel(seed_level="minimal")
-        self.heuristic_validator = THSPValidator()
+
+        # Create LayeredValidator with heuristic only (for testing without API)
+        config = ValidationConfig(use_heuristic=True, use_semantic=False)
+        self.layered_validator = LayeredValidator(config=config)
+
+        # Create an empty validator (no validation)
+        config_empty = ValidationConfig(use_heuristic=False, use_semantic=False)
+        self.empty_validator = LayeredValidator(config=config_empty)
 
         # Create a custom logger to capture logs
         class TestLogger:
@@ -311,8 +318,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.layered_validator,
             logger=self.test_logger,
         )
 
@@ -343,8 +349,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.layered_validator,
             logger=self.test_logger,
         )
 
@@ -371,8 +376,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=False,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=None,
+            layered_validator=self.empty_validator,
             logger=self.test_logger,
         )
 
@@ -402,8 +406,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=False,
             validate_input=False,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=None,
+            layered_validator=self.empty_validator,
             logger=self.test_logger,
         )
 
@@ -431,8 +434,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.layered_validator,
             logger=self.test_logger,
         )
 
@@ -460,8 +462,7 @@ class TestSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.layered_validator,
             logger=self.test_logger,
         )
 
@@ -481,11 +482,14 @@ class TestAsyncSentinelMessagesWrapper:
     def setup_method(self):
         """Setup mocks for each test."""
         from sentinelseed import Sentinel
-        from sentinelseed.validators.gates import THSPValidator
+        from sentinelseed.validation import AsyncLayeredValidator, ValidationConfig
 
         self.mock_messages_api = AsyncMock()
         self.sentinel = Sentinel(seed_level="minimal")
-        self.heuristic_validator = THSPValidator()
+
+        # Create AsyncLayeredValidator with heuristic only (for testing without API)
+        config = ValidationConfig(use_heuristic=True, use_semantic=False)
+        self.async_layered_validator = AsyncLayeredValidator(config=config)
 
         class TestLogger:
             def __init__(self):
@@ -515,8 +519,7 @@ class TestAsyncSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.async_layered_validator,
             logger=self.test_logger,
         )
 
@@ -546,8 +549,7 @@ class TestAsyncSentinelMessagesWrapper:
             enable_seed_injection=True,
             validate_input=True,
             validate_output=False,
-            semantic_validator=None,
-            heuristic_validator=self.heuristic_validator,
+            layered_validator=self.async_layered_validator,
             logger=self.test_logger,
         )
 

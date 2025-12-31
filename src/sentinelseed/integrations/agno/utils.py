@@ -303,7 +303,7 @@ def extract_content(run_input: Any) -> str | None:
     Example:
         content = extract_content(run_input)
         if content is not None:
-            result = sentinel.validate_request(content)
+            is_safe, violations = sentinel.validate(content)
     """
     if run_input is None:
         return None
@@ -497,8 +497,8 @@ class ValidationExecutor:
     Example:
         executor = ValidationExecutor.get_instance()
         try:
-            result = executor.run_with_timeout(
-                fn=sentinel.validate_request,
+            is_safe, violations = executor.run_with_timeout(
+                fn=sentinel.validate,
                 args=("user input",),
                 timeout=5.0,
             )

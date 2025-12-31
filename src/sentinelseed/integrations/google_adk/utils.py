@@ -33,7 +33,7 @@ try:
     from google.genai import types
 
     ADK_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
     ADK_AVAILABLE = False
     Agent = None
     LlmAgent = None
@@ -43,6 +43,14 @@ except ImportError:
     BasePlugin = None
     ToolContext = None
     types = None
+    if isinstance(e, AttributeError):
+        import warnings
+        warnings.warn(
+            f"Google ADK is installed but has incompatible structure: {e}. "
+            "Please check your Google ADK version.",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 class ConfigurationError(ValueError):

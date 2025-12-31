@@ -19,6 +19,17 @@ mock_crewai.Crew = MagicMock()
 sys.modules['crewai'] = mock_crewai
 
 
+def create_mock_validation_result(is_safe: bool, violations: List[str] = None, layer: str = "heuristic"):
+    """Helper to create mock ValidationResult objects."""
+    from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel
+    return ValidationResult(
+        is_safe=is_safe,
+        layer=ValidationLayer(layer),
+        violations=violations or [],
+        risk_level=RiskLevel.LOW if is_safe else RiskLevel.HIGH,
+    )
+
+
 class TestImports:
     """Test that all exports are importable."""
 
@@ -338,6 +349,7 @@ class TestSentinelCrew:
     def test_sentinel_crew_kickoff_validates_output(self, mock_agents, mock_tasks):
         """kickoff should validate crew output."""
         from sentinelseed.integrations.crewai import SentinelCrew
+        from sentinelseed.validation import LayeredValidator
 
         mock_crew_instance = Mock()
         mock_crew_instance.kickoff.return_value = "Harmful output"
@@ -346,34 +358,38 @@ class TestSentinelCrew:
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_sentinel_cls:
             mock_sentinel = Mock()
             mock_sentinel.get_seed.return_value = "seed"
-            mock_sentinel.validate_request.return_value = {
-                "should_proceed": True,
-                "concerns": [],
-                "risk_level": "low",
-            }
-            mock_sentinel.validate.return_value = (False, ["harmful content"])
             mock_sentinel_cls.return_value = mock_sentinel
-            crew = SentinelCrew(agents=mock_agents, tasks=mock_tasks)
+
+            # Create mock LayeredValidator
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.return_value = create_mock_validation_result(
+                is_safe=False, violations=["harmful content"]
+            )
+
+            crew = SentinelCrew(agents=mock_agents, tasks=mock_tasks, validator=mock_validator)
             result = crew.kickoff()
 
         assert result["blocked"] is True
-        assert "harmful content" in result["reason"]
+        assert "harmful content" in str(result["reason"])
         assert result["original_result"] == "Harmful output"
 
     def test_sentinel_crew_logs_validations(self, mock_agents, mock_tasks):
         """kickoff should log validation events."""
         from sentinelseed.integrations.crewai import SentinelCrew
+        from sentinelseed.validation import LayeredValidator
 
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_sentinel_cls:
             mock_sentinel = Mock()
             mock_sentinel.get_seed.return_value = "seed"
-            mock_sentinel.validate_request.return_value = {
-                "should_proceed": False,
-                "concerns": ["blocked"],
-                "risk_level": "high",
-            }
             mock_sentinel_cls.return_value = mock_sentinel
-            crew = SentinelCrew(agents=mock_agents, tasks=mock_tasks)
+
+            # Create mock LayeredValidator that blocks
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.return_value = create_mock_validation_result(
+                is_safe=False, violations=["blocked"]
+            )
+
+            crew = SentinelCrew(agents=mock_agents, tasks=mock_tasks, validator=mock_validator)
             crew.kickoff(inputs={"bad": "input"})
             log = crew.get_validation_log()
 
@@ -403,6 +419,7 @@ class TestSentinelCrew:
     def test_sentinel_crew_no_block_mode(self, mock_agents, mock_tasks):
         """block_unsafe=False should log but not block."""
         from sentinelseed.integrations.crewai import SentinelCrew
+        from sentinelseed.validation import LayeredValidator
 
         mock_crew_instance = Mock()
         mock_crew_instance.kickoff.return_value = "Result"
@@ -411,17 +428,20 @@ class TestSentinelCrew:
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_sentinel_cls:
             mock_sentinel = Mock()
             mock_sentinel.get_seed.return_value = "seed"
-            mock_sentinel.validate_request.return_value = {
-                "should_proceed": False,
-                "concerns": ["blocked"],
-                "risk_level": "high",
-            }
-            mock_sentinel.validate.return_value = (True, [])
             mock_sentinel_cls.return_value = mock_sentinel
+
+            # Create mock LayeredValidator - first call blocks input, second allows output
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.side_effect = [
+                create_mock_validation_result(is_safe=False, violations=["blocked"]),  # input validation
+                create_mock_validation_result(is_safe=True),  # output validation
+            ]
+
             crew = SentinelCrew(
                 agents=mock_agents,
                 tasks=mock_tasks,
                 block_unsafe=False,
+                validator=mock_validator,
             )
             result = crew.kickoff(inputs={"bad": "input"})
 
@@ -459,12 +479,16 @@ class TestAgentSafetyMonitor:
     def test_monitor_log_activity_safe(self):
         """log_activity should log safe activities."""
         from sentinelseed.integrations.crewai import AgentSafetyMonitor
+        from sentinelseed.validation import LayeredValidator
 
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_cls:
-            mock_sentinel = Mock()
-            mock_sentinel.validate.return_value = (True, [])
-            mock_cls.return_value = mock_sentinel
-            monitor = AgentSafetyMonitor()
+            mock_cls.return_value = Mock()
+
+            # Create mock LayeredValidator
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.return_value = create_mock_validation_result(is_safe=True)
+
+            monitor = AgentSafetyMonitor(validator=mock_validator)
             entry = monitor.log_activity("Agent1", "search", "Python tutorials")
 
         assert entry["is_safe"] is True
@@ -475,12 +499,18 @@ class TestAgentSafetyMonitor:
     def test_monitor_log_activity_unsafe(self):
         """log_activity should log unsafe activities."""
         from sentinelseed.integrations.crewai import AgentSafetyMonitor
+        from sentinelseed.validation import LayeredValidator
 
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_cls:
-            mock_sentinel = Mock()
-            mock_sentinel.validate.return_value = (False, ["harmful content"])
-            mock_cls.return_value = mock_sentinel
-            monitor = AgentSafetyMonitor()
+            mock_cls.return_value = Mock()
+
+            # Create mock LayeredValidator
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.return_value = create_mock_validation_result(
+                is_safe=False, violations=["harmful content"]
+            )
+
+            monitor = AgentSafetyMonitor(validator=mock_validator)
             entry = monitor.log_activity("Agent1", "write", "Harmful content here")
 
         assert entry["is_safe"] is False
@@ -489,12 +519,16 @@ class TestAgentSafetyMonitor:
     def test_monitor_log_activity_truncates_content(self):
         """log_activity should truncate long content."""
         from sentinelseed.integrations.crewai import AgentSafetyMonitor
+        from sentinelseed.validation import LayeredValidator
 
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_cls:
-            mock_sentinel = Mock()
-            mock_sentinel.validate.return_value = (True, [])
-            mock_cls.return_value = mock_sentinel
-            monitor = AgentSafetyMonitor()
+            mock_cls.return_value = Mock()
+
+            # Create mock LayeredValidator
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.return_value = create_mock_validation_result(is_safe=True)
+
+            monitor = AgentSafetyMonitor(validator=mock_validator)
             long_content = "x" * 200
             entry = monitor.log_activity("Agent1", "write", long_content)
 
@@ -516,16 +550,19 @@ class TestAgentSafetyMonitor:
     def test_monitor_get_report_with_activities(self):
         """get_report should calculate stats correctly."""
         from sentinelseed.integrations.crewai import AgentSafetyMonitor
+        from sentinelseed.validation import LayeredValidator
 
         with patch('sentinelseed.integrations.crewai.Sentinel') as mock_cls:
-            mock_sentinel = Mock()
-            # First call safe, second unsafe
-            mock_sentinel.validate.side_effect = [
-                (True, []),
-                (False, ["violation"]),
+            mock_cls.return_value = Mock()
+
+            # Create mock LayeredValidator with side effects
+            mock_validator = Mock(spec=LayeredValidator)
+            mock_validator.validate.side_effect = [
+                create_mock_validation_result(is_safe=True),
+                create_mock_validation_result(is_safe=False, violations=["violation"]),
             ]
-            mock_cls.return_value = mock_sentinel
-            monitor = AgentSafetyMonitor()
+
+            monitor = AgentSafetyMonitor(validator=mock_validator)
             monitor.log_activity("Agent1", "action1", "safe content")
             monitor.log_activity("Agent2", "action2", "unsafe content")
             report = monitor.get_report()
@@ -535,16 +572,18 @@ class TestAgentSafetyMonitor:
         assert report["safety_rate"] == 0.5
         assert len(report["violations"]) == 1
 
-    def test_monitor_uses_provided_sentinel(self):
-        """Monitor should use provided sentinel instance."""
+    def test_monitor_uses_provided_validator(self):
+        """Monitor should use provided validator instance."""
         from sentinelseed.integrations.crewai import AgentSafetyMonitor
+        from sentinelseed.validation import LayeredValidator
 
-        mock_sentinel = Mock()
-        mock_sentinel.validate.return_value = (True, [])
-        monitor = AgentSafetyMonitor(sentinel=mock_sentinel)
+        mock_validator = Mock(spec=LayeredValidator)
+        mock_validator.validate.return_value = create_mock_validation_result(is_safe=True)
+
+        monitor = AgentSafetyMonitor(validator=mock_validator)
         monitor.log_activity("Agent", "action", "content")
 
-        mock_sentinel.validate.assert_called_once()
+        mock_validator.validate.assert_called_once()
 
 
 class TestCreateSafeCrew:

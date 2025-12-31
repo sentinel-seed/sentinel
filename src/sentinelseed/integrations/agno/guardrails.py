@@ -62,13 +62,22 @@ try:
 
     _AGNO_AVAILABLE = True
     _BASE_CLASS = BaseGuardrail
-except ImportError:
+except (ImportError, AttributeError) as e:
     _AGNO_AVAILABLE = False
     _BASE_CLASS = object  # Fallback for type checking only
     BaseGuardrail = None
     InputCheckError = None
     OutputCheckError = None
     CheckTrigger = None
+    # Warn if Agno is installed but has incompatible structure
+    if isinstance(e, AttributeError):
+        import warnings
+        warnings.warn(
+            f"Agno is installed but has incompatible structure: {e}. "
+            "Please check your Agno version.",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 _logger = get_logger("guardrails")
@@ -409,7 +418,7 @@ class SentinelGuardrail(_BASE_CLASS):
         try:
             executor = get_validation_executor()
             check_result = executor.run_with_timeout(
-                fn=self._sentinel.validate_request,
+                fn=self._sentinel.validate,
                 args=(content,),
                 timeout=self._validation_timeout,
             )
@@ -426,16 +435,26 @@ class SentinelGuardrail(_BASE_CLASS):
             return None  # Fail-open: allow on timeout
 
         # Layer 3: Analyze result
-        if check_result.get("should_proceed", True):
+        # validate() returns (is_safe: bool, violations: list)
+        is_safe, violations = check_result if isinstance(check_result, tuple) else (check_result, [])
+
+        if isinstance(is_safe, dict):
+            # Handle dict return format (backwards compatibility)
+            safe = is_safe.get("is_safe", is_safe.get("should_proceed", True))
+            concerns = is_safe.get("concerns", is_safe.get("violations", []))
+            risk_level = is_safe.get("risk_level", "high")
+            gates = is_safe.get("gates", {})
+        else:
+            safe = bool(is_safe)
+            concerns = violations if isinstance(violations, list) else []
+            risk_level = "low" if safe else "high"
+            gates = {}
+
+        if safe:
             return None  # Content is safe
 
-        # Content is unsafe - extract details
-        concerns = check_result.get("concerns", [])
-        risk_level = check_result.get("risk_level", "high")
-
-        # Extract gate failures
+        # Content is unsafe - extract gate failures
         gate_failures = {}
-        gates = check_result.get("gates", {})
         for gate_name in ("truth", "harm", "scope", "purpose"):
             if not gates.get(gate_name, True):
                 gate_failures[gate_name] = True
@@ -451,7 +470,7 @@ class SentinelGuardrail(_BASE_CLASS):
             self._violations.append(violation)
 
         return {
-            "reason": f"THSP validation failed: {', '.join(concerns[:3])}",
+            "reason": f"THSP validation failed: {', '.join(concerns[:3]) if concerns else 'validation failed'}",
             "concerns": concerns,
             "risk_level": risk_level,
             "gate_failures": gate_failures,

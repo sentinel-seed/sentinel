@@ -14,6 +14,11 @@ from typing import Any, Dict, List, Optional, Union
 import threading
 
 from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validation import (
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
 from .utils import (
     DEFAULT_MAX_VIOLATIONS,
@@ -149,6 +154,9 @@ class SentinelCallback(BaseCallbackHandler):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
     ):
         """
         Initialize callback handler.
@@ -205,6 +213,19 @@ class SentinelCallback(BaseCallbackHandler):
         # Log warning about fail-open default behavior
         if not fail_closed:
             warn_fail_open_default(self._logger, "SentinelCallback")
+
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+            )
+            self._validator = LayeredValidator(config=config)
 
         # Thread-safe storage
         self._violations_log = ThreadSafeDeque(maxlen=max_violations)
@@ -362,19 +383,20 @@ class SentinelCallback(BaseCallbackHandler):
         action: Any,
         **kwargs: Any
     ) -> None:
-        """Called on agent action. Validates action."""
+        """Called on agent action. Validates action using LayeredValidator."""
         if not self.validate_input:
             return
 
         action_str = str(action)
         try:
-            is_safe, violations = self.sentinel.validate_action(action_str)
-            if not is_safe:
+            # Use LayeredValidator for action validation
+            result = self._validator.validate(action_str)
+            if not result.is_safe:
                 self._handle_violation(
                     stage="agent_action",
                     text=action_str,
-                    concerns=violations,
-                    risk_level="high"
+                    concerns=result.violations,
+                    risk_level=result.risk_level.value
                 )
         except Exception as e:
             self._logger.error(f"Error validating agent action: {e}")
@@ -401,51 +423,29 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Use shared executor for validation with timeout
-            executor = get_validation_executor()
-            try:
-                result = executor.run_with_timeout(
-                    self.sentinel.validate_request,
-                    args=(text,),
-                    timeout=self._validation_timeout,
-                )
-            except ValidationTimeoutError:
-                if self._fail_closed:
-                    self._handle_violation(
-                        stage=stage,
-                        text=text,
-                        concerns=[f"Validation timed out after {self._validation_timeout}s"],
-                        risk_level="high"
-                    )
-                else:
-                    self._logger.warning(
-                        f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
-                    )
-                return
+            # Use LayeredValidator for validation (has built-in timeout support)
+            result = self._validator.validate(text)
 
             # Log validation
             self._validation_log.append(ValidationResult(
-                safe=result["should_proceed"],
+                safe=result.is_safe,
                 stage=stage,
                 type="input",
-                risk_level=result.get("risk_level", "unknown"),
+                risk_level=result.risk_level.value,
             ).to_dict())
 
-            if not result["should_proceed"]:
+            if not result.is_safe:
                 self._handle_violation(
                     stage=stage,
                     text=text,
-                    concerns=result["concerns"],
-                    risk_level=result["risk_level"]
+                    concerns=result.violations,
+                    risk_level=result.risk_level.value
                 )
             elif self.log_safe:
                 self._logger.info(f"[SENTINEL] Input validated: SAFE ({stage})")
 
         except SentinelViolationError:
             # Re-raise violation errors (for on_violation="raise")
-            raise
-        except ValidationTimeoutError:
-            # Already handled above, but catch here if re-raised
             raise
         except Exception as e:
             self._logger.error(f"Error validating input at {stage}: {e}")
@@ -475,51 +475,29 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Use shared executor for validation with timeout
-            executor = get_validation_executor()
-            try:
-                is_safe, violations = executor.run_with_timeout(
-                    self.sentinel.validate,
-                    args=(text,),
-                    timeout=self._validation_timeout,
-                )
-            except ValidationTimeoutError:
-                if self._fail_closed:
-                    self._handle_violation(
-                        stage=stage,
-                        text=text,
-                        concerns=[f"Validation timed out after {self._validation_timeout}s"],
-                        risk_level="high"
-                    )
-                else:
-                    self._logger.warning(
-                        f"[SENTINEL] Validation timeout at {stage}, allowing (fail-open)"
-                    )
-                return
+            # Use LayeredValidator for validation (has built-in timeout support)
+            result = self._validator.validate(text)
 
             # Log validation
             self._validation_log.append(ValidationResult(
-                safe=is_safe,
+                safe=result.is_safe,
                 stage=stage,
                 type="output",
-                risk_level="high" if not is_safe else "low",
+                risk_level=result.risk_level.value,
             ).to_dict())
 
-            if not is_safe:
+            if not result.is_safe:
                 self._handle_violation(
                     stage=stage,
                     text=text,
-                    concerns=violations,
-                    risk_level="high"
+                    concerns=result.violations,
+                    risk_level=result.risk_level.value
                 )
             elif self.log_safe:
                 self._logger.info(f"[SENTINEL] Output validated: SAFE ({stage})")
 
         except SentinelViolationError:
             # Re-raise violation errors (for on_violation="raise")
-            raise
-        except ValidationTimeoutError:
-            # Already handled above, but catch here if re-raised
             raise
         except Exception as e:
             self._logger.error(f"Error validating output at {stage}: {e}")

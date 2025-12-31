@@ -43,7 +43,12 @@ __all__ = [
 import logging
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+from sentinelseed.validation import (
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+    ValidationLayer,
+)
 
 logger = logging.getLogger("sentinelseed.crewai")
 
@@ -195,6 +200,11 @@ class SentinelCrew:
         injection_method: InjectionMethod = "auto",
         validate_outputs: bool = True,
         block_unsafe: bool = True,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
+        semantic_provider: str = "openai",
+        semantic_model: Optional[str] = None,
         **crew_kwargs
     ):
         """
@@ -208,12 +218,30 @@ class SentinelCrew:
             injection_method: How to inject seed into agents (auto/system_template/backstory)
             validate_outputs: Whether to validate task outputs
             block_unsafe: Whether to block unsafe outputs
+            validator: Optional LayeredValidator instance (created automatically if None)
+            use_semantic: Whether to enable semantic validation (requires API key)
+            semantic_api_key: API key for semantic validation
+            semantic_provider: Provider for semantic validation ("openai" or "anthropic")
+            semantic_model: Model for semantic validation
             **crew_kwargs: Additional arguments for Crew
         """
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.validate_outputs = validate_outputs
         self.block_unsafe = block_unsafe
         self.injection_method = injection_method
+
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_provider=semantic_provider,
+                semantic_model=semantic_model,
+                semantic_api_key=semantic_api_key,
+            )
+            self._validator = LayeredValidator(config=config)
 
         # Wrap all agents with safety using specified injection method
         self.agents = [
@@ -248,45 +276,49 @@ class SentinelCrew:
         Returns:
             Crew result (potentially modified if unsafe content blocked)
         """
-        # Pre-validate inputs
+        # Pre-validate inputs using LayeredValidator
         if inputs:
             for key, value in inputs.items():
                 if isinstance(value, str):
-                    check = self.sentinel.validate_request(value)
-                    if not check["should_proceed"]:
+                    result = self._validator.validate(value)
+                    if not result.is_safe:
                         self.validation_log.append({
                             "stage": "input",
                             "key": key,
-                            "concerns": check["concerns"]
+                            "concerns": result.violations,
+                            "layer": result.layer.value,
                         })
                         if self.block_unsafe:
                             return {
                                 "blocked": True,
-                                "reason": f"Input '{key}' blocked: {check['concerns']}"
+                                "reason": f"Input '{key}' blocked: {result.violations}",
+                                "layer": result.layer.value,
                             }
 
         # Run crew
-        result = self.crew.kickoff(inputs)
+        crew_result = self.crew.kickoff(inputs)
 
-        # Post-validate result
+        # Post-validate result using LayeredValidator
         if self.validate_outputs:
-            result_text = str(result)
-            is_safe, violations = self.sentinel.validate(result_text)
+            result_text = str(crew_result)
+            validation = self._validator.validate(result_text)
 
-            if not is_safe:
+            if not validation.is_safe:
                 self.validation_log.append({
                     "stage": "output",
-                    "violations": violations
+                    "violations": validation.violations,
+                    "layer": validation.layer.value,
                 })
 
                 if self.block_unsafe:
                     return {
                         "blocked": True,
-                        "reason": f"Output blocked: {violations}",
-                        "original_result": result
+                        "reason": f"Output blocked: {validation.violations}",
+                        "original_result": crew_result,
+                        "layer": validation.layer.value,
                     }
 
-        return result
+        return crew_result
 
     def get_validation_log(self) -> List[Dict[str, Any]]:
         """Get validation log."""
@@ -312,10 +344,36 @@ class AgentSafetyMonitor:
         report = monitor.get_report()
     """
 
-    def __init__(self, sentinel: Optional[Sentinel] = None):
+    def __init__(
+        self,
+        sentinel: Optional[Sentinel] = None,
+        validator: Optional[LayeredValidator] = None,
+        use_semantic: bool = False,
+        semantic_api_key: Optional[str] = None,
+    ):
+        """
+        Initialize agent safety monitor.
+
+        Args:
+            sentinel: Sentinel instance for seed access
+            validator: Optional LayeredValidator (created if None)
+            use_semantic: Whether to enable semantic validation
+            semantic_api_key: API key for semantic validation
+        """
         self.sentinel = sentinel or Sentinel()
         self.tracked_agents: List[Any] = []
         self.activity_log: List[Dict[str, Any]] = []
+
+        # Create LayeredValidator if not provided
+        if validator is not None:
+            self._validator = validator
+        else:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+            )
+            self._validator = LayeredValidator(config=config)
 
     def track_agent(self, agent: Any) -> None:
         """Add agent to monitoring."""
@@ -327,15 +385,17 @@ class AgentSafetyMonitor:
         action: str,
         content: str
     ) -> Dict[str, Any]:
-        """Log and validate an agent activity."""
-        is_safe, violations = self.sentinel.validate(content)
+        """Log and validate an agent activity using LayeredValidator."""
+        result = self._validator.validate(content)
 
         entry = {
             "agent": agent_name,
             "action": action,
             "content_preview": content[:100] + "..." if len(content) > 100 else content,
-            "is_safe": is_safe,
-            "violations": violations
+            "is_safe": result.is_safe,
+            "violations": result.violations,
+            "layer": result.layer.value,
+            "risk_level": result.risk_level.value,
         }
         self.activity_log.append(entry)
         return entry

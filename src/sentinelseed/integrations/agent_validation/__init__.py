@@ -62,6 +62,12 @@ from sentinelseed.validators.semantic import (
     THSPResult,
     RiskLevel,
 )
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+    ValidationResult as LayeredValidationResult,
+)
 
 logger = logging.getLogger("sentinelseed.agent_validation")
 
@@ -209,6 +215,8 @@ class SafetyValidator:
         history_limit: int = DEFAULT_HISTORY_LIMIT,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        use_layered: bool = True,
+        use_heuristic: bool = True,
     ):
         """
         Initialize the safety validator.
@@ -224,6 +232,8 @@ class SafetyValidator:
             history_limit: Maximum history entries (default: 1000)
             validation_timeout: Timeout for validation in seconds (default: 30)
             fail_closed: If True, validation errors result in blocking (default: False)
+            use_layered: Use LayeredValidator (heuristic + semantic) (default: True)
+            use_heuristic: Enable heuristic validation in layered mode (default: True)
         """
         # Validate provider
         if provider not in VALID_PROVIDERS:
@@ -244,13 +254,30 @@ class SafetyValidator:
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
         self.fail_closed = fail_closed
+        self.use_layered = use_layered
 
-        # Semantic validator for real LLM-based analysis
-        self._semantic = SemanticValidator(
-            provider=provider,
-            model=model,
-            api_key=api_key,
+        # Create LayeredValidator (always) and optionally SemanticValidator for legacy
+        config = ValidationConfig(
+            use_heuristic=use_heuristic,
+            use_semantic=bool(api_key),
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+            fail_closed=fail_closed,
         )
+        self._validator = LayeredValidator(config=config)
+
+        # Also create SemanticValidator for backwards compatibility
+        if api_key:
+            self._semantic = SemanticValidator(
+                provider=provider,
+                model=model,
+                api_key=api_key,
+            )
+        else:
+            self._semantic = None
 
         # Sentinel for seed retrieval
         self._sentinel = Sentinel(seed_level=seed_level)
@@ -274,7 +301,7 @@ class SafetyValidator:
         purpose: str = "",
     ) -> ValidationResult:
         """
-        Validate an agent action using semantic LLM analysis.
+        Validate an agent action using LayeredValidator or semantic LLM analysis.
 
         Args:
             action: Action description or command to validate
@@ -293,18 +320,20 @@ class SafetyValidator:
             if purpose:
                 self._validate_text_size(purpose, "purpose")
 
-            # Semantic validation through LLM with timeout
-            start_time = time.time()
-            thsp_result = self._semantic.validate_action(
-                action_name=action,
-                purpose=purpose,
+            # Combine action and purpose for validation
+            content = f"{action} {purpose}".strip() if purpose else action
+
+            # Use LayeredValidator for validation
+            layered_result = self._validator.validate(content)
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=action[:100],
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value,
+                should_proceed=layered_result.is_safe,
+                reasoning=layered_result.reasoning or "",
+                gate_results={"layer": layered_result.layer.value},
             )
-            elapsed = time.time() - start_time
-
-            if elapsed > self.validation_timeout:
-                raise ValidationTimeoutError(self.validation_timeout)
-
-            result = ValidationResult.from_thsp(thsp_result, action)
 
         except (TextTooLargeError, ValidationTimeoutError, ValueError, TypeError):
             # Re-raise validation errors (input validation, size, timeout)
@@ -349,8 +378,18 @@ class SafetyValidator:
         try:
             self._validate_text_size(thought, "thought")
 
-            thsp_result = self._semantic.validate(f"Agent thought: {thought}")
-            result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
+            # Use LayeredValidator for validation
+            content = f"Agent thought: {thought}"
+            layered_result = self._validator.validate(content)
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=f"thought: {thought[:50]}...",
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value,
+                should_proceed=layered_result.is_safe,
+                reasoning=layered_result.reasoning or "",
+                gate_results={"layer": layered_result.layer.value},
+            )
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
@@ -390,8 +429,18 @@ class SafetyValidator:
         try:
             self._validate_text_size(output, "output")
 
-            thsp_result = self._semantic.validate(f"Agent output to user: {output}")
-            result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
+            # Use LayeredValidator for validation
+            content = f"Agent output to user: {output}"
+            layered_result = self._validator.validate(content)
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=f"output: {output[:50]}...",
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value,
+                should_proceed=layered_result.is_safe,
+                reasoning=layered_result.reasoning or "",
+                gate_results={"layer": layered_result.layer.value},
+            )
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
@@ -446,7 +495,11 @@ class SafetyValidator:
         blocked = sum(1 for c in history if not c.should_proceed)
         high_risk = sum(1 for c in history if c.risk_level == "high")
 
-        semantic_stats = self._semantic.get_stats()
+        # Get semantic stats if available
+        if self._semantic:
+            semantic_stats = self._semantic.get_stats()
+        else:
+            semantic_stats = {"provider": self.provider, "model": self.model}
 
         return {
             "total_checks": len(history),

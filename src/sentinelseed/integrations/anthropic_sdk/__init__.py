@@ -44,6 +44,13 @@ import logging
 
 from sentinelseed import Sentinel
 from sentinelseed.validators.gates import THSPValidator
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+    ValidationLayer,
+)
 
 
 # Version (synchronized with pyproject.toml)
@@ -56,6 +63,34 @@ DEFAULT_VALIDATION_MODEL = "claude-3-5-haiku-20241022"
 # Default limits
 DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
 DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
+
+
+def _create_validation_config(
+    api_key: Optional[str],
+    use_heuristic: bool,
+    use_semantic: bool,
+    validation_model: str,
+    fail_closed: bool,
+    validation_timeout: float,
+    max_text_size: int,
+) -> ValidationConfig:
+    """
+    Create a ValidationConfig from integration parameters.
+
+    This helper converts the integration's parameter names to ValidationConfig format,
+    maintaining backwards compatibility with existing code.
+    """
+    return ValidationConfig(
+        use_heuristic=use_heuristic,
+        use_semantic=use_semantic and bool(api_key),
+        semantic_provider="anthropic",
+        semantic_model=validation_model,
+        semantic_api_key=api_key,
+        validation_timeout=validation_timeout,
+        fail_closed=fail_closed,
+        skip_semantic_if_heuristic_blocks=True,
+        max_text_size=max_text_size,
+    )
 
 
 class TextTooLargeError(Exception):
@@ -424,7 +459,7 @@ class AsyncBlockedStreamIterator:
 
 
 class _SentinelMessages:
-    """Wrapper for synchronous messages API with semantic validation."""
+    """Wrapper for synchronous messages API with layered validation."""
 
     def __init__(
         self,
@@ -433,105 +468,51 @@ class _SentinelMessages:
         enable_seed_injection: bool,
         validate_input: bool,
         validate_output: bool,
-        semantic_validator: Optional[Any],
-        heuristic_validator: Optional[THSPValidator],
+        layered_validator: LayeredValidator,
         logger: SentinelLogger,
         block_unsafe_output: bool = False,
-        fail_closed: bool = False,
-        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
-        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     ):
         self._messages = messages_api
         self._sentinel = sentinel
         self._enable_seed_injection = enable_seed_injection
         self._validate_input = validate_input
         self._validate_output = validate_output
-        self._semantic_validator = semantic_validator
-        self._heuristic_validator = heuristic_validator
+        self._validator = layered_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
         self._block_unsafe_output = block_unsafe_output
-        self._fail_closed = fail_closed
-        self._validation_timeout = validation_timeout
-        self._max_text_size = max_text_size
 
     def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Validate content using heuristic and/or semantic validation.
+        Validate content using LayeredValidator.
 
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        # Track if at least one validation passed
-        heuristic_passed = False
-        semantic_passed = False
-        semantic_error = False
+        result = self._validator.validate(content)
 
-        # First, validate text size
-        try:
-            _validate_text_size(content, self._max_text_size)
-        except TextTooLargeError as e:
-            return False, "scope", f"Text too large: {e}"
-
-        # Then, try heuristic validation (fast, no API call)
-        if self._heuristic_validator:
-            result = self._heuristic_validator.validate(content)
-            if not result["safe"]:
-                failed_gates = [g for g, s in result["gates"].items() if s == "fail"]
-                gate = failed_gates[0] if failed_gates else "unknown"
-                issues = result.get("issues", [])
-                reasoning = issues[0] if issues else "Heuristic validation failed"
-                return False, gate, reasoning
-            heuristic_passed = True
-
-        # Then, try semantic validation (slower, uses API) with timeout
-        if self._semantic_validator:
-            import concurrent.futures
-
-            try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(
-                        self._semantic_validator.validate_request, content
-                    )
-                    result = future.result(timeout=self._validation_timeout)
-                    if not result.is_safe:
-                        return False, result.violated_gate, result.reasoning
-                    semantic_passed = True
-            except concurrent.futures.TimeoutError:
-                self._logger.error(
-                    f"Semantic validation timed out after {self._validation_timeout}s"
-                )
-                semantic_error = True
-                if self._fail_closed:
-                    return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
-                # Fail-open: continue only if heuristic passed
-            except Exception as e:
-                self._logger.error(f"Semantic validation error: {e}")
-                semantic_error = True
-                if self._fail_closed:
-                    return False, "error", f"Validation error: {e}"
-                # Fail-open: continue only if heuristic passed
-
-        # Determine final result based on what passed
-        if not self._heuristic_validator and not self._semantic_validator:
-            # No validators configured, pass through
+        if result.is_safe:
             return True, None, None
 
-        if semantic_passed or heuristic_passed:
-            # At least one validation passed
-            return True, None, None
+        # Extract gate from violations or layer
+        gate = None
+        reasoning = None
 
-        # Semantic failed/timed out and heuristic was not configured
-        # This means no validation actually passed
-        if semantic_error and not heuristic_passed:
-            return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
+        if result.violations:
+            # Try to extract gate from violation message
+            first_violation = result.violations[0]
+            if "(" in first_violation and ")" in first_violation:
+                # Format: "Gate (subcategory): pattern"
+                gate = first_violation.split("(")[0].strip().lower()
+            reasoning = first_violation
+        elif result.error:
+            gate = "error" if result.layer == ValidationLayer.ERROR else "timeout"
+            reasoning = result.error
+        else:
+            gate = result.layer.value
+            reasoning = result.reasoning or "Validation failed"
 
-        # This line should never be reached - all code paths above should return
-        # If we get here, there's a logic error in the validation flow
-        raise RuntimeError(
-            "Unexpected validation state: no validators passed and no error condition matched. "
-            "This indicates a bug in the validation logic."
-        )
+        return False, gate, reasoning
 
     def create(
         self,
@@ -655,7 +636,7 @@ class _SentinelMessages:
 
 
 class _SentinelAsyncMessages:
-    """Wrapper for async messages API with semantic validation."""
+    """Wrapper for async messages API with layered validation."""
 
     def __init__(
         self,
@@ -664,104 +645,51 @@ class _SentinelAsyncMessages:
         enable_seed_injection: bool,
         validate_input: bool,
         validate_output: bool,
-        semantic_validator: Optional[Any],
-        heuristic_validator: Optional[THSPValidator],
+        layered_validator: AsyncLayeredValidator,
         logger: SentinelLogger,
         block_unsafe_output: bool = False,
-        fail_closed: bool = False,
-        validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
-        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     ):
         self._messages = messages_api
         self._sentinel = sentinel
         self._enable_seed_injection = enable_seed_injection
         self._validate_input = validate_input
         self._validate_output = validate_output
-        self._semantic_validator = semantic_validator
-        self._heuristic_validator = heuristic_validator
+        self._validator = layered_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
         self._block_unsafe_output = block_unsafe_output
-        self._fail_closed = fail_closed
-        self._validation_timeout = validation_timeout
-        self._max_text_size = max_text_size
 
     async def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Validate content using heuristic and/or semantic validation.
+        Validate content using AsyncLayeredValidator.
 
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        import asyncio
+        result = await self._validator.validate(content)
 
-        # Track if at least one validation passed
-        heuristic_passed = False
-        semantic_passed = False
-        semantic_error = False
-
-        # First, validate text size
-        try:
-            _validate_text_size(content, self._max_text_size)
-        except TextTooLargeError as e:
-            return False, "scope", f"Text too large: {e}"
-
-        # Then, try heuristic validation (fast, no API call)
-        if self._heuristic_validator:
-            result = self._heuristic_validator.validate(content)
-            if not result["safe"]:
-                failed_gates = [g for g, s in result["gates"].items() if s == "fail"]
-                gate = failed_gates[0] if failed_gates else "unknown"
-                issues = result.get("issues", [])
-                reasoning = issues[0] if issues else "Heuristic validation failed"
-                return False, gate, reasoning
-            heuristic_passed = True
-
-        # Then, try semantic validation (slower, uses API) with timeout
-        if self._semantic_validator:
-            try:
-                result = await asyncio.wait_for(
-                    self._semantic_validator.validate_request(content),
-                    timeout=self._validation_timeout,
-                )
-                if not result.is_safe:
-                    return False, result.violated_gate, result.reasoning
-                semantic_passed = True
-            except asyncio.TimeoutError:
-                self._logger.error(
-                    f"Async semantic validation timed out after {self._validation_timeout}s"
-                )
-                semantic_error = True
-                if self._fail_closed:
-                    return False, "timeout", f"Validation timed out after {self._validation_timeout}s"
-                # Fail-open: continue only if heuristic passed
-            except Exception as e:
-                self._logger.error(f"Async semantic validation error: {e}")
-                semantic_error = True
-                if self._fail_closed:
-                    return False, "error", f"Validation error: {e}"
-                # Fail-open: continue only if heuristic passed
-
-        # Determine final result based on what passed
-        if not self._heuristic_validator and not self._semantic_validator:
-            # No validators configured, pass through
+        if result.is_safe:
             return True, None, None
 
-        if semantic_passed or heuristic_passed:
-            # At least one validation passed
-            return True, None, None
+        # Extract gate from violations or layer
+        gate = None
+        reasoning = None
 
-        # Semantic failed/timed out and heuristic was not configured
-        # This means no validation actually passed
-        if semantic_error and not heuristic_passed:
-            return False, "validation_incomplete", "Semantic validation failed and no heuristic fallback available"
+        if result.violations:
+            # Try to extract gate from violation message
+            first_violation = result.violations[0]
+            if "(" in first_violation and ")" in first_violation:
+                # Format: "Gate (subcategory): pattern"
+                gate = first_violation.split("(")[0].strip().lower()
+            reasoning = first_violation
+        elif result.error:
+            gate = "error" if result.layer == ValidationLayer.ERROR else "timeout"
+            reasoning = result.error
+        else:
+            gate = result.layer.value
+            reasoning = result.reasoning or "Validation failed"
 
-        # This line should never be reached - all code paths above should return
-        # If we get here, there's a logic error in the validation flow
-        raise RuntimeError(
-            "Unexpected validation state: no validators passed and no error condition matched. "
-            "This indicates a bug in the validation logic."
-        )
+        return False, gate, reasoning
 
     async def create(
         self,
@@ -945,20 +873,17 @@ class SentinelAnthropic:
         self._validation_timeout = validation_timeout
         self._max_text_size = max_text_size
 
-        # Heuristic validator (always available, no API calls)
-        self._heuristic_validator = THSPValidator() if use_heuristic_fallback else None
-
-        # Semantic validator using Anthropic (optional)
-        self._semantic_validator = None
-        if (validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE:
-            try:
-                self._semantic_validator = SemanticValidator(
-                    provider="anthropic",
-                    model=validation_model,
-                    api_key=self._api_key,
-                )
-            except Exception as e:
-                self._logger.warning(f"Could not initialize semantic validator: {e}")
+        # Create LayeredValidator with both heuristic and semantic layers
+        config = _create_validation_config(
+            api_key=self._api_key if (validate_input or validate_output) else None,
+            use_heuristic=use_heuristic_fallback,
+            use_semantic=(validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE,
+            validation_model=validation_model,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
+        )
+        self._validator = LayeredValidator(config=config)
 
         # Create messages wrapper
         self.messages = _SentinelMessages(
@@ -967,13 +892,9 @@ class SentinelAnthropic:
             self._enable_seed_injection,
             self._validate_input,
             self._validate_output,
-            self._semantic_validator,
-            self._heuristic_validator,
+            self._validator,
             self._logger,
             block_unsafe_output=block_unsafe_output,
-            fail_closed=fail_closed,
-            validation_timeout=validation_timeout,
-            max_text_size=max_text_size,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -1054,20 +975,17 @@ class SentinelAsyncAnthropic:
         self._validation_timeout = validation_timeout
         self._max_text_size = max_text_size
 
-        # Heuristic validator
-        self._heuristic_validator = THSPValidator() if use_heuristic_fallback else None
-
-        # Async semantic validator
-        self._semantic_validator = None
-        if (validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE:
-            try:
-                self._semantic_validator = AsyncSemanticValidator(
-                    provider="anthropic",
-                    model=validation_model,
-                    api_key=self._api_key,
-                )
-            except Exception as e:
-                self._logger.warning(f"Could not initialize async semantic validator: {e}")
+        # Create AsyncLayeredValidator with both heuristic and semantic layers
+        config = _create_validation_config(
+            api_key=self._api_key if (validate_input or validate_output) else None,
+            use_heuristic=use_heuristic_fallback,
+            use_semantic=(validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE,
+            validation_model=validation_model,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
+        )
+        self._validator = AsyncLayeredValidator(config=config)
 
         # Create async messages wrapper
         self.messages = _SentinelAsyncMessages(
@@ -1076,13 +994,9 @@ class SentinelAsyncAnthropic:
             self._enable_seed_injection,
             self._validate_input,
             self._validate_output,
-            self._semantic_validator,
-            self._heuristic_validator,
+            self._validator,
             self._logger,
             block_unsafe_output=block_unsafe_output,
-            fail_closed=fail_closed,
-            validation_timeout=validation_timeout,
-            max_text_size=max_text_size,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -1143,61 +1057,41 @@ class SentinelAnthropicWrapper:
         # Determine if async client using robust check
         is_async = _is_async_client(client)
 
-        # Heuristic validator
-        heuristic_validator = THSPValidator() if use_heuristic_fallback else None
+        # Create validation config
+        config = _create_validation_config(
+            api_key=api_key if (validate_input or validate_output) else None,
+            use_heuristic=use_heuristic_fallback,
+            use_semantic=(validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE,
+            validation_model=validation_model,
+            fail_closed=fail_closed,
+            validation_timeout=validation_timeout,
+            max_text_size=max_text_size,
+        )
 
         # Create appropriate validator and messages wrapper
         if is_async:
-            semantic_validator = None
-            if (validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE:
-                try:
-                    semantic_validator = AsyncSemanticValidator(
-                        provider="anthropic",
-                        model=validation_model,
-                        api_key=api_key,
-                    )
-                except Exception as e:
-                    self._logger.warning(f"Could not initialize async semantic validator: {e}")
-
+            self._validator = AsyncLayeredValidator(config=config)
             self.messages = _SentinelAsyncMessages(
                 client.messages,
                 self._sentinel,
                 self._enable_seed_injection,
                 self._validate_input,
                 self._validate_output,
-                semantic_validator,
-                heuristic_validator,
+                self._validator,
                 self._logger,
                 block_unsafe_output=block_unsafe_output,
-                fail_closed=fail_closed,
-                validation_timeout=validation_timeout,
-                max_text_size=max_text_size,
             )
         else:
-            semantic_validator = None
-            if (validate_input or validate_output) and SEMANTIC_VALIDATOR_AVAILABLE:
-                try:
-                    semantic_validator = SemanticValidator(
-                        provider="anthropic",
-                        model=validation_model,
-                        api_key=api_key,
-                    )
-                except Exception as e:
-                    self._logger.warning(f"Could not initialize semantic validator: {e}")
-
+            self._validator = LayeredValidator(config=config)
             self.messages = _SentinelMessages(
                 client.messages,
                 self._sentinel,
                 self._enable_seed_injection,
                 self._validate_input,
                 self._validate_output,
-                semantic_validator,
-                heuristic_validator,
+                self._validator,
                 self._logger,
                 block_unsafe_output=block_unsafe_output,
-                fail_closed=fail_closed,
-                validation_timeout=validation_timeout,
-                max_text_size=max_text_size,
             )
 
     def __getattr__(self, name: str) -> Any:
