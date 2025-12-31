@@ -1185,6 +1185,98 @@ class TestIntegrationPatterns:
 
 
 # =============================================================================
+# Callback Signature Verification Tests
+# =============================================================================
+
+
+class TestCallbackSignatures:
+    """Verify callback signatures match ADK expectations.
+
+    These tests use inspect.signature to verify that generated callbacks
+    have the correct parameter names and order, preventing regressions.
+    """
+
+    @pytest.fixture
+    def mock_adk_for_callbacks(self):
+        """Fixture that mocks ADK imports for callback tests."""
+        from . import utils as utils_module
+
+        original_adk_available = utils_module.ADK_AVAILABLE
+
+        try:
+            utils_module.ADK_AVAILABLE = True
+            yield
+        finally:
+            utils_module.ADK_AVAILABLE = original_adk_available
+
+    @pytest.fixture
+    def mock_sentinel(self):
+        """Fixture providing mock Sentinel."""
+        sentinel = MagicMock()
+        sentinel.validate_request = MagicMock(
+            return_value={"should_proceed": True}
+        )
+        return sentinel
+
+    def test_before_model_callback_signature(self, mock_adk_for_callbacks, mock_sentinel):
+        """before_model_callback should have (context, request) signature."""
+        import inspect
+        from .callbacks import create_before_model_callback
+
+        callback = create_before_model_callback(sentinel=mock_sentinel)
+        sig = inspect.signature(callback)
+        params = list(sig.parameters.keys())
+
+        # ADK expects: callback_context, llm_request
+        assert len(params) == 2
+        assert "callback_context" in params[0].lower() or "context" in params[0].lower()
+
+    def test_after_model_callback_signature(self, mock_adk_for_callbacks, mock_sentinel):
+        """after_model_callback should have (context, response) signature."""
+        import inspect
+        from .callbacks import create_after_model_callback
+
+        callback = create_after_model_callback(sentinel=mock_sentinel)
+        sig = inspect.signature(callback)
+        params = list(sig.parameters.keys())
+
+        # ADK expects: callback_context, llm_response
+        assert len(params) == 2
+        assert "callback_context" in params[0].lower() or "context" in params[0].lower()
+
+    def test_before_tool_callback_signature(self, mock_adk_for_callbacks, mock_sentinel):
+        """before_tool_callback should have (tool, args, context) signature."""
+        import inspect
+        from .callbacks import create_before_tool_callback
+
+        callback = create_before_tool_callback(sentinel=mock_sentinel)
+        sig = inspect.signature(callback)
+        params = list(sig.parameters.keys())
+
+        # ADK expects: tool, tool_args, tool_context
+        assert len(params) == 3, f"Expected 3 params, got {len(params)}: {params}"
+        assert "tool" in params[0].lower(), f"First param should be 'tool', got {params[0]}"
+        assert "args" in params[1].lower(), f"Second param should be 'tool_args', got {params[1]}"
+        assert "context" in params[2].lower(), f"Third param should be 'tool_context', got {params[2]}"
+
+    def test_after_tool_callback_signature(self, mock_adk_for_callbacks, mock_sentinel):
+        """after_tool_callback should have (tool, args, context, result) signature."""
+        import inspect
+        from .callbacks import create_after_tool_callback
+
+        callback = create_after_tool_callback(sentinel=mock_sentinel)
+        sig = inspect.signature(callback)
+        params = list(sig.parameters.keys())
+
+        # ADK expects: tool, tool_args, tool_context, tool_result
+        assert len(params) == 4, f"Expected 4 params, got {len(params)}: {params}"
+        assert "tool" in params[0].lower(), f"First param should be 'tool', got {params[0]}"
+        assert "args" in params[1].lower(), f"Second param should be 'tool_args', got {params[1]}"
+        assert "context" in params[2].lower(), f"Third param should be 'tool_context', got {params[2]}"
+        assert "result" in params[3].lower(), f"Fourth param should be 'tool_result', got {params[3]}"
+
+
+# =============================================================================
 # Run Tests
 # =============================================================================
 

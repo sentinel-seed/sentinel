@@ -360,8 +360,9 @@ def create_before_tool_callback(
     _sentinel = _get_sentinel(sentinel, seed_level)
 
     def before_tool_callback(
-        tool_context: ToolContext,
+        tool: Any,
         tool_args: dict[str, Any],
+        tool_context: ToolContext,
     ) -> Optional[dict]:
         """Validate tool arguments before execution."""
         try:
@@ -437,8 +438,10 @@ def create_after_tool_callback(
     _sentinel = _get_sentinel(sentinel, seed_level)
 
     def after_tool_callback(
+        tool: Any,
+        tool_args: dict[str, Any],
         tool_context: ToolContext,
-        tool_result: dict[str, Any],
+        tool_result: dict,
     ) -> Optional[dict]:
         """Validate tool result."""
         try:
