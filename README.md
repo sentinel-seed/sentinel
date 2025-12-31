@@ -49,7 +49,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Database Guard:** Query validation to prevent data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
-- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, OpenGuardrails, PyRIT
+- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, OpenGuardrails, PyRIT, Google ADK
 - **REST API:** Deploy alignment as a service
 
 ---
@@ -440,7 +440,7 @@ if not result.compliant:
 
 ## Framework Integrations
 
-Sentinel provides native integrations for 22+ frameworks. Install optional dependencies as needed:
+Sentinel provides native integrations for 23+ frameworks. Install optional dependencies as needed:
 
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
@@ -454,6 +454,7 @@ pip install sentinelseed[pyrit]       # Microsoft PyRIT red teaming
 pip install sentinelseed[dspy]        # Stanford DSPy framework
 pip install sentinelseed[letta]       # Letta (MemGPT) agents
 pip install sentinelseed[coinbase]    # Coinbase AgentKit + x402 payments
+pip install sentinelseed[google-adk]  # Google Agent Development Kit
 pip install sentinelseed[all]         # All integrations
 ```
 
@@ -975,6 +976,38 @@ if result.is_approved:
 
 Features: THSP validation for all AgentKit actions, EVM address validation (EIP-55), transaction limits, DeFi risk assessment, x402 HTTP 402 payment validation, spending tracking, 4 security profiles (permissive/standard/strict/paranoid).
 
+### Google Agent Development Kit (ADK)
+
+```python
+from sentinelseed.integrations.google_adk import (
+    SentinelPlugin,
+    create_sentinel_callbacks,
+)
+from google.adk.agents import LlmAgent
+from google.adk.runners import Runner
+
+# Option 1: Plugin (global guardrails for all agents)
+plugin = SentinelPlugin(
+    seed_level="standard",
+    block_on_failure=True,
+)
+runner = Runner(agent=your_agent, plugins=[plugin])
+
+# Option 2: Callbacks (per-agent guardrails)
+callbacks = create_sentinel_callbacks(seed_level="standard")
+agent = LlmAgent(
+    name="Safe Agent",
+    model="gemini-2.0-flash",
+    **callbacks,  # Unpacks before/after model/tool callbacks
+)
+
+# Monitor validation statistics
+stats = plugin.get_stats()
+print(f"Blocked: {stats['blocked_count']}/{stats['total_validations']}")
+```
+
+Features: Plugin for global guardrails, per-agent callbacks, before/after model validation, before/after tool validation, statistics tracking, violation logging, fail-open/fail-closed modes.
+
 ### EU AI Act Compliance
 
 ```python
@@ -1066,7 +1099,7 @@ sentinel/
 │   ├── compliance/           # EU AI Act compliance checker
 │   ├── safety/               # Safety modules
 │   │   └── humanoid/         # ISO/TS 15066 humanoid safety
-│   └── integrations/         # 22+ frameworks
+│   └── integrations/         # 23+ frameworks
 │       ├── langchain.py      # LangChain + LangGraph
 │       ├── crewai.py         # CrewAI
 │       ├── dspy/             # Stanford DSPy
@@ -1077,6 +1110,7 @@ sentinel/
 │       ├── isaac_lab/        # NVIDIA Isaac Lab
 │       ├── garak/            # NVIDIA Garak
 │       ├── coinbase/         # Coinbase AgentKit + x402
+│       ├── google_adk/       # Google Agent Development Kit
 │       └── ...               # +12 more integrations
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
