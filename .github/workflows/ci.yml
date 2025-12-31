@@ -120,16 +120,18 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Fix gradlew permissions and line endings
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
         working-directory: packages/jetbrains
 
       - name: Run tests
-        run: ./gradlew test --no-daemon --stacktrace
+        run: bash gradlew test --no-daemon --stacktrace
         working-directory: packages/jetbrains
 
       - name: Build plugin
-        run: ./gradlew buildPlugin --no-daemon --stacktrace
+        run: bash gradlew buildPlugin --no-daemon --stacktrace
         working-directory: packages/jetbrains
 
       - name: Upload test results
