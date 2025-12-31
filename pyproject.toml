@@ -83,6 +83,10 @@ keywords = [
     "agno",
     "multi-agent",
     "agent-framework",
+    "google-adk",
+    "gemini",
+    "vertex-ai",
+    "google-cloud",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -118,6 +122,7 @@ coinbase = ["httpx>=0.25.0", "pydantic>=2.0.0"]
 coinbase-agentkit = ["coinbase-agentkit>=0.1.0", "httpx>=0.25.0", "pydantic>=2.0.0"]
 x402 = ["httpx>=0.25.0", "pydantic>=2.0.0"]
 agno = ["agno>=2.0.0"]
+google-adk = ["google-adk>=0.1.0"]
 all = [
     "openai>=1.0.0",
     "openai-agents>=0.6.0",

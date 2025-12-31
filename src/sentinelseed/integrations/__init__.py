@@ -9,6 +9,7 @@ Each integration is a subpackage with:
 
 Available integrations:
     from sentinelseed.integrations.agno import SentinelGuardrail  # Agno multi-agent framework
+    from sentinelseed.integrations.google_adk import SentinelPlugin  # Google ADK
     from sentinelseed.integrations.langchain import SentinelCallback
     from sentinelseed.integrations.langgraph import SentinelSafetyNode
     from sentinelseed.integrations.crewai import safe_agent, SentinelCrew
@@ -99,6 +100,19 @@ Coinbase Ecosystem (AgentKit + x402):
         SecurityProfile,
         ChainType,
     )
+
+Google Agent Development Kit (ADK):
+    from sentinelseed.integrations.google_adk import (
+        # Plugin (global guardrails)
+        SentinelPlugin,
+        create_sentinel_plugin,
+        # Callbacks (per-agent guardrails)
+        create_before_model_callback,
+        create_after_model_callback,
+        create_before_tool_callback,
+        create_after_tool_callback,
+        create_sentinel_callbacks,
+    )
 """
 
 __all__ = [
@@ -111,6 +125,7 @@ __all__ = [
     'crewai',
     'dspy',
     'garak',
+    'google_adk',
     'isaac_lab',
     'langchain',
     'langgraph',
