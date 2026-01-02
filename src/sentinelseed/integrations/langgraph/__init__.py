@@ -50,6 +50,10 @@ from sentinelseed.integrations._base import SentinelIntegration
 DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
 DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
 
+# Valid values for on_violation parameter
+# Note: LangGraph uses "log", "block", "flag" (no "raise" mode)
+VALID_VIOLATION_MODES = frozenset({"log", "block", "flag"})
+
 
 # =============================================================================
 # Exceptions
@@ -81,6 +85,83 @@ class SafetyValidationError(Exception):
     def __init__(self, message: str, violations: List[str] = None):
         self.violations = violations or []
         super().__init__(message)
+
+
+class ConfigurationError(Exception):
+    """Raised when configuration parameters are invalid."""
+
+    def __init__(self, param_name: str, expected: str, got: Any):
+        self.param_name = param_name
+        self.expected = expected
+        self.got = got
+        super().__init__(
+            f"Invalid configuration: '{param_name}' expected {expected}, got {type(got).__name__}"
+        )
+
+
+def _validate_on_violation(on_violation: Any) -> str:
+    """
+    Validate on_violation parameter.
+
+    Args:
+        on_violation: Value to validate
+
+    Returns:
+        Validated on_violation value (defaults to "log" if None)
+
+    Raises:
+        ConfigurationError: If value is invalid
+    """
+    if on_violation is None:
+        return "log"
+    if not isinstance(on_violation, str) or on_violation not in VALID_VIOLATION_MODES:
+        raise ConfigurationError(
+            "on_violation",
+            f"one of {sorted(VALID_VIOLATION_MODES)}",
+            on_violation
+        )
+    return on_violation
+
+
+def _validate_config(
+    max_text_size: Any = None,
+    fail_closed: Any = None,
+    max_output_messages: Any = None,
+) -> None:
+    """
+    Validate configuration parameters.
+
+    Args:
+        max_text_size: Expected int > 0
+        fail_closed: Expected bool
+        max_output_messages: Expected int > 0
+
+    Raises:
+        ConfigurationError: If any parameter has invalid type or value
+    """
+    if max_text_size is not None:
+        if not isinstance(max_text_size, int) or max_text_size <= 0:
+            raise ConfigurationError(
+                "max_text_size",
+                "positive integer",
+                max_text_size
+            )
+
+    if fail_closed is not None:
+        if not isinstance(fail_closed, bool):
+            raise ConfigurationError(
+                "fail_closed",
+                "boolean",
+                fail_closed
+            )
+
+    if max_output_messages is not None:
+        if not isinstance(max_output_messages, int) or max_output_messages <= 0:
+            raise ConfigurationError(
+                "max_output_messages",
+                "positive integer",
+                max_output_messages
+            )
 
 
 # =============================================================================
@@ -312,6 +393,9 @@ class SentinelSafetyNode(SentinelIntegration):
             semantic_provider: Provider for semantic validation
             semantic_model: Model for semantic validation
         """
+        # Validate configuration parameters
+        _validate_config(max_text_size=max_text_size, fail_closed=fail_closed)
+
         # Create LayeredValidator with config if not provided
         if validator is None:
             config = ValidationConfig(
@@ -328,7 +412,7 @@ class SentinelSafetyNode(SentinelIntegration):
         super().__init__(validator=validator)
 
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.on_violation = on_violation
+        self.on_violation = _validate_on_violation(on_violation)
         self.check_input = check_input
         self.check_output = check_output
         self.message_key = message_key
@@ -488,6 +572,9 @@ class SentinelGuardNode(SentinelIntegration):
             use_semantic: Whether to enable semantic validation
             semantic_api_key: API key for semantic validation
         """
+        # Validate configuration parameters
+        _validate_config(max_text_size=max_text_size, fail_closed=fail_closed)
+
         # Create LayeredValidator with config if not provided
         if validator is None:
             config = ValidationConfig(
@@ -503,7 +590,7 @@ class SentinelGuardNode(SentinelIntegration):
 
         self.wrapped_node = wrapped_node
         self.sentinel = sentinel or Sentinel()
-        self.on_violation = on_violation
+        self.on_violation = _validate_on_violation(on_violation)
         self.max_text_size = max_text_size
         self.fail_closed = fail_closed
         self._logger = logger or _logger
@@ -708,6 +795,9 @@ def sentinel_gate_tool(
             func=lambda x: sentinel_gate_tool(x)
         )
     """
+    # Validate configuration
+    _validate_config(max_text_size=max_text_size)
+
     if sentinel is None:
         sentinel = Sentinel()
 
@@ -784,6 +874,9 @@ def create_sentinel_tool(
         safety_tool = create_sentinel_tool()
         agent = create_react_agent(llm, tools=[..., safety_tool])
     """
+    # Validate configuration
+    _validate_config(max_text_size=max_text_size)
+
     try:
         from langchain.tools import Tool
     except ImportError:
@@ -872,6 +965,10 @@ def add_safety_layer(
 
         compiled = graph.compile()
     """
+    # Validate configuration early for clearer error messages
+    validated_on_violation = _validate_on_violation(on_violation)
+    _validate_config(max_text_size=max_text_size)
+
     if sentinel is None:
         sentinel = Sentinel()
 
@@ -881,7 +978,7 @@ def add_safety_layer(
     if entry_check:
         entry_node = SentinelSafetyNode(
             sentinel=sentinel,
-            on_violation=on_violation,
+            on_violation=validated_on_violation,
             check_input=True,
             check_output=False,
             max_text_size=max_text_size,
@@ -892,7 +989,7 @@ def add_safety_layer(
     if exit_check:
         exit_node = SentinelSafetyNode(
             sentinel=sentinel,
-            on_violation=on_violation,
+            on_violation=validated_on_violation,
             check_input=False,
             check_output=True,
             max_text_size=max_text_size,
@@ -1036,6 +1133,13 @@ class SentinelAgentExecutor(SentinelIntegration):
             use_semantic: Whether to enable semantic validation
             semantic_api_key: API key for semantic validation
         """
+        # Validate configuration parameters
+        _validate_config(
+            max_text_size=max_text_size,
+            fail_closed=fail_closed,
+            max_output_messages=max_output_messages,
+        )
+
         # Create LayeredValidator with config if not provided
         if validator is None:
             config = ValidationConfig(
@@ -1051,7 +1155,7 @@ class SentinelAgentExecutor(SentinelIntegration):
 
         self.graph = graph
         self.sentinel = sentinel or Sentinel()
-        self.on_violation = on_violation
+        self.on_violation = _validate_on_violation(on_violation)
         self.max_text_size = max_text_size
         self.max_output_messages = max_output_messages
         self.fail_closed = fail_closed
@@ -1259,6 +1363,7 @@ __all__ = [
     "TextTooLargeError",
     "ValidationTimeoutError",
     "SafetyValidationError",
+    "ConfigurationError",
     # Logger
     "SentinelLogger",
     "DefaultLogger",
@@ -1267,4 +1372,5 @@ __all__ = [
     # Constants
     "DEFAULT_MAX_TEXT_SIZE",
     "DEFAULT_VALIDATION_TIMEOUT",
+    "VALID_VIOLATION_MODES",
 ]

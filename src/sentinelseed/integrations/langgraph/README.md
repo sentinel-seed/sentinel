@@ -139,6 +139,11 @@ SentinelSafetyNode(
     max_text_size=50*1024,      # Max text size in bytes (50KB)
     fail_closed=False,          # Raise exception on errors
     logger=None,                # Custom logger instance
+    validator=None,             # Custom LayeredValidator instance
+    use_semantic=False,         # Enable semantic validation layer
+    semantic_api_key=None,      # API key for semantic validation
+    semantic_provider="openai", # Provider for semantic validation
+    semantic_model=None,        # Model for semantic validation
 )
 ```
 
@@ -152,6 +157,9 @@ SentinelGuardNode(
     max_text_size=50*1024,      # Max text size in bytes
     fail_closed=False,          # Raise exception on errors
     logger=None,                # Custom logger instance
+    validator=None,             # Custom LayeredValidator instance
+    use_semantic=False,         # Enable semantic validation layer
+    semantic_api_key=None,      # API key for semantic validation
 )
 ```
 
@@ -166,6 +174,9 @@ SentinelAgentExecutor(
     max_output_messages=5,      # Number of output messages to validate
     fail_closed=False,          # Raise exception on errors
     logger=None,                # Custom logger instance
+    validator=None,             # Custom LayeredValidator instance
+    use_semantic=False,         # Enable semantic validation layer
+    semantic_api_key=None,      # API key for semantic validation
 )
 ```
 
@@ -337,6 +348,8 @@ result = await executor.ainvoke(state)
 | `SentinelAgentExecutor` | Wrapper for compiled graphs |
 | `SentinelState` | TypedDict with safety fields |
 | `SafetyLayerResult` | Result of add_safety_layer |
+| `SentinelLogger` | Protocol for custom logger implementations |
+| `DefaultLogger` | Default logger using Python's logging module |
 
 ### Functions
 
@@ -357,6 +370,19 @@ result = await executor.ainvoke(state)
 | `TextTooLargeError` | Text exceeds max_text_size |
 | `ValidationTimeoutError` | Validation timed out |
 | `SafetyValidationError` | Validation failed (fail_closed mode) |
+| `ConfigurationError` | Invalid configuration parameter |
+
+### Inherited Methods (from SentinelIntegration)
+
+All node classes inherit these methods from `SentinelIntegration`:
+
+| Method | Description |
+|--------|-------------|
+| `validate(content)` | Validate text content, returns `ValidationResult` |
+| `validate_action(name, args, purpose)` | Validate an action before execution |
+| `validate_request(request)` | Validate a user request (prefixes with "User request:") |
+| `reset_stats()` | Reset validation statistics |
+| `validation_stats` | Property: dict with validation statistics |
 
 ### Constants
 
@@ -364,6 +390,7 @@ result = await executor.ainvoke(state)
 |----------|-------|-------------|
 | `DEFAULT_MAX_TEXT_SIZE` | 51200 | 50KB max text size |
 | `DEFAULT_VALIDATION_TIMEOUT` | 30.0 | 30 second timeout |
+| `VALID_VIOLATION_MODES` | {"log", "block", "flag"} | Valid on_violation values |
 
 ## Links
 

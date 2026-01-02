@@ -209,6 +209,161 @@ class TestExceptions:
         assert "Test error" in str(error)
         assert error.violations == ["violation1", "violation2"]
 
+    def test_configuration_error(self):
+        """Test ConfigurationError exception."""
+        from sentinelseed.integrations.langgraph import ConfigurationError
+
+        error = ConfigurationError(
+            param_name="on_violation",
+            expected="one of ['block', 'flag', 'log']",
+            got="invalid_mode",
+        )
+        assert error.param_name == "on_violation"
+        assert "on_violation" in str(error)
+
+
+class TestOnViolationValidation:
+    """Tests for on_violation parameter validation."""
+
+    def test_valid_on_violation_values(self):
+        """Test that valid on_violation values are accepted."""
+        from sentinelseed.integrations.langgraph import SentinelSafetyNode
+
+        for mode in ["log", "block", "flag"]:
+            node = SentinelSafetyNode(on_violation=mode)
+            assert node.on_violation == mode
+
+    def test_invalid_on_violation_raises_error(self):
+        """Test that invalid on_violation raises ConfigurationError."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelSafetyNode,
+            SentinelGuardNode,
+            SentinelAgentExecutor,
+            ConfigurationError,
+        )
+
+        # SentinelSafetyNode
+        with pytest.raises(ConfigurationError) as exc:
+            SentinelSafetyNode(on_violation="invalid_mode")
+        assert exc.value.param_name == "on_violation"
+
+        # SentinelGuardNode
+        def mock_node(state):
+            return state
+
+        with pytest.raises(ConfigurationError):
+            SentinelGuardNode(wrapped_node=mock_node, on_violation="STOP")
+
+        # SentinelAgentExecutor
+        mock_graph = MagicMock()
+        with pytest.raises(ConfigurationError):
+            SentinelAgentExecutor(graph=mock_graph, on_violation=123)
+
+    def test_none_on_violation_defaults_to_log(self):
+        """Test that on_violation=None defaults to 'log'."""
+        from sentinelseed.integrations.langgraph import SentinelSafetyNode
+
+        node = SentinelSafetyNode(on_violation=None)
+        assert node.on_violation == "log"
+
+    def test_raise_mode_not_supported(self):
+        """Test that 'raise' mode is not supported in LangGraph (unlike LangChain)."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelSafetyNode,
+            ConfigurationError,
+        )
+
+        with pytest.raises(ConfigurationError):
+            SentinelSafetyNode(on_violation="raise")
+
+
+class TestConfigValidation:
+    """Tests for configuration parameter validation (BUG-008)."""
+
+    def test_invalid_max_text_size_raises_error(self):
+        """Test that invalid max_text_size raises ConfigurationError."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelSafetyNode,
+            SentinelGuardNode,
+            SentinelAgentExecutor,
+            ConfigurationError,
+        )
+
+        # Negative value
+        with pytest.raises(ConfigurationError) as exc:
+            SentinelSafetyNode(max_text_size=-100)
+        assert exc.value.param_name == "max_text_size"
+
+        # Zero value
+        with pytest.raises(ConfigurationError):
+            SentinelSafetyNode(max_text_size=0)
+
+        # String value
+        with pytest.raises(ConfigurationError):
+            SentinelSafetyNode(max_text_size="large")
+
+        # Float value
+        with pytest.raises(ConfigurationError):
+            SentinelSafetyNode(max_text_size=50.5)
+
+    def test_invalid_fail_closed_raises_error(self):
+        """Test that invalid fail_closed raises ConfigurationError."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelSafetyNode,
+            ConfigurationError,
+        )
+
+        # String value
+        with pytest.raises(ConfigurationError) as exc:
+            SentinelSafetyNode(fail_closed="true")
+        assert exc.value.param_name == "fail_closed"
+
+        # Integer value
+        with pytest.raises(ConfigurationError):
+            SentinelSafetyNode(fail_closed=1)
+
+    def test_invalid_max_output_messages_raises_error(self):
+        """Test that invalid max_output_messages raises ConfigurationError."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelAgentExecutor,
+            ConfigurationError,
+        )
+
+        mock_graph = MagicMock()
+
+        # Negative value
+        with pytest.raises(ConfigurationError) as exc:
+            SentinelAgentExecutor(graph=mock_graph, max_output_messages=-1)
+        assert exc.value.param_name == "max_output_messages"
+
+        # Zero value
+        with pytest.raises(ConfigurationError):
+            SentinelAgentExecutor(graph=mock_graph, max_output_messages=0)
+
+        # String value
+        with pytest.raises(ConfigurationError):
+            SentinelAgentExecutor(graph=mock_graph, max_output_messages="5")
+
+    def test_valid_config_values_accepted(self):
+        """Test that valid configuration values are accepted."""
+        from sentinelseed.integrations.langgraph import (
+            SentinelSafetyNode,
+            SentinelAgentExecutor,
+        )
+
+        # Valid max_text_size
+        node = SentinelSafetyNode(max_text_size=100000)
+        assert node.max_text_size == 100000
+
+        # Valid fail_closed
+        node = SentinelSafetyNode(fail_closed=True)
+        assert node.fail_closed is True
+
+        # Valid max_output_messages
+        mock_graph = MagicMock()
+        executor = SentinelAgentExecutor(graph=mock_graph, max_output_messages=10)
+        assert executor.max_output_messages == 10
+
 
 class TestIntegration:
     """Integration tests for langgraph module."""
