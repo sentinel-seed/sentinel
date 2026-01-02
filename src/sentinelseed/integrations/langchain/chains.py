@@ -16,6 +16,7 @@ import copy
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validation import LayeredValidator, ValidationConfig
+from sentinelseed.integrations._base import SentinelIntegration
 
 from .utils import (
     DEFAULT_SEED_LEVEL,
@@ -42,12 +43,14 @@ from .utils import (
 from .callbacks import SentinelCallback
 
 
-class SentinelChain:
+class SentinelChain(SentinelIntegration):
     """
     A LangChain-compatible chain wrapper with built-in Sentinel safety.
 
     Validates inputs before sending to LLM/chain and validates outputs
     before returning to caller. Supports batch, stream, and async operations.
+
+    Inherits from SentinelIntegration to use the standard validation infrastructure.
 
     Example:
         # Option 1: Wrap an LLM directly
@@ -62,6 +65,8 @@ class SentinelChain:
 
         result = chain.invoke("Help me with something")
     """
+
+    _integration_name = "langchain_chain"
 
     def __init__(
         self,
@@ -110,6 +115,16 @@ class SentinelChain:
         if llm is None and chain is None:
             raise ValueError("Either 'llm' or 'chain' must be provided")
 
+        # Create ValidationConfig and initialize base class
+        # This provides self._validator via SentinelIntegration
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+        )
+        super().__init__(validation_config=config)
+
         self._runnable = chain or llm
         self._is_llm = chain is None
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
@@ -120,14 +135,7 @@ class SentinelChain:
         self._logger = logger or get_logger()
         self._seed = self.sentinel.get_seed() if inject_seed else None
 
-        # Create LayeredValidator for validation (Sentinel only used for seeds)
-        config = ValidationConfig(
-            use_heuristic=True,
-            use_semantic=False,
-            max_text_size=max_text_size,
-            validation_timeout=validation_timeout,
-        )
-        self._validator = LayeredValidator(config=config)
+        # Store config values for internal use
         self._max_text_size = max_text_size
         self._validation_timeout = validation_timeout
         self._fail_closed = fail_closed

@@ -19,6 +19,26 @@ import logging
 
 from sentinelseed.integrations._base import LayeredValidator, ValidationConfig
 
+# Memory integrity checking using core module
+try:
+    from sentinelseed.memory import (
+        MemoryIntegrityChecker,
+        MemoryEntry,
+        MemorySource,
+        SignedMemoryEntry,
+        SafeMemoryStore,
+        MemoryValidationResult,
+    )
+    HAS_MEMORY = True
+except ImportError:
+    HAS_MEMORY = False
+    MemoryIntegrityChecker = None
+    MemoryEntry = None
+    MemorySource = None
+    SignedMemoryEntry = None
+    SafeMemoryStore = None
+    MemoryValidationResult = None
+
 _logger = logging.getLogger("sentinelseed.integrations.letta")
 
 # Valid configuration values
@@ -192,11 +212,27 @@ class MemoryGuardTool:
     """
     Memory integrity verification tool for Letta agents.
 
-    Uses HMAC-SHA256 to verify memory blocks haven't been tampered with.
+    Uses HMAC-SHA256 via the core MemoryIntegrityChecker to verify
+    memory blocks haven't been tampered with.
 
-    Note: This is currently a placeholder implementation. Full memory
-    integrity verification requires access to Letta's memory blocks
-    through the client API, which is robot-specific.
+    The tool provides two main operations:
+    1. Register a memory block and get its HMAC hash
+    2. Verify a memory block against an expected hash
+
+    Usage by agents:
+        # Register memory and get hash
+        result = verify_memory_integrity(
+            memory_label="human",
+            content="User information here"
+        )
+        # Returns: "HASH: abc123..."
+
+        # Later, verify memory hasn't changed
+        result = verify_memory_integrity(
+            memory_label="human",
+            expected_hash="abc123..."
+        )
+        # Returns: "VERIFIED" or "TAMPERED"
     """
 
     name: str = "verify_memory_integrity"
@@ -208,11 +244,86 @@ class MemoryGuardTool:
     def __post_init__(self):
         """Initialize runtime components."""
         self._secret: Optional[str] = None
-        self._hashes: Dict[str, str] = {}
+        self._checker: Optional["MemoryIntegrityChecker"] = None
+        self._store: Optional["SafeMemoryStore"] = None
+        # Map memory_label -> entry_id for quick lookup
+        self._label_to_entry: Dict[str, str] = {}
+
+    def initialize(self, secret: str) -> None:
+        """
+        Initialize the memory integrity checker with a secret key.
+
+        Args:
+            secret: Secret key for HMAC verification
+
+        Raises:
+            ValueError: If secret is None or empty
+            ImportError: If sentinelseed.memory module is not available
+        """
+        if secret is None:
+            raise ValueError("secret cannot be None")
+        if not isinstance(secret, str):
+            raise ValueError(f"secret must be a string, got {type(secret).__name__}")
+        if not secret.strip():
+            raise ValueError("secret cannot be empty")
+
+        if not HAS_MEMORY:
+            raise ImportError(
+                "sentinelseed.memory module is not available. "
+                "Install with: pip install sentinelseed"
+            )
+
+        self._secret = secret
+        self._checker = MemoryIntegrityChecker(secret_key=secret, strict_mode=False)
+        self._store = self._checker.create_safe_memory_store()
+        _logger.debug("Memory integrity checker initialized")
+
+    def register_memory(
+        self,
+        label: str,
+        content: str,
+        source: str = "agent_internal",
+    ) -> str:
+        """
+        Register a memory block and return its HMAC hash.
+
+        Args:
+            label: Memory block label (e.g., "human", "persona", "system")
+            content: Content of the memory block
+            source: Source classification (user_direct, agent_internal, etc.)
+
+        Returns:
+            The HMAC hash of the registered memory
+
+        Raises:
+            ValueError: If checker is not initialized
+        """
+        if self._checker is None or self._store is None:
+            raise ValueError("Memory checker not initialized. Call initialize() first.")
+
+        # Map source string to MemorySource enum
+        source_enum = MemorySource.AGENT_INTERNAL
+        try:
+            source_enum = MemorySource(source)
+        except ValueError:
+            source_enum = MemorySource.UNKNOWN
+
+        # Add to store (automatically signed)
+        signed_entry = self._store.add(
+            content=content,
+            source=source_enum,
+            metadata={"label": label},
+        )
+
+        # Track label -> entry_id mapping
+        self._label_to_entry[label] = signed_entry.id
+
+        return signed_entry.hmac_signature
 
     def run(
         self,
         memory_label: str,
+        content: Optional[str] = None,
         expected_hash: Optional[str] = None,
     ) -> str:
         """
@@ -220,13 +331,24 @@ class MemoryGuardTool:
 
         Args:
             memory_label: Label of memory block to verify
-            expected_hash: Optional expected HMAC hash
+            content: Content to register (if not already registered)
+            expected_hash: Expected HMAC hash for verification
 
         Returns:
-            str: "VERIFIED", "TAMPERED", "HASH: <hash>", or error message
+            str: Result in one of these formats:
+                - "HASH: <hash>" - When registering or getting current hash
+                - "VERIFIED: Memory block is intact" - When verification succeeds
+                - "TAMPERED: Memory block has been modified" - When verification fails
+                - "ERROR: <message>" - On error
 
-        Note: This is currently a placeholder. Full implementation requires
-        access to Letta's memory blocks through the client API.
+        Example:
+            # Register memory
+            result = tool.run(memory_label="human", content="User info")
+            # Returns: "HASH: abc123..."
+
+            # Verify memory
+            result = tool.run(memory_label="human", expected_hash="abc123...")
+            # Returns: "VERIFIED: Memory block is intact"
         """
         # Input validation
         if memory_label is None:
@@ -238,15 +360,82 @@ class MemoryGuardTool:
         if not memory_label.strip():
             return "ERROR: memory_label cannot be empty"
 
-        if self._secret is None:
-            return "ERROR: No secret configured for memory integrity"
+        if self._checker is None or self._store is None:
+            return "ERROR: Memory checker not initialized. Call initialize() first."
 
-        # Placeholder implementation
-        # Full implementation would:
-        # 1. Get memory block content from Letta client
-        # 2. Compute HMAC-SHA256 of content
-        # 3. Compare with expected_hash or return current hash
-        return f"HASH: Memory integrity check for '{memory_label}' (placeholder)"
+        try:
+            # Case 1: Register new memory with content
+            if content is not None and expected_hash is None:
+                hmac_hash = self.register_memory(memory_label, content)
+                return f"HASH: {hmac_hash}"
+
+            # Case 2: Get existing hash (no content, no expected_hash)
+            if content is None and expected_hash is None:
+                if memory_label not in self._label_to_entry:
+                    return f"ERROR: Memory block '{memory_label}' not registered. Provide content to register."
+                entry_id = self._label_to_entry[memory_label]
+                entry = self._store._entries.get(entry_id)
+                if entry is None:
+                    return f"ERROR: Memory block '{memory_label}' entry not found"
+                return f"HASH: {entry.hmac_signature}"
+
+            # Case 3: Verify against expected hash
+            if expected_hash is not None:
+                if memory_label not in self._label_to_entry:
+                    return f"ERROR: Memory block '{memory_label}' not registered"
+
+                entry_id = self._label_to_entry[memory_label]
+                entry = self._store._entries.get(entry_id)
+                if entry is None:
+                    return f"ERROR: Memory block '{memory_label}' entry not found"
+
+                # If new content provided, verify that content's hash matches expected
+                if content is not None:
+                    # Re-register to get new hash and compare
+                    new_hash = self.register_memory(memory_label, content)
+                    if new_hash == expected_hash:
+                        return "VERIFIED: Memory block is intact"
+                    else:
+                        return "TAMPERED: Memory block has been modified"
+                else:
+                    # Compare stored hash with expected
+                    if entry.hmac_signature == expected_hash:
+                        return "VERIFIED: Memory block is intact"
+                    else:
+                        return "TAMPERED: Memory block hash mismatch"
+
+        except (ValueError, TypeError, RuntimeError) as e:
+            _logger.warning(f"Memory integrity check error: {type(e).__name__}: {e}")
+            return f"ERROR: {str(e)}"
+
+        return "ERROR: Unexpected state in memory verification"
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about memory integrity operations.
+
+        Returns:
+            Dict with stats including:
+                - enabled: Whether memory checking is enabled
+                - registered_blocks: Number of registered memory blocks
+                - checker_stats: Stats from underlying MemoryIntegrityChecker
+        """
+        if self._checker is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "registered_blocks": len(self._label_to_entry),
+            "labels": list(self._label_to_entry.keys()),
+            "checker_stats": self._checker.get_validation_stats(),
+        }
+
+    def clear(self) -> None:
+        """Clear all registered memory blocks."""
+        if self._store is not None:
+            self._store.clear()
+        self._label_to_entry.clear()
+        _logger.debug("Memory store cleared")
 
 
 # Placeholder function for tool registration - must be defined before create_sentinel_tool
@@ -370,8 +559,9 @@ def create_memory_guard_tool(
     """
     Create and register a memory integrity tool with a Letta client.
 
-    Note: This creates a placeholder tool. Full memory integrity verification
-    requires access to Letta's memory blocks through the client API.
+    Uses the core MemoryIntegrityChecker for HMAC-based verification
+    of memory blocks. The tool can register memory content and verify
+    it hasn't been tampered with.
 
     Args:
         client: Letta client instance
@@ -379,10 +569,22 @@ def create_memory_guard_tool(
         require_approval: Whether tool calls require human approval
 
     Returns:
-        MemoryGuardTool with tool_id set
+        MemoryGuardTool with tool_id set and checker initialized
 
     Raises:
         ValueError: If secret is None or empty
+
+    Example:
+        client = Letta(api_key="...")
+        guard = create_memory_guard_tool(client, secret="my-secret")
+
+        # Register memory
+        result = guard.run(memory_label="human", content="User info")
+        hash_value = result.split(": ")[1]
+
+        # Later, verify
+        result = guard.run(memory_label="human", expected_hash=hash_value)
+        # "VERIFIED: Memory block is intact"
     """
     # Input validation
     if secret is None:
@@ -397,7 +599,16 @@ def create_memory_guard_tool(
     tool = MemoryGuardTool(
         requires_approval=require_approval,
     )
-    tool._secret = secret
+
+    # Initialize the memory integrity checker
+    try:
+        tool.initialize(secret)
+        _logger.info("Memory guard tool initialized with MemoryIntegrityChecker")
+    except ImportError as e:
+        _logger.warning(f"Could not initialize memory checker: {e}")
+        # Tool will return error messages when used
+    except ValueError as e:
+        _logger.warning(f"Invalid secret for memory checker: {e}")
 
     # Register tool with Letta
     if client is None:

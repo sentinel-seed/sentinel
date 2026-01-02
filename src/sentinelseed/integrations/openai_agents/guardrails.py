@@ -1,7 +1,12 @@
 """
 Guardrail implementations for OpenAI Agents SDK.
 
-Provides semantic LLM-based input and output guardrails using THSP validation.
+Provides layered input and output guardrails using THSP validation:
+1. Heuristic layer: Fast regex-based validation (580+ patterns, <10ms, free)
+2. Semantic layer: LLM-based validation for nuanced cases (1-5s, ~$0.0005/call)
+
+The heuristic layer runs first. If it blocks, the semantic layer is skipped
+(unless skip_semantic_if_heuristic_blocks=False in config).
 """
 
 from __future__ import annotations
@@ -11,6 +16,8 @@ import hashlib
 import time
 from datetime import datetime, timezone
 from typing import Any, List, Optional, TYPE_CHECKING, Union
+
+from sentinelseed.validation import LayeredValidator, ValidationConfig
 
 
 class ValidationTimeoutError(Exception):
@@ -244,12 +251,21 @@ def sentinel_input_guardrail(
     # Get the output type for validation
     output_type = require_thsp_validation_output()
 
+    # Create heuristic validator if enabled (shared across calls)
+    heuristic_validator = None
+    if config.use_heuristic:
+        heuristic_config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,  # Semantic is handled by the guardrail agent
+        )
+        heuristic_validator = LayeredValidator(config=heuristic_config)
+
     async def guardrail_function(
         ctx: "RunContextWrapper",
         agent: "Agent",
         input_data: Union[str, List[Any]],
     ) -> "GuardrailFunctionOutput":
-        """Semantic THSP input validation with sanitization."""
+        """Layered THSP input validation with heuristic + semantic layers."""
         start_time = time.time()
 
         # Extract text from input (handles None/empty safely)
@@ -268,9 +284,68 @@ def sentinel_input_guardrail(
                     "injection_detected": False,
                     "was_truncated": False,
                     "validation_time_ms": (time.time() - start_time) * 1000,
+                    "layer": "none",
                 },
                 tripwire_triggered=False,
             )
+
+        # ============================================================
+        # LAYER 1: Heuristic Validation (fast, free)
+        # ============================================================
+        if heuristic_validator is not None:
+            heuristic_result = heuristic_validator.validate(text)
+            heuristic_time = (time.time() - start_time) * 1000
+
+            if not heuristic_result.is_safe:
+                logger.debug(f"Input blocked by heuristic layer: {heuristic_result.violations}")
+
+                # Map heuristic violations to THSP gates
+                violated_gate = "scope"  # Default for jailbreak/injection patterns
+                if any("harm" in v.lower() for v in heuristic_result.violations):
+                    violated_gate = "harm"
+                elif any("truth" in v.lower() or "decept" in v.lower() for v in heuristic_result.violations):
+                    violated_gate = "truth"
+
+                # Log violation if configured
+                if config.log_violations:
+                    violations_log = get_violations_log(config.max_violations_log)
+                    record = ViolationRecord(
+                        timestamp=datetime.now(timezone.utc),
+                        gate_violated=violated_gate,
+                        risk_level=heuristic_result.risk_level.value if hasattr(heuristic_result.risk_level, 'value') else str(heuristic_result.risk_level),
+                        reasoning_summary=f"Heuristic: {heuristic_result.violations[0][:100]}" if heuristic_result.violations else "Heuristic block",
+                        content_hash=hashlib.sha256(text.encode()).hexdigest(),
+                        was_input=True,
+                        injection_detected=any("jailbreak" in v.lower() or "injection" in v.lower() for v in heuristic_result.violations),
+                    )
+                    violations_log.add(record)
+
+                # If skip_semantic_if_heuristic_blocks, return immediately
+                if config.skip_semantic_if_heuristic_blocks:
+                    return GuardrailFunctionOutput(
+                        output_info={
+                            "is_safe": False,
+                            "gates": {
+                                "truth": violated_gate != "truth",
+                                "harm": violated_gate != "harm",
+                                "scope": violated_gate != "scope",
+                                "purpose": True,
+                            },
+                            "violated_gate": violated_gate,
+                            "reasoning": f"Blocked by heuristic layer: {', '.join(heuristic_result.violations)}",
+                            "risk_level": heuristic_result.risk_level.value if hasattr(heuristic_result.risk_level, 'value') else str(heuristic_result.risk_level),
+                            "injection_detected": any("jailbreak" in v.lower() or "injection" in v.lower() for v in heuristic_result.violations),
+                            "was_truncated": False,
+                            "validation_time_ms": heuristic_time,
+                            "layer": "heuristic",
+                        },
+                        tripwire_triggered=config.block_on_violation,
+                    )
+                # Otherwise, continue to semantic layer for confirmation
+
+        # ============================================================
+        # LAYER 2: Semantic Validation (LLM-based, precise)
+        # ============================================================
 
         # Create sanitized validation prompt
         validation_prompt, metadata = create_validation_prompt(
@@ -348,6 +423,7 @@ def sentinel_input_guardrail(
                     "injection_detected": metadata.get("injection_detected", False),
                     "was_truncated": metadata.get("was_truncated", False),
                     "validation_time_ms": validation_time,
+                    "layer": "semantic",
                 },
                 tripwire_triggered=tripwire,
             )
@@ -365,6 +441,7 @@ def sentinel_input_guardrail(
                     "reasoning": "Validation failed - " + (
                         "blocking for safety" if should_block else "allowing (fail_open=True)"
                     ),
+                    "layer": "error",
                 },
                 tripwire_triggered=should_block and config.block_on_violation,
             )
@@ -414,12 +491,21 @@ def sentinel_output_guardrail(
     # Get the output type for validation
     output_type = require_thsp_validation_output()
 
+    # Create heuristic validator if enabled (shared across calls)
+    heuristic_validator = None
+    if config.use_heuristic:
+        heuristic_config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,  # Semantic is handled by the guardrail agent
+        )
+        heuristic_validator = LayeredValidator(config=heuristic_config)
+
     async def guardrail_function(
         ctx: "RunContextWrapper",
         agent: "Agent",
         output: Any,
     ) -> "GuardrailFunctionOutput":
-        """Semantic THSP output validation."""
+        """Layered THSP output validation with heuristic + semantic layers."""
         start_time = time.time()
 
         # Extract text from output (handles None/empty safely)
@@ -437,9 +523,67 @@ def sentinel_output_guardrail(
                     "risk_level": "low",
                     "was_truncated": False,
                     "validation_time_ms": (time.time() - start_time) * 1000,
+                    "layer": "none",
                 },
                 tripwire_triggered=False,
             )
+
+        # ============================================================
+        # LAYER 1: Heuristic Validation (fast, free)
+        # ============================================================
+        if heuristic_validator is not None:
+            heuristic_result = heuristic_validator.validate(text)
+            heuristic_time = (time.time() - start_time) * 1000
+
+            if not heuristic_result.is_safe:
+                logger.debug(f"Output blocked by heuristic layer: {heuristic_result.violations}")
+
+                # Map heuristic violations to THSP gates
+                violated_gate = "harm"  # Default for output violations
+                if any("truth" in v.lower() or "decept" in v.lower() for v in heuristic_result.violations):
+                    violated_gate = "truth"
+                elif any("scope" in v.lower() for v in heuristic_result.violations):
+                    violated_gate = "scope"
+
+                # Log violation if configured
+                if config.log_violations:
+                    violations_log = get_violations_log(config.max_violations_log)
+                    record = ViolationRecord(
+                        timestamp=datetime.now(timezone.utc),
+                        gate_violated=violated_gate,
+                        risk_level=heuristic_result.risk_level.value if hasattr(heuristic_result.risk_level, 'value') else str(heuristic_result.risk_level),
+                        reasoning_summary=f"Heuristic: {heuristic_result.violations[0][:100]}" if heuristic_result.violations else "Heuristic block",
+                        content_hash=hashlib.sha256(text.encode()).hexdigest(),
+                        was_input=False,
+                        injection_detected=False,
+                    )
+                    violations_log.add(record)
+
+                # If skip_semantic_if_heuristic_blocks, return immediately
+                if config.skip_semantic_if_heuristic_blocks:
+                    return GuardrailFunctionOutput(
+                        output_info={
+                            "is_safe": False,
+                            "gates": {
+                                "truth": violated_gate != "truth",
+                                "harm": violated_gate != "harm",
+                                "scope": violated_gate != "scope",
+                                "purpose": True,
+                            },
+                            "violated_gate": violated_gate,
+                            "reasoning": f"Blocked by heuristic layer: {', '.join(heuristic_result.violations)}",
+                            "risk_level": heuristic_result.risk_level.value if hasattr(heuristic_result.risk_level, 'value') else str(heuristic_result.risk_level),
+                            "was_truncated": False,
+                            "validation_time_ms": heuristic_time,
+                            "layer": "heuristic",
+                        },
+                        tripwire_triggered=config.block_on_violation,
+                    )
+                # Otherwise, continue to semantic layer for confirmation
+
+        # ============================================================
+        # LAYER 2: Semantic Validation (LLM-based, precise)
+        # ============================================================
 
         # Create sanitized validation prompt
         validation_prompt, metadata = create_validation_prompt(
@@ -496,6 +640,7 @@ def sentinel_output_guardrail(
                     "risk_level": getattr(validation, "risk_level", "unknown"),
                     "was_truncated": metadata.get("was_truncated", False),
                     "validation_time_ms": validation_time,
+                    "layer": "semantic",
                 },
                 tripwire_triggered=tripwire,
             )
@@ -513,6 +658,7 @@ def sentinel_output_guardrail(
                     "reasoning": "Validation failed - " + (
                         "blocking for safety" if should_block else "allowing (fail_open=True)"
                     ),
+                    "layer": "error",
                 },
                 tripwire_triggered=should_block and config.block_on_violation,
             )

@@ -9,6 +9,11 @@ environments. The four gates are interpreted for reinforcement learning:
 - Scope: Action is within operational boundaries (workspace, joint limits)
 - Purpose: Action contributes to task objective (optional)
 
+Architecture:
+    This module uses the centralized safety classes from:
+    - sentinelseed.safety.base: SafetyLevel
+    - sentinelseed.safety.simulation: Constraints, ActionType
+
 Uses the core THSPValidator for text/command validation when natural language
 commands are used, with physical action validation layered on top.
 
@@ -23,10 +28,21 @@ References:
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 import math
 import logging
+
+# Import centralized safety classes
+from sentinelseed.safety.base import SafetyLevel
+from sentinelseed.safety.simulation import (
+    RobotConstraints,
+    JointLimits,
+    WorkspaceLimits,
+    ForceTorqueLimits,
+    CollisionZone,
+    ConstraintViolationType,
+    ActionType,
+)
 
 # Import LayeredValidator for text/command validation
 try:
@@ -40,15 +56,6 @@ except (ImportError, AttributeError):
     LayeredValidator = None
     ValidationConfig = None
     LAYERED_VALIDATOR_AVAILABLE = False
-
-from sentinelseed.integrations.isaac_lab.constraints import (
-    RobotConstraints,
-    JointLimits,
-    WorkspaceLimits,
-    ForceTorqueLimits,
-    CollisionZone,
-    ConstraintViolationType,
-)
 
 logger = logging.getLogger("sentinelseed.isaac_lab")
 
@@ -67,25 +74,6 @@ try:
 except (ImportError, AttributeError):
     NUMPY_AVAILABLE = False
     np = None
-
-
-class SafetyLevel(Enum):
-    """Safety level classification for actions."""
-    SAFE = "safe"
-    WARNING = "warning"
-    DANGEROUS = "dangerous"
-    BLOCKED = "blocked"
-
-
-class ActionType(Enum):
-    """Type of robot action being validated."""
-    JOINT_POSITION = "joint_position"
-    JOINT_VELOCITY = "joint_velocity"
-    JOINT_EFFORT = "joint_effort"
-    CARTESIAN_POSE = "cartesian_pose"
-    CARTESIAN_VELOCITY = "cartesian_velocity"
-    NORMALIZED = "normalized"  # Actions in [-1, 1] range
-    UNKNOWN = "unknown"
 
 
 @dataclass

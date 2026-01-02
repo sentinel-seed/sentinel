@@ -361,12 +361,13 @@ class TestWorkspaceLimits:
         assert ws.z_min == 0.5
 
     def test_unlimited_preset(self):
-        """Unlimited preset should have infinite bounds."""
+        """Unlimited preset should have very large bounds (1e9)."""
         from sentinelseed.integrations.isaac_lab.constraints import WorkspaceLimits
 
         ws = WorkspaceLimits.unlimited()
-        assert ws.x_min == float('-inf')
-        assert ws.x_max == float('inf')
+        # Uses large finite values instead of inf for mathematical stability
+        assert ws.x_min == -1e9
+        assert ws.x_max == 1e9
 
 
 class TestForceTorqueLimits:

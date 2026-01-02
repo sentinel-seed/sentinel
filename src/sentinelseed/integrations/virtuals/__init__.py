@@ -84,6 +84,62 @@ except (ImportError, AttributeError):
     MemoryValidationResult = None
     SafeMemoryStore = None
 
+# Import fiduciary validator for user-aligned decision making
+try:
+    from sentinelseed.fiduciary import (
+        FiduciaryValidator,
+        FiduciaryResult,
+        UserContext,
+        RiskTolerance,
+        Violation,
+    )
+    FIDUCIARY_AVAILABLE = True
+except (ImportError, AttributeError):
+    FIDUCIARY_AVAILABLE = False
+    FiduciaryValidator = None
+    FiduciaryResult = None
+    UserContext = None
+    RiskTolerance = None
+    Violation = None
+
+
+def _get_default_virtuals_context() -> Optional["UserContext"]:
+    """
+    Get default UserContext for Virtuals/GAME agents.
+
+    Virtuals agents typically handle:
+    - Token transfers and swaps
+    - DeFi operations
+    - NFT operations
+    - Cross-chain bridges
+
+    Returns:
+        UserContext with sensible defaults for AI agent operations,
+        or None if fiduciary module is not available.
+    """
+    if not FIDUCIARY_AVAILABLE:
+        return None
+
+    return UserContext(
+        goals=[
+            "execute user-requested operations safely",
+            "protect user assets from unauthorized access",
+            "avoid excessive fees and slippage",
+        ],
+        constraints=[
+            "never expose private keys or seed phrases",
+            "respect transaction limits",
+            "require confirmation for high-value operations",
+            "verify recipient addresses before transfers",
+        ],
+        risk_tolerance=RiskTolerance.MODERATE,
+        preferences={
+            "require_purpose": True,
+            "max_slippage": 0.05,  # 5% max slippage
+            "require_confirmation_above": 100.0,
+        },
+    )
+
 
 # Check for game-sdk availability
 try:
@@ -189,12 +245,15 @@ class SentinelValidator(SentinelIntegration):
     - Transaction amount limits
     - Blocked function names
     - Crypto-specific patterns (private keys, seed phrases)
+    - Fiduciary validation for user-aligned decisions
 
     The four THSP gates:
     - TRUTH: Is the action based on accurate information?
     - HARM: Could this action cause harm?
     - SCOPE: Is this action within appropriate limits?
     - PURPOSE: Does this action serve a legitimate benefit?
+
+    Additionally, Fiduciary validation ensures actions align with user interests.
     """
 
     _integration_name = "virtuals"
@@ -203,7 +262,22 @@ class SentinelValidator(SentinelIntegration):
         self,
         config: Optional[SentinelConfig] = None,
         validator: Optional[LayeredValidator] = None,
+        fiduciary_enabled: bool = True,
+        user_context: Optional["UserContext"] = None,
+        strict_fiduciary: bool = False,
     ):
+        """
+        Initialize SentinelValidator with optional Fiduciary validation.
+
+        Args:
+            config: Sentinel configuration for THSP gates.
+            validator: Optional LayeredValidator instance.
+            fiduciary_enabled: Enable fiduciary validation (default: True).
+            user_context: Custom UserContext for fiduciary validation.
+                If not provided, uses default Virtuals context.
+            strict_fiduciary: If True, fiduciary violations block actions.
+                If False, violations are logged as concerns but don't block.
+        """
         # Create LayeredValidator if not provided
         if validator is None:
             val_config = ValidationConfig(
@@ -220,6 +294,17 @@ class SentinelValidator(SentinelIntegration):
             re.compile(p) for p in self.config.suspicious_patterns
         ]
         self._validation_history: List[Dict[str, Any]] = []
+
+        # Initialize Fiduciary validation
+        self._fiduciary_enabled = fiduciary_enabled and FIDUCIARY_AVAILABLE
+        self._strict_fiduciary = strict_fiduciary
+        self._fiduciary: Optional[FiduciaryValidator] = None
+        self._user_context: Optional[UserContext] = None
+
+        if self._fiduciary_enabled:
+            self._fiduciary = FiduciaryValidator()
+            self._user_context = user_context or _get_default_virtuals_context()
+            logger.info("Fiduciary validation enabled for Virtuals")
 
     def validate(
         self,
@@ -300,8 +385,47 @@ class SentinelValidator(SentinelIntegration):
             gate_results["purpose"] = False
             concerns.extend(purpose_concerns)
 
+        # Step 3: Fiduciary validation - check if action aligns with user interests
+        fiduciary_blocked = False
+        if self._fiduciary is not None:
+            # Build action description for fiduciary validation
+            # Include purpose in the action string so FiduciaryValidator can analyze it
+            amount = action_args.get("amount", action_args.get("value", 0))
+            purpose = context.get("purpose", action_args.get("purpose", ""))
+
+            # Combine action name with purpose for comprehensive analysis
+            fid_action_parts = [action_name]
+            if amount:
+                fid_action_parts.append(f"(amount: {amount})")
+            if purpose:
+                fid_action_parts.append(f"- {purpose}")
+
+            fid_action = " ".join(fid_action_parts)
+
+            fid_result = self._fiduciary.validate_action(
+                action=fid_action,
+                user_context=self._user_context,
+                proposed_outcome={
+                    "action_name": action_name,
+                    "amount": amount,
+                    "purpose": purpose,
+                    **action_args,
+                },
+            )
+
+            if not fid_result.compliant:
+                for violation in fid_result.violations:
+                    concern = f"[Fiduciary/{violation.duty.value}] {violation.description}"
+                    concerns.append(concern)
+                    if violation.is_blocking():
+                        fiduciary_blocked = True
+
+                if self._strict_fiduciary and fiduciary_blocked:
+                    # In strict mode, fiduciary violations block the action
+                    gate_results["purpose"] = False  # Associate with purpose gate
+
         # All gates must pass
-        all_passed = all(gate_results.values())
+        all_passed = all(gate_results.values()) and not (self._strict_fiduciary and fiduciary_blocked)
         blocked_gate = None
         if not all_passed:
             for gate, passed in gate_results.items():
@@ -500,6 +624,38 @@ class SentinelValidator(SentinelIntegration):
             "blocked": total - passed,
             "pass_rate": passed / total if total > 0 else 1.0,
         }
+
+    def get_fiduciary_stats(self) -> Dict[str, Any]:
+        """
+        Get fiduciary validation statistics.
+
+        Returns:
+            Dictionary with fiduciary validation status and stats.
+        """
+        if not self._fiduciary_enabled or self._fiduciary is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "strict": self._strict_fiduciary,
+            "validator_stats": self._fiduciary.get_stats(),
+        }
+
+    def update_user_context(self, context: "UserContext") -> None:
+        """
+        Update the UserContext for fiduciary validation.
+
+        Args:
+            context: New UserContext to use for validation.
+
+        Raises:
+            ValueError: If fiduciary is not enabled.
+        """
+        if not self._fiduciary_enabled:
+            raise ValueError("Fiduciary validation is not enabled")
+
+        self._user_context = context
+        logger.info("Updated UserContext for fiduciary validation")
 
 
 def create_sentinel_function(
@@ -1114,4 +1270,8 @@ __all__ = [
     "sentinel_protected",
     "GAME_SDK_AVAILABLE",
     "MEMORY_INTEGRITY_AVAILABLE",
+    "FIDUCIARY_AVAILABLE",
+    # Re-export fiduciary types for convenience
+    "UserContext",
+    "RiskTolerance",
 ]

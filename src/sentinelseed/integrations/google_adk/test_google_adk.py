@@ -608,6 +608,33 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
         )
         return plugin, mock_sentinel
 
+    @pytest.fixture
+    def mock_validator_unsafe(self):
+        """Fixture for a mock LayeredValidator that always fails."""
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock = MagicMock()
+        mock.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Harmful content detected"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
+        return mock
+
+    @pytest.fixture
+    def plugin_with_unsafe_validator(self, skip_if_no_adk, mock_validator_unsafe):
+        """Create a plugin with validator that rejects content."""
+        from .plugin import SentinelPlugin
+
+        plugin = SentinelPlugin(
+            validator=mock_validator_unsafe,
+            seed_level="standard",
+            block_on_failure=True,
+        )
+        return plugin, mock_validator_unsafe
+
     @pytest.mark.asyncio
     async def test_before_model_callback_safe_content(self, plugin_with_mock):
         """Safe content should allow LLM call."""
@@ -633,10 +660,9 @@ class TestSentinelPluginCallbacks(TestSentinelPluginBase):
         assert result is None  # None means allow
 
     @pytest.mark.asyncio
-    async def test_before_model_callback_unsafe_content(self, plugin_with_mock):
+    async def test_before_model_callback_unsafe_content(self, plugin_with_unsafe_validator):
         """Unsafe content should block LLM call."""
-        plugin, mock_sentinel = plugin_with_mock
-        mock_sentinel.validate.return_value = (False, ["Harmful content"])
+        plugin, mock_validator = plugin_with_unsafe_validator
 
         part = MagicMock()
         part.text = "Harmful request"
@@ -828,6 +854,14 @@ class TestSentinelPluginFailModes(TestSentinelPluginBase):
         if not ADK_AVAILABLE:
             pytest.skip("Google ADK not installed")
 
+    @pytest.fixture
+    def mock_validator_error(self):
+        """Fixture for a mock LayeredValidator that raises error."""
+        mock = MagicMock()
+        # Use ValueError which is one of the caught exceptions
+        mock.validate.side_effect = ValueError("Validation error")
+        return mock
+
     @pytest.mark.asyncio
     async def test_fail_open_on_timeout(self, skip_if_no_adk, mock_sentinel):
         """Fail-open should allow on timeout."""
@@ -863,17 +897,15 @@ class TestSentinelPluginFailModes(TestSentinelPluginBase):
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fail_closed_on_error(self, skip_if_no_adk, mock_sentinel):
+    async def test_fail_closed_on_error(self, skip_if_no_adk, mock_validator_error):
         """Fail-closed should block on error."""
         from .plugin import SentinelPlugin
 
         plugin = SentinelPlugin(
-            sentinel=mock_sentinel,
+            validator=mock_validator_error,
             fail_closed=True,
             block_on_failure=True,
         )
-
-        mock_sentinel.validate.side_effect = Exception("Validation error")
 
         part = MagicMock()
         part.text = "Test content"
@@ -1142,7 +1174,8 @@ class TestIntegrationPatterns:
         from .callbacks import create_before_model_callback
 
         mock_sentinel = mock_full_setup
-        mock_sentinel.validate.side_effect = Exception("Test error")
+        # Use ValueError which is one of the caught exceptions
+        mock_sentinel.validate.side_effect = ValueError("Test validation error")
 
         callback = create_before_model_callback(
             sentinel=mock_sentinel,

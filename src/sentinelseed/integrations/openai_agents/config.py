@@ -63,6 +63,8 @@ class SentinelGuardrailConfig:
         max_violations_log: Maximum violations to keep in memory (default: 1000)
         fail_open: If True, allow request on validation error (default: False for security)
         validation_timeout: Timeout in seconds for LLM validation (default: 30.0)
+        use_heuristic: Whether to use heuristic validation before semantic (default: True)
+        skip_semantic_if_heuristic_blocks: If True, skip LLM call when heuristic blocks (default: True)
 
     Example:
         config = SentinelGuardrailConfig(
@@ -71,6 +73,7 @@ class SentinelGuardrailConfig:
             block_on_violation=True,
             log_violations=True,
             validation_timeout=15.0,
+            use_heuristic=True,  # Fast heuristic validation first
         )
     """
 
@@ -83,6 +86,8 @@ class SentinelGuardrailConfig:
     max_violations_log: int = DEFAULT_MAX_VIOLATIONS_LOG
     fail_open: bool = False
     validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT
+    use_heuristic: bool = True
+    skip_semantic_if_heuristic_blocks: bool = True
 
     def __post_init__(self) -> None:
         """Validate configuration values."""

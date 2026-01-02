@@ -39,6 +39,36 @@ class TestRealADKTypes:
         sentinel.validate = MagicMock(return_value=(False, ["Test block"]))
         return sentinel
 
+    @pytest.fixture
+    def mock_validator_safe(self):
+        """Fixture providing mock LayeredValidator that passes validation."""
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        validator = MagicMock()
+        validator.validate = MagicMock(return_value=ValidationResult(
+            is_safe=True,
+            violations=[],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.LOW,
+        ))
+        return validator
+
+    @pytest.fixture
+    def mock_validator_blocking(self):
+        """Fixture providing mock LayeredValidator that blocks validation."""
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        validator = MagicMock()
+        validator.validate = MagicMock(return_value=ValidationResult(
+            is_safe=False,
+            violations=["Test block"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        ))
+        return validator
+
     def test_plugin_is_base_plugin_subclass(self, mock_sentinel):
         """SentinelPlugin should be a proper BasePlugin subclass."""
         from sentinelseed.integrations.google_adk import SentinelPlugin
@@ -95,11 +125,11 @@ class TestRealADKTypes:
         assert response.content.parts[0].text == "Request blocked for safety."
 
     @pytest.mark.asyncio
-    async def test_plugin_before_model_with_real_request(self, mock_sentinel):
+    async def test_plugin_before_model_with_real_request(self, mock_validator_safe):
         """Test plugin callback with real LlmRequest."""
         from sentinelseed.integrations.google_adk import SentinelPlugin
 
-        plugin = SentinelPlugin(sentinel=mock_sentinel)
+        plugin = SentinelPlugin(validator=mock_validator_safe)
 
         # Create real ADK objects
         request = LlmRequest(
@@ -120,19 +150,19 @@ class TestRealADKTypes:
             llm_request=request,
         )
 
-        # Should return None (allow) since sentinel returns should_proceed=True
+        # Should return None (allow) since validator returns is_safe=True
         assert result is None
-        mock_sentinel.validate.assert_called_once()
+        mock_validator_safe.validate.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_plugin_before_model_blocks_with_real_response(
-        self, mock_sentinel_blocking
+        self, mock_validator_blocking
     ):
         """Test plugin returns real LlmResponse when blocking."""
         from sentinelseed.integrations.google_adk import SentinelPlugin
 
         plugin = SentinelPlugin(
-            sentinel=mock_sentinel_blocking,
+            validator=mock_validator_blocking,
             block_on_failure=True,
         )
 

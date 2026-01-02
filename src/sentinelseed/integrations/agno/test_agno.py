@@ -107,6 +107,38 @@ def mock_sentinel_unsafe():
 
 
 @pytest.fixture
+def mock_validator_safe():
+    """Fixture for a mock LayeredValidator that always passes."""
+    from sentinelseed.validation import ValidationResult
+    from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+    mock = MagicMock()
+    mock.validate.return_value = ValidationResult(
+        is_safe=True,
+        violations=[],
+        layer=ValidationLayer.HEURISTIC,
+        risk_level=RiskLevel.LOW,
+    )
+    return mock
+
+
+@pytest.fixture
+def mock_validator_unsafe():
+    """Fixture for a mock LayeredValidator that always fails."""
+    from sentinelseed.validation import ValidationResult
+    from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+    mock = MagicMock()
+    mock.validate.return_value = ValidationResult(
+        is_safe=False,
+        violations=["Potential harm detected", "Content violates policy"],
+        layer=ValidationLayer.HEURISTIC,
+        risk_level=RiskLevel.HIGH,
+    )
+    return mock
+
+
+@pytest.fixture
 def mock_run_input():
     """Fixture for a basic mock RunInput."""
     return MockRunInput(content="Hello, how can I help you?")
@@ -672,9 +704,10 @@ class TestSentinelGuardrail:
         result = guardrail._validate_content("Hello world")
         assert result is None  # None means content is safe
 
-    def test_validate_content_unsafe(self, patched_guardrail_class, mock_sentinel_unsafe):
+    def test_validate_content_unsafe(self, patched_guardrail_class, mock_validator_unsafe):
         """Test _validate_content with unsafe content."""
-        guardrail = patched_guardrail_class(sentinel=mock_sentinel_unsafe)
+        # Use validator parameter to inject mock that returns unsafe
+        guardrail = patched_guardrail_class(validator=mock_validator_unsafe)
         result = guardrail._validate_content("Unsafe content")
         assert result is not None
         assert "concerns" in result
@@ -719,22 +752,24 @@ class TestSentinelGuardrailInheritance:
             guardrails_module._AGNO_AVAILABLE = original
 
     def test_inherits_from_base_class(self):
-        """Test that SentinelGuardrail inherits from the correct base.
+        """Test that SentinelGuardrail inherits from the correct bases.
 
-        When Agno is installed, it should inherit from BaseGuardrail.
-        When Agno is not installed, it inherits from object (fallback).
+        When Agno is installed, it should inherit from BaseGuardrail and SentinelIntegration.
+        When Agno is not installed, it inherits from object and SentinelIntegration.
         """
         from . import guardrails as guardrails_module
+        from sentinelseed.integrations._base import SentinelIntegration
 
         # Check the class hierarchy
         bases = guardrails_module.SentinelGuardrail.__bases__
 
-        # Should have exactly one base class
-        assert len(bases) == 1
+        # Should have two base classes: BaseGuardrail (or object) + SentinelIntegration
+        assert len(bases) == 2
 
-        # Base should be either BaseGuardrail (if Agno installed) or object
-        base_class = bases[0]
-        assert base_class is guardrails_module._BASE_CLASS
+        # First base should be BaseGuardrail (if Agno installed) or object
+        assert bases[0] is guardrails_module._BASE_CLASS
+        # Second base should be SentinelIntegration
+        assert bases[1] is SentinelIntegration
 
     def test_has_required_methods(self):
         """Test that SentinelGuardrail has the required Agno methods."""
@@ -746,17 +781,22 @@ class TestSentinelGuardrailInheritance:
         assert callable(getattr(SentinelGuardrail, "check"))
         assert callable(getattr(SentinelGuardrail, "async_check"))
 
-    def test_output_guardrail_does_not_inherit_base(self):
-        """Test that SentinelOutputGuardrail does NOT inherit from BaseGuardrail.
+    def test_output_guardrail_inherits_sentinel_integration(self):
+        """Test that SentinelOutputGuardrail inherits from SentinelIntegration.
 
-        Output guardrails are meant for manual validation, not as Agno hooks.
+        Output guardrails inherit from SentinelIntegration for standardized
+        validation, but NOT from BaseGuardrail (they're for manual validation).
         """
         from .guardrails import SentinelOutputGuardrail
+        from . import guardrails as guardrails_module
+        from sentinelseed.integrations._base import SentinelIntegration
 
-        # Should inherit from object, not BaseGuardrail
+        # Should inherit from SentinelIntegration, not BaseGuardrail
         bases = SentinelOutputGuardrail.__bases__
         assert len(bases) == 1
-        assert bases[0] is object
+        assert bases[0] is SentinelIntegration
+        # Should NOT inherit from BaseGuardrail
+        assert guardrails_module._BASE_CLASS not in bases
 
 
 # =============================================================================
@@ -787,11 +827,12 @@ class TestSentinelOutputGuardrail:
         assert result["concerns"] == []
         assert "validation_time_ms" in result
 
-    def test_validate_output_unsafe_content(self, mock_sentinel_unsafe):
+    def test_validate_output_unsafe_content(self, mock_validator_unsafe):
         """Test validation of unsafe content."""
         from .guardrails import SentinelOutputGuardrail
 
-        guardrail = SentinelOutputGuardrail(sentinel=mock_sentinel_unsafe)
+        # Use validator parameter to inject mock that returns unsafe
+        guardrail = SentinelOutputGuardrail(validator=mock_validator_unsafe)
         result = guardrail.validate_output("This is unsafe content.")
 
         assert result["safe"] is False
@@ -818,12 +859,13 @@ class TestSentinelOutputGuardrail:
 
         assert result["safe"] is True
 
-    def test_validate_output_records_violation(self, mock_sentinel_unsafe):
+    def test_validate_output_records_violation(self, mock_validator_unsafe):
         """Test that violations are recorded."""
         from .guardrails import SentinelOutputGuardrail
 
+        # Use validator parameter to inject mock that returns unsafe
         guardrail = SentinelOutputGuardrail(
-            sentinel=mock_sentinel_unsafe,
+            validator=mock_validator_unsafe,
             log_violations=True,
         )
         guardrail.validate_output("Unsafe content")

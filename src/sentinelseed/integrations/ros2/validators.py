@@ -7,21 +7,37 @@ The rules focus on physical safety, operational limits, and purpose validation.
 Uses the core THSPValidator for text/command validation, with additional
 robotics-specific physical safety checks layered on top.
 
+Architecture:
+    This module uses the centralized safety classes from:
+    - sentinelseed.safety.base: SafetyLevel
+    - sentinelseed.safety.mobile: VelocityLimits, SafetyZone, ValidationError
+
 Classes:
-    - VelocityLimits: Linear and angular velocity constraints
-    - SafetyZone: Spatial boundaries for safe operation
+    - VelocityLimits: Linear and angular velocity constraints (from safety.mobile)
+    - SafetyZone: Spatial boundaries for safe operation (from safety.mobile)
     - CommandValidationResult: Result of command validation
     - RobotSafetyRules: THSP rules adapted for robotics
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import math
 import re
 
 logger = logging.getLogger("sentinelseed.integrations.ros2.validators")
+
+# Import centralized safety classes
+from sentinelseed.safety.base import SafetyLevel
+from sentinelseed.safety.mobile import (
+    VelocityLimits,
+    SafetyZone,
+    ValidationError,
+    DEFAULT_MAX_LINEAR_VEL,
+    DEFAULT_MAX_ANGULAR_VEL,
+    DEFAULT_ROOM_SIZE,
+    DEFAULT_MAX_ALTITUDE,
+)
 
 # Import LayeredValidator for text validation (replaces direct THSPValidator usage)
 try:
@@ -46,215 +62,6 @@ except (ImportError, AttributeError):
 #   - ramp: Gradual deceleration (SS1) - planned for future version
 VALID_MODES = ("block", "clamp", "warn")
 VALID_MSG_TYPES = ("twist", "string")
-DEFAULT_MAX_LINEAR_VEL = 1.0
-DEFAULT_MAX_ANGULAR_VEL = 0.5
-DEFAULT_ROOM_SIZE = 10.0
-DEFAULT_MAX_ALTITUDE = 2.0
-
-
-class ValidationError(Exception):
-    """Raised when validation fails."""
-
-    def __init__(self, message: str, field: Optional[str] = None):
-        self.message = message
-        self.field = field
-        super().__init__(message)
-
-
-class SafetyLevel(Enum):
-    """Safety level classification for robot commands."""
-    SAFE = "safe"
-    WARNING = "warning"
-    DANGEROUS = "dangerous"
-    BLOCKED = "blocked"
-
-
-@dataclass
-class VelocityLimits:
-    """
-    Velocity limits for robot safety.
-
-    Attributes:
-        max_linear_x: Max forward/backward velocity (m/s)
-        max_linear_y: Max lateral velocity (m/s), 0 for differential drive
-        max_linear_z: Max vertical velocity (m/s), 0 for ground robots
-        max_angular_x: Max roll rate (rad/s)
-        max_angular_y: Max pitch rate (rad/s)
-        max_angular_z: Max yaw rate (rad/s)
-
-    Raises:
-        ValidationError: If any limit is negative
-    """
-    max_linear_x: float = DEFAULT_MAX_LINEAR_VEL
-    max_linear_y: float = 0.0
-    max_linear_z: float = 0.0
-    max_angular_x: float = 0.0
-    max_angular_y: float = 0.0
-    max_angular_z: float = DEFAULT_MAX_ANGULAR_VEL
-
-    def __post_init__(self):
-        """Validate all limits are non-negative."""
-        fields = [
-            ("max_linear_x", self.max_linear_x),
-            ("max_linear_y", self.max_linear_y),
-            ("max_linear_z", self.max_linear_z),
-            ("max_angular_x", self.max_angular_x),
-            ("max_angular_y", self.max_angular_y),
-            ("max_angular_z", self.max_angular_z),
-        ]
-        for name, value in fields:
-            if value < 0:
-                raise ValidationError(
-                    f"{name} cannot be negative (got {value})",
-                    field=name,
-                )
-            if math.isnan(value) or math.isinf(value):
-                raise ValidationError(
-                    f"{name} must be a finite number (got {value})",
-                    field=name,
-                )
-
-    @classmethod
-    def differential_drive(
-        cls,
-        max_linear: float = DEFAULT_MAX_LINEAR_VEL,
-        max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
-    ) -> "VelocityLimits":
-        """Create limits for a differential drive robot."""
-        return cls(
-            max_linear_x=max_linear,
-            max_linear_y=0.0,
-            max_linear_z=0.0,
-            max_angular_x=0.0,
-            max_angular_y=0.0,
-            max_angular_z=max_angular,
-        )
-
-    @classmethod
-    def omnidirectional(
-        cls,
-        max_linear: float = DEFAULT_MAX_LINEAR_VEL,
-        max_angular: float = DEFAULT_MAX_ANGULAR_VEL,
-    ) -> "VelocityLimits":
-        """Create limits for an omnidirectional robot."""
-        return cls(
-            max_linear_x=max_linear,
-            max_linear_y=max_linear,
-            max_linear_z=0.0,
-            max_angular_x=0.0,
-            max_angular_y=0.0,
-            max_angular_z=max_angular,
-        )
-
-    @classmethod
-    def drone(
-        cls,
-        max_linear: float = 2.0,
-        max_vertical: float = 1.0,
-        max_angular: float = 1.0,
-    ) -> "VelocityLimits":
-        """Create limits for a drone/UAV."""
-        return cls(
-            max_linear_x=max_linear,
-            max_linear_y=max_linear,
-            max_linear_z=max_vertical,
-            max_angular_x=max_angular,
-            max_angular_y=max_angular,
-            max_angular_z=max_angular,
-        )
-
-
-@dataclass
-class SafetyZone:
-    """
-    Spatial safety zone for the robot.
-
-    Attributes:
-        min_x: Minimum x coordinate (meters)
-        max_x: Maximum x coordinate (meters)
-        min_y: Minimum y coordinate (meters)
-        max_y: Maximum y coordinate (meters)
-        min_z: Minimum z coordinate (meters)
-        max_z: Maximum z coordinate (meters)
-
-    Raises:
-        ValidationError: If min > max for any axis
-    """
-    min_x: float = -DEFAULT_ROOM_SIZE / 2
-    max_x: float = DEFAULT_ROOM_SIZE / 2
-    min_y: float = -DEFAULT_ROOM_SIZE / 2
-    max_y: float = DEFAULT_ROOM_SIZE / 2
-    min_z: float = 0.0
-    max_z: float = DEFAULT_MAX_ALTITUDE
-
-    # Flag to skip validation for unlimited zones
-    _skip_validation: bool = field(default=False, repr=False)
-
-    def __post_init__(self):
-        """Validate min <= max for all axes."""
-        if self._skip_validation:
-            return
-
-        axes = [
-            ("x", self.min_x, self.max_x),
-            ("y", self.min_y, self.max_y),
-            ("z", self.min_z, self.max_z),
-        ]
-        for axis, min_val, max_val in axes:
-            if math.isnan(min_val) or math.isnan(max_val):
-                raise ValidationError(
-                    f"{axis} axis contains NaN values",
-                    field=f"min_{axis}/max_{axis}",
-                )
-            if min_val > max_val:
-                raise ValidationError(
-                    f"min_{axis} ({min_val}) cannot be greater than max_{axis} ({max_val})",
-                    field=f"min_{axis}",
-                )
-
-    def contains(self, x: float, y: float, z: float = 0.0) -> bool:
-        """Check if a position is within the safety zone."""
-        if math.isnan(x) or math.isnan(y) or math.isnan(z):
-            return False
-        return (
-            self.min_x <= x <= self.max_x and
-            self.min_y <= y <= self.max_y and
-            self.min_z <= z <= self.max_z
-        )
-
-    @classmethod
-    def unlimited(cls) -> "SafetyZone":
-        """
-        Create unlimited safety zone.
-
-        Note: Uses very large finite values instead of inf to avoid
-        potential issues with mathematical operations.
-        """
-        large_val = 1e9  # 1 billion meters
-        return cls(
-            min_x=-large_val,
-            max_x=large_val,
-            min_y=-large_val,
-            max_y=large_val,
-            min_z=-large_val,
-            max_z=large_val,
-            _skip_validation=False,
-        )
-
-    @classmethod
-    def indoor(cls, room_size: float = DEFAULT_ROOM_SIZE) -> "SafetyZone":
-        """Create indoor safety zone."""
-        if room_size <= 0:
-            raise ValidationError(
-                f"room_size must be positive (got {room_size})",
-                field="room_size",
-            )
-        half = room_size / 2
-        return cls(
-            min_x=-half, max_x=half,
-            min_y=-half, max_y=half,
-            min_z=0.0, max_z=3.0,
-        )
 
 
 @dataclass

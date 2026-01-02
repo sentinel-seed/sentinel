@@ -56,7 +56,56 @@ from sentinelseed.integrations._base import (
     ValidationResult,
 )
 
+# Fiduciary validation for user-aligned decision making
+try:
+    from sentinelseed.fiduciary import (
+        FiduciaryValidator,
+        FiduciaryResult,
+        UserContext,
+        RiskTolerance,
+        Violation,
+    )
+    HAS_FIDUCIARY = True
+except ImportError:
+    HAS_FIDUCIARY = False
+    FiduciaryValidator = None
+    FiduciaryResult = None
+    UserContext = None
+    RiskTolerance = None
+
 logger = logging.getLogger("sentinelseed.solana_agent_kit")
+
+
+# Default user context for Solana transactions
+# This ensures fiduciary validation considers typical Solana user concerns
+def _get_default_solana_context() -> "UserContext":
+    """Get default UserContext for Solana transactions."""
+    if not HAS_FIDUCIARY:
+        return None
+    return UserContext(
+        goals=[
+            "protect SOL holdings",
+            "minimize slippage on swaps",
+            "avoid scam tokens",
+        ],
+        constraints=[
+            "avoid drain operations",
+            "respect transfer limits",
+            "verify program IDs",
+        ],
+        risk_tolerance=RiskTolerance.MODERATE,
+        preferences={
+            "require_explanation": True,
+            "max_transfer_sol": 100.0,
+            "check_token_security": True,
+        },
+        sensitive_topics=[
+            "private_key",
+            "seed_phrase",
+            "wallet_address",
+            "token_holdings",
+        ],
+    )
 
 
 # Allowed metadata keys to prevent injection via arbitrary metadata
@@ -291,6 +340,10 @@ class SentinelValidator(SentinelIntegration):
         custom_patterns: Optional[List[SuspiciousPattern]] = None,
         on_validation: Optional[Callable[[TransactionSafetyResult], None]] = None,
         validator: Optional[LayeredValidator] = None,
+        # Fiduciary validation parameters
+        fiduciary_enabled: bool = True,
+        user_context: Optional["UserContext"] = None,
+        strict_fiduciary: bool = False,
     ):
         """
         Initialize validator.
@@ -310,10 +363,21 @@ class SentinelValidator(SentinelIntegration):
             custom_patterns: Additional suspicious patterns to check
             on_validation: Callback function called after each validation
             validator: Optional LayeredValidator for dependency injection (testing)
+            fiduciary_enabled: Enable fiduciary validation (duty of loyalty/care). Default True.
+            user_context: UserContext for fiduciary validation. Uses Solana defaults if not provided.
+            strict_fiduciary: If True, any fiduciary violation blocks the transaction.
 
         Note:
             Default max_transfer=100.0 SOL may be too high for some use cases.
             Always configure appropriate limits for your application.
+
+        Fiduciary Validation:
+            When enabled, validates that transactions align with user's best interests.
+            This includes checking for:
+            - Actions that contradict user's stated goals
+            - High-risk actions for low-risk-tolerance users
+            - Potential conflicts of interest
+            - Insufficient explanations for recommendations
         """
         # Create LayeredValidator if not provided
         if validator is None:
@@ -372,6 +436,23 @@ class SentinelValidator(SentinelIntegration):
                     RuntimeWarning,
                 )
                 logger.warning("Memory integrity module not available")
+
+        # Initialize fiduciary validator if enabled
+        self._fiduciary: Optional[FiduciaryValidator] = None
+        self._user_context: Optional[UserContext] = None
+        self._strict_fiduciary = strict_fiduciary
+
+        if fiduciary_enabled and HAS_FIDUCIARY:
+            self._fiduciary = FiduciaryValidator(strict_mode=strict_fiduciary)
+            self._user_context = user_context or _get_default_solana_context()
+            logger.debug("Fiduciary validator initialized")
+        elif fiduciary_enabled and not HAS_FIDUCIARY:
+            warnings.warn(
+                "fiduciary_enabled=True but sentinelseed.fiduciary module not available. "
+                "Fiduciary validation will be disabled.",
+                RuntimeWarning,
+            )
+            logger.warning("Fiduciary module not available")
 
     def check(
         self,
@@ -545,11 +626,48 @@ class SentinelValidator(SentinelIntegration):
             if risk_level < pattern_risk:
                 risk_level = pattern_risk
 
-        # Determine if should proceed based on risk level and strict_mode
+        # Fiduciary validation: check if action aligns with user's best interests
+        fiduciary_blocked = False
+        if self._fiduciary is not None:
+            # Build action description for fiduciary validation
+            fid_action = f"{action} {amount} SOL"
+            if recipient:
+                fid_action += f" to {recipient[:8]}..."
+            if effective_purpose:
+                fid_action += f" ({effective_purpose})"
+
+            fid_result = self._fiduciary.validate_action(
+                action=fid_action,
+                user_context=self._user_context,
+                proposed_outcome={"amount": amount, "recipient": recipient, **kwargs},
+            )
+
+            if not fid_result.compliant:
+                # Add fiduciary violations as concerns
+                for violation in fid_result.violations:
+                    concern = f"[Fiduciary/{violation.duty.value}] {violation.description}"
+                    concerns.append(concern)
+                    if violation.is_blocking():
+                        fiduciary_blocked = True
+                        if risk_level < TransactionRisk.HIGH:
+                            risk_level = TransactionRisk.HIGH
+
+                logger.info(f"Fiduciary validation concerns: {len(fid_result.violations)}")
+
+            # In strict fiduciary mode, any violation blocks
+            if self._strict_fiduciary and fid_result.violations:
+                fiduciary_blocked = True
+                if risk_level < TransactionRisk.HIGH:
+                    risk_level = TransactionRisk.HIGH
+
+        # Determine if should proceed based on risk level, strict_mode, and fiduciary
         is_safe = len(concerns) == 0
         if self.strict_mode:
             # In strict mode, block any transaction with concerns
             should_proceed = is_safe
+        elif fiduciary_blocked:
+            # Fiduciary blocking violations always block
+            should_proceed = False
         else:
             # In normal mode, only block HIGH and CRITICAL
             should_proceed = risk_level not in [TransactionRisk.CRITICAL, TransactionRisk.HIGH]
@@ -766,6 +884,59 @@ class SentinelValidator(SentinelIntegration):
             "entries_stored": len(self._memory_store) if self._memory_store else 0,
             **checker_stats,
         }
+
+    def get_fiduciary_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about fiduciary validation.
+
+        Returns:
+            Dict with fiduciary stats:
+                - enabled: Whether fiduciary validation is enabled
+                - strict: Whether strict fiduciary mode is enabled
+                - validator_stats: Stats from FiduciaryValidator (if enabled)
+
+        Example:
+            stats = validator.get_fiduciary_stats()
+            if stats["enabled"]:
+                print(f"Fiduciary validations: {stats['validator_stats']['total_validated']}")
+        """
+        if self._fiduciary is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "strict": self._strict_fiduciary,
+            "validator_stats": self._fiduciary.get_stats(),
+        }
+
+    def update_user_context(self, user_context: "UserContext") -> None:
+        """
+        Update the user context for fiduciary validation.
+
+        Use this to adjust fiduciary validation based on user preferences
+        or profile changes at runtime.
+
+        Args:
+            user_context: New UserContext to use for validation
+
+        Example:
+            from sentinelseed.fiduciary import UserContext, RiskTolerance
+
+            # Update to high-risk tolerance for experienced user
+            validator.update_user_context(UserContext(
+                risk_tolerance=RiskTolerance.HIGH,
+                goals=["maximize returns"],
+            ))
+        """
+        if self._fiduciary is None:
+            warnings.warn(
+                "Cannot update user_context: fiduciary validation is not enabled",
+                RuntimeWarning,
+            )
+            return
+
+        self._user_context = user_context
+        logger.debug("User context updated for fiduciary validation")
 
     def block_address(self, address: str) -> None:
         """
@@ -1172,4 +1343,15 @@ __all__ = [
     "create_langchain_tools",
     "is_valid_solana_address",
     "_sanitize_metadata",
+    # Fiduciary (re-exports for convenience)
+    "HAS_FIDUCIARY",
 ]
+
+# Re-export fiduciary classes if available (for convenience)
+if HAS_FIDUCIARY:
+    __all__.extend([
+        "UserContext",
+        "RiskTolerance",
+        "FiduciaryValidator",
+        "FiduciaryResult",
+    ])

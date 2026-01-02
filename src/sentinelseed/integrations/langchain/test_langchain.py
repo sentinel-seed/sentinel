@@ -760,10 +760,13 @@ class TestAsyncOperations(unittest.TestCase):
     def test_guard_ainvoke(self):
         """Test SentinelGuard.ainvoke."""
         async def _test():
+            # Create async mock return value (Python 3.11+ compatible)
+            async def mock_ainvoke(*args, **kwargs):
+                return {"output": "response"}
+
             mock_agent = Mock()
-            mock_agent.ainvoke = MagicMock(
-                return_value=asyncio.coroutine(lambda: {"output": "response"})()
-            )
+            mock_agent.ainvoke = mock_ainvoke
+
             guard = SentinelGuard(
                 agent=mock_agent,
                 max_text_size=100,

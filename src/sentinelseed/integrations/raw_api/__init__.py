@@ -572,15 +572,17 @@ def validate_response(
     sentinel: Optional[Sentinel] = None,
     response_format: str = "openai",
     block_on_unsafe: bool = False,
+    validator: Optional[LayeredValidator] = None,
 ) -> Dict[str, Any]:
     """
     Validate an API response through Sentinel THSP gates.
 
     Args:
         response: Parsed JSON response from API
-        sentinel: Sentinel instance (creates default if None)
+        sentinel: Sentinel instance (creates default if None, used as fallback)
         response_format: Format of response - 'openai' or 'anthropic'
         block_on_unsafe: If True, raise ValidationError when content is unsafe
+        validator: LayeredValidator instance (preferred over sentinel if provided)
 
     Returns:
         Dict with 'valid', 'response', 'violations', 'content', 'sentinel_checked'
@@ -631,13 +633,6 @@ def validate_response(
             "sentinel_checked": False,
         }
 
-    # Create sentinel
-    try:
-        sentinel = sentinel or Sentinel()
-    except Exception as e:
-        logger.error(f"Failed to create Sentinel instance: {e}")
-        raise RawAPIError(f"Failed to initialize Sentinel: {e}")
-
     # Extract content based on format
     if response_format == "openai":
         content = _extract_openai_content(response)
@@ -650,7 +645,16 @@ def validate_response(
 
     if content.strip():
         try:
-            is_safe, violations = sentinel.validate(content)
+            # Prefer validator (LayeredValidator) over sentinel
+            if validator is not None:
+                result = validator.validate(content)
+                is_safe = result.is_safe
+                violations = result.violations
+            else:
+                # Fallback to sentinel for backwards compatibility
+                if sentinel is None:
+                    sentinel = Sentinel()
+                is_safe, violations = sentinel.validate(content)
         except Exception as e:
             logger.error(f"Output validation error: {e}")
             is_safe = False
@@ -983,12 +987,13 @@ class RawAPIClient(SentinelIntegration):
                 details={"response_text": response.text[:500] if response.text else None},
             )
 
-        # Validate response
+        # Validate response using inherited validator
         return validate_response(
             response_data,
             sentinel=self.sentinel,
             block_on_unsafe=block_on_unsafe,
             response_format=response_format,
+            validator=self._validator,
         )
 
 

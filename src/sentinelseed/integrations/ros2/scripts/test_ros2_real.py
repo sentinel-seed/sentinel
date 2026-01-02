@@ -78,70 +78,70 @@ class TestResults:
         return failed == 0
 
 
-class TestPublisher(Node):
-    """Node that publishes test commands."""
+# ROS2-dependent classes are only defined when ROS2 is available
+if ROS2_AVAILABLE:
+    class TestPublisher(Node):
+        """Node that publishes test commands."""
 
-    def __init__(self, topic: str = '/cmd_vel_raw'):
-        super().__init__('test_publisher')
-        self.publisher = self.create_publisher(Twist, topic, 10)
-        self.get_logger().info(f'TestPublisher ready on {topic}')
+        def __init__(self, topic: str = '/cmd_vel_raw'):
+            super().__init__('test_publisher')
+            self.publisher = self.create_publisher(Twist, topic, 10)
+            self.get_logger().info(f'TestPublisher ready on {topic}')
 
-    def publish_velocity(self, linear_x: float, angular_z: float):
-        msg = Twist()
-        msg.linear.x = linear_x
-        msg.angular.z = angular_z
-        self.publisher.publish(msg)
-        self.get_logger().debug(f'Published: linear={linear_x}, angular={angular_z}')
+        def publish_velocity(self, linear_x: float, angular_z: float):
+            msg = Twist()
+            msg.linear.x = linear_x
+            msg.angular.z = angular_z
+            self.publisher.publish(msg)
+            self.get_logger().debug(f'Published: linear={linear_x}, angular={angular_z}')
 
+    class TestSubscriber(Node):
+        """Node that subscribes to filtered commands."""
 
-class TestSubscriber(Node):
-    """Node that subscribes to filtered commands."""
+        def __init__(self, topic: str = '/cmd_vel'):
+            super().__init__('test_subscriber')
+            self.received_msgs: List[Twist] = []
+            self.subscription = self.create_subscription(
+                Twist,
+                topic,
+                self._callback,
+                10
+            )
+            self.get_logger().info(f'TestSubscriber ready on {topic}')
 
-    def __init__(self, topic: str = '/cmd_vel'):
-        super().__init__('test_subscriber')
-        self.received_msgs: List[Twist] = []
-        self.subscription = self.create_subscription(
-            Twist,
-            topic,
-            self._callback,
-            10
-        )
-        self.get_logger().info(f'TestSubscriber ready on {topic}')
+        def _callback(self, msg: Twist):
+            self.received_msgs.append(msg)
+            self.get_logger().debug(f'Received: linear={msg.linear.x}, angular={msg.angular.z}')
 
-    def _callback(self, msg: Twist):
-        self.received_msgs.append(msg)
-        self.get_logger().debug(f'Received: linear={msg.linear.x}, angular={msg.angular.z}')
+        def get_last_msg(self) -> Optional[Twist]:
+            return self.received_msgs[-1] if self.received_msgs else None
 
-    def get_last_msg(self) -> Optional[Twist]:
-        return self.received_msgs[-1] if self.received_msgs else None
+        def clear(self):
+            self.received_msgs.clear()
 
-    def clear(self):
-        self.received_msgs.clear()
+    class StatusSubscriber(Node):
+        """Node that subscribes to safety status."""
 
+        def __init__(self, topic: str = '/sentinel/status'):
+            super().__init__('status_subscriber')
+            self.received_msgs: List[str] = []
+            self.subscription = self.create_subscription(
+                String,
+                topic,
+                self._callback,
+                10
+            )
+            self.get_logger().info(f'StatusSubscriber ready on {topic}')
 
-class StatusSubscriber(Node):
-    """Node that subscribes to safety status."""
+        def _callback(self, msg: String):
+            self.received_msgs.append(msg.data)
+            self.get_logger().debug(f'Status: {msg.data}')
 
-    def __init__(self, topic: str = '/sentinel/status'):
-        super().__init__('status_subscriber')
-        self.received_msgs: List[str] = []
-        self.subscription = self.create_subscription(
-            String,
-            topic,
-            self._callback,
-            10
-        )
-        self.get_logger().info(f'StatusSubscriber ready on {topic}')
+        def get_last_status(self) -> Optional[str]:
+            return self.received_msgs[-1] if self.received_msgs else None
 
-    def _callback(self, msg: String):
-        self.received_msgs.append(msg.data)
-        self.get_logger().debug(f'Status: {msg.data}')
-
-    def get_last_status(self) -> Optional[str]:
-        return self.received_msgs[-1] if self.received_msgs else None
-
-    def clear(self):
-        self.received_msgs.clear()
+        def clear(self):
+            self.received_msgs.clear()
 
 
 def run_tests():

@@ -161,63 +161,79 @@ class TestSentinelOpenGuardrailsScannerInit:
 
 
 class TestSentinelGuardrailsWrapperValidation:
-    """Tests for SentinelGuardrailsWrapper.validate() security fixes"""
+    """Tests for SentinelGuardrailsWrapper.validate() security fixes
 
-    def test_sentinel_exception_returns_safe_false(self):
-        """C003: Sentinel exception must return safe=False"""
-        class ExceptionSentinel:
-            def validate(self, content):
-                raise RuntimeError("Sentinel crashed!")
+    These tests use LayeredValidator mocks to test error handling,
+    since SentinelGuardrailsWrapper uses LayeredValidator internally.
+    """
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=ExceptionSentinel())
+    def test_validator_exception_returns_safe_false(self):
+        """C003: Validator exception must return safe=False"""
+        from unittest.mock import MagicMock
+
+        mock_validator = MagicMock()
+        mock_validator.validate.side_effect = RuntimeError("Validator crashed!")
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         assert result["safe"] is False
         assert "sentinel_error" in result["blocked_by"]
 
-    def test_sentinel_returns_none_safe_false(self):
-        """C004: Sentinel returning None must return safe=False"""
-        class NoneSentinel:
-            def validate(self, content):
-                return None
+    def test_validator_returns_unsafe_returns_safe_false(self):
+        """C004: Validator returning is_safe=False must return safe=False"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=NoneSentinel())
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Test violation"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         assert result["safe"] is False
-        assert "sentinel_invalid_result" in result["blocked_by"]
+        assert "sentinel" in result["blocked_by"]
 
-    def test_sentinel_returns_string_safe_false(self):
-        """C004: Sentinel returning string must return safe=False"""
-        class StringSentinel:
-            def validate(self, content):
-                return "safe"
+    def test_validator_returns_safe_returns_safe_true(self):
+        """Normal case: Validator returning is_safe=True returns safe=True"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=StringSentinel())
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=True,
+            violations=[],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.LOW,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
-        assert result["safe"] is False
-        assert "sentinel_invalid_result" in result["blocked_by"]
+        assert result["safe"] is True
 
-    def test_sentinel_returns_int_safe_false(self):
-        """C004: Sentinel returning int must return safe=False"""
-        class IntSentinel:
-            def validate(self, content):
-                return 1
+    def test_validator_blocks_returns_safe_false(self):
+        """Normal case: Validator blocking returns safe=False"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=IntSentinel())
-        result = wrapper.validate("test content")
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Blocked by validator"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
 
-        assert result["safe"] is False
-        assert "sentinel_invalid_result" in result["blocked_by"]
-
-    def test_sentinel_blocks_returns_safe_false(self):
-        """Normal case: Sentinel blocking returns safe=False"""
-        class BlockingSentinel:
-            def validate(self, content):
-                return {"safe": False, "reason": "blocked"}
-
-        wrapper = SentinelGuardrailsWrapper(sentinel=BlockingSentinel())
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         assert result["safe"] is False

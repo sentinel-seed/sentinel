@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
+import warnings
+
 from ..config import (
     ChainType,
     RiskLevel,
@@ -32,7 +34,54 @@ from ..config import (
 )
 from .address import is_valid_evm_address, validate_address
 
+# Fiduciary validation for user-aligned decision making
+try:
+    from sentinelseed.fiduciary import (
+        FiduciaryValidator,
+        FiduciaryResult,
+        UserContext,
+        RiskTolerance,
+    )
+    HAS_FIDUCIARY = True
+except ImportError:
+    HAS_FIDUCIARY = False
+    FiduciaryValidator = None
+    FiduciaryResult = None
+    UserContext = None
+    RiskTolerance = None
+
 logger = logging.getLogger("sentinelseed.coinbase.transaction")
+
+
+# Default user context for Coinbase/EVM transactions
+def _get_default_coinbase_context() -> "UserContext":
+    """Get default UserContext for Coinbase/EVM transactions."""
+    if not HAS_FIDUCIARY:
+        return None
+    return UserContext(
+        goals=[
+            "protect assets",
+            "minimize transaction fees",
+            "maintain portfolio balance",
+        ],
+        constraints=[
+            "avoid unlimited approvals",
+            "respect spending limits",
+            "verify recipient addresses",
+        ],
+        risk_tolerance=RiskTolerance.MODERATE,
+        preferences={
+            "require_explanation": True,
+            "max_single_transaction": 500,
+            "require_purpose_for_high_value": True,
+        },
+        sensitive_topics=[
+            "private_key",
+            "seed_phrase",
+            "wallet_balance",
+            "transaction_history",
+        ],
+    )
 
 
 class TransactionDecision(Enum):
@@ -256,16 +305,48 @@ class TransactionValidator:
     def __init__(
         self,
         config: Optional[SentinelCoinbaseConfig] = None,
+        # Fiduciary validation parameters
+        fiduciary_enabled: bool = True,
+        user_context: Optional["UserContext"] = None,
+        strict_fiduciary: bool = False,
     ):
         """
         Initialize the transaction validator.
 
         Args:
             config: Configuration object. Uses default if not provided.
+            fiduciary_enabled: Enable fiduciary validation (duty of loyalty/care). Default True.
+            user_context: UserContext for fiduciary validation. Uses Coinbase defaults if not provided.
+            strict_fiduciary: If True, any fiduciary violation blocks the transaction.
+
+        Fiduciary Validation:
+            When enabled, validates that transactions align with user's best interests.
+            This includes checking for:
+            - Actions that contradict user's stated goals
+            - High-risk actions for low-risk-tolerance users
+            - Potential conflicts of interest
+            - Insufficient explanations for recommendations
         """
         self.config = config or get_default_config()
         self.spending_tracker = SpendingTracker()
         self._validation_history: List[TransactionValidationResult] = []
+
+        # Initialize fiduciary validator if enabled
+        self._fiduciary: Optional[FiduciaryValidator] = None
+        self._user_context: Optional[UserContext] = None
+        self._strict_fiduciary = strict_fiduciary
+
+        if fiduciary_enabled and HAS_FIDUCIARY:
+            self._fiduciary = FiduciaryValidator(strict_mode=strict_fiduciary)
+            self._user_context = user_context or _get_default_coinbase_context()
+            logger.debug("Fiduciary validator initialized")
+        elif fiduciary_enabled and not HAS_FIDUCIARY:
+            warnings.warn(
+                "fiduciary_enabled=True but sentinelseed.fiduciary module not available. "
+                "Fiduciary validation will be disabled.",
+                RuntimeWarning,
+            )
+            logger.warning("Fiduciary module not available")
 
     def validate(
         self,
@@ -411,12 +492,53 @@ class TransactionValidator:
                 concerns.append(f"High-risk action '{action}' requires stated purpose")
                 recommendations.append("Provide a purpose parameter explaining the transaction")
 
+        # 7.5 Fiduciary validation: check if action aligns with user's best interests
+        fiduciary_blocked = False
+        if self._fiduciary is not None:
+            # Build action description for fiduciary validation
+            fid_action = f"{action} ${amount:.2f}"
+            if to_address:
+                fid_action += f" to {to_address[:8]}..."
+            if purpose:
+                fid_action += f" ({purpose})"
+
+            fid_result = self._fiduciary.validate_action(
+                action=fid_action,
+                user_context=self._user_context,
+                proposed_outcome={"amount": amount, "to_address": to_address, **kwargs},
+            )
+
+            if not fid_result.compliant:
+                # Add fiduciary violations as concerns
+                for violation in fid_result.violations:
+                    concern = f"[Fiduciary/{violation.duty.value}] {violation.description}"
+                    concerns.append(concern)
+                    if violation.is_blocking():
+                        fiduciary_blocked = True
+
+                logger.info(f"Fiduciary validation concerns: {len(fid_result.violations)}")
+
+            # In strict fiduciary mode, any violation blocks
+            if self._strict_fiduciary and fid_result.violations:
+                fiduciary_blocked = True
+
         # 8. Determine risk level
         risk_level = self._assess_risk_level(action, amount, concerns, chain)
         details["risk_level"] = risk_level.value
 
         # 9. Determine decision
         requires_confirmation = False
+
+        # 9.1 Check fiduciary blocking first (highest priority)
+        if fiduciary_blocked:
+            return self._create_result(
+                TransactionDecision.REJECT,
+                RiskLevel.HIGH if risk_level.value < RiskLevel.HIGH.value else risk_level,
+                concerns,
+                recommendations + ["Review fiduciary concerns before proceeding"],
+                details,
+                requires_confirmation=False,
+            )
 
         if concerns:
             # Has concerns but not blocking
@@ -622,6 +744,59 @@ class TransactionValidator:
             "rejected": rejected,
             "approval_rate": approved / len(self._validation_history),
         }
+
+    def get_fiduciary_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about fiduciary validation.
+
+        Returns:
+            Dict with fiduciary stats:
+                - enabled: Whether fiduciary validation is enabled
+                - strict: Whether strict fiduciary mode is enabled
+                - validator_stats: Stats from FiduciaryValidator (if enabled)
+
+        Example:
+            stats = validator.get_fiduciary_stats()
+            if stats["enabled"]:
+                print(f"Fiduciary validations: {stats['validator_stats']['total_validated']}")
+        """
+        if self._fiduciary is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "strict": self._strict_fiduciary,
+            "validator_stats": self._fiduciary.get_stats(),
+        }
+
+    def update_user_context(self, user_context: "UserContext") -> None:
+        """
+        Update the user context for fiduciary validation.
+
+        Use this to adjust fiduciary validation based on user preferences
+        or profile changes at runtime.
+
+        Args:
+            user_context: New UserContext to use for validation
+
+        Example:
+            from sentinelseed.fiduciary import UserContext, RiskTolerance
+
+            # Update to high-risk tolerance for experienced user
+            validator.update_user_context(UserContext(
+                risk_tolerance=RiskTolerance.HIGH,
+                goals=["maximize returns"],
+            ))
+        """
+        if self._fiduciary is None:
+            warnings.warn(
+                "Cannot update user_context: fiduciary validation is not enabled",
+                RuntimeWarning,
+            )
+            return
+
+        self._user_context = user_context
+        logger.debug("User context updated for fiduciary validation")
 
 
 def validate_transaction(
