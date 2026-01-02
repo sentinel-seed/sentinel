@@ -44,6 +44,9 @@ from sentinelseed.integrations._base import (
 # Semantic validation is available via LayeredValidator with API key
 SEMANTIC_AVAILABLE = True  # Always available - LayeredValidator handles it
 
+# Valid values for on_violation parameter
+VALID_VIOLATION_MODES = frozenset({"log", "raise", "flag"})
+
 logger = logging.getLogger("sentinelseed.llamaindex")
 
 # Check for LlamaIndex availability
@@ -62,9 +65,11 @@ except (ImportError, AttributeError):
 
 # B001: Explicit exports
 __all__ = [
-    # Availability flag
+    # Availability flags
     "LLAMAINDEX_AVAILABLE",
     "SEMANTIC_AVAILABLE",
+    # Constants
+    "VALID_VIOLATION_MODES",
     # Classes
     "SentinelCallbackHandler",
     "SentinelLLM",
@@ -73,6 +78,29 @@ __all__ = [
     "wrap_llm",
     "setup_sentinel_monitoring",
 ]
+
+
+def _validate_on_violation(on_violation: Any) -> str:
+    """
+    Validate on_violation parameter.
+
+    Args:
+        on_violation: Value to validate
+
+    Returns:
+        Validated on_violation value (defaults to "log" if None)
+
+    Raises:
+        ValueError: If on_violation is not a valid value
+    """
+    if on_violation is None:
+        return "log"
+    if not isinstance(on_violation, str) or on_violation not in VALID_VIOLATION_MODES:
+        raise ValueError(
+            f"Invalid on_violation '{on_violation}'. "
+            f"Must be one of: {sorted(VALID_VIOLATION_MODES)}"
+        )
+    return on_violation
 
 
 @dataclass
@@ -143,12 +171,19 @@ class SentinelCallbackHandler(*_CALLBACK_BASES):
             event_starts_to_ignore: Event types to ignore on start
             event_ends_to_ignore: Event types to ignore on end
             validator: Optional LayeredValidator for dependency injection (testing)
+
+        Raises:
+            ImportError: If llama-index-core is not installed
+            ValueError: If on_violation is not a valid value
         """
         if not LLAMAINDEX_AVAILABLE:
             raise ImportError(
                 "llama-index-core not installed. "
                 "Install with: pip install llama-index-core"
             )
+
+        # BUG-002: Validate on_violation parameter
+        on_violation = _validate_on_violation(on_violation)
 
         # Create LayeredValidator if not provided
         if validator is None:
@@ -641,10 +676,14 @@ def setup_sentinel_monitoring(
     Args:
         sentinel: Sentinel instance
         seed_level: Seed level to use
-        on_violation: Action on violation
+        on_violation: Action on violation ("log", "raise", or "flag")
 
     Returns:
         Configured SentinelCallbackHandler
+
+    Raises:
+        ImportError: If llama-index-core is not installed
+        ValueError: If on_violation is not a valid value
 
     Example:
         from sentinelseed.integrations.llamaindex import setup_sentinel_monitoring
@@ -657,6 +696,7 @@ def setup_sentinel_monitoring(
     if not LLAMAINDEX_AVAILABLE:
         raise ImportError("llama-index-core not installed")
 
+    # Validation happens in SentinelCallbackHandler.__init__
     from llama_index.core import Settings
     from llama_index.core.callbacks import CallbackManager
 

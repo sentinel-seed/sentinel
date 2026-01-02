@@ -116,26 +116,32 @@ The handler monitors these LlamaIndex events:
 
 ```python
 SentinelCallbackHandler(
-    sentinel=None,
-    seed_level="standard",
+    sentinel=None,               # Sentinel instance
+    seed_level="standard",       # minimal, standard, full
     on_violation="log",          # log, raise, flag
     event_starts_to_ignore=[],   # Event types to skip on start
     event_ends_to_ignore=[],     # Event types to skip on end
+    validator=None,              # Optional LayeredValidator (for testing)
 )
 ```
+
+**Note:** The `validator` parameter is optional and primarily used for dependency injection in tests. In normal usage, a LayeredValidator is created automatically.
 
 ### SentinelLLM
 
 ```python
 SentinelLLM(
-    llm=base_llm,
-    sentinel=None,
-    seed_level="standard",
+    llm=base_llm,                # LlamaIndex LLM to wrap
+    sentinel=None,               # Sentinel instance
+    seed_level="standard",       # minimal, standard, full
     inject_seed=True,            # Add seed to system messages
     validate_input=True,         # Validate inputs
     validate_output=True,        # Validate outputs
+    validator=None,              # Optional LayeredValidator (for testing)
 )
 ```
+
+**Note:** The `validator` parameter is optional and primarily used for dependency injection in tests.
 
 ## API Reference
 
@@ -173,6 +179,34 @@ SentinelLLM(
 | `acomplete(prompt)` | Async completion |
 | `stream_chat(messages)` | Streaming chat |
 | `stream_complete(prompt)` | Streaming completion |
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `LLAMAINDEX_AVAILABLE` | bool | True if llama-index-core is installed |
+| `SEMANTIC_AVAILABLE` | bool | True if semantic validation is available |
+| `VALID_VIOLATION_MODES` | frozenset | Valid values for on_violation: {"log", "raise", "flag"} |
+
+## Error Handling
+
+```python
+from sentinelseed.integrations.llamaindex import SentinelCallbackHandler
+
+# Invalid on_violation raises ValueError
+try:
+    handler = SentinelCallbackHandler(on_violation="invalid")
+except ValueError as e:
+    print(e)  # "Invalid on_violation 'invalid'. Must be one of: ['flag', 'log', 'raise']"
+
+# Check availability before using
+from sentinelseed.integrations.llamaindex import LLAMAINDEX_AVAILABLE
+
+if LLAMAINDEX_AVAILABLE:
+    handler = SentinelCallbackHandler()
+else:
+    print("llama-index-core not installed")
+```
 
 ## Links
 

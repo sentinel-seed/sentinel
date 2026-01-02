@@ -210,6 +210,20 @@ class TestModuleExports:
 
         assert isinstance(LLAMAINDEX_AVAILABLE, bool)
 
+    def test_semantic_available_flag_exists(self):
+        """Test that SEMANTIC_AVAILABLE flag exists."""
+        from sentinelseed.integrations.llamaindex import SEMANTIC_AVAILABLE
+
+        assert isinstance(SEMANTIC_AVAILABLE, bool)
+        assert SEMANTIC_AVAILABLE is True  # Always available via LayeredValidator
+
+    def test_valid_violation_modes_exported(self):
+        """Test that VALID_VIOLATION_MODES is exported."""
+        from sentinelseed.integrations.llamaindex import VALID_VIOLATION_MODES
+
+        assert isinstance(VALID_VIOLATION_MODES, frozenset)
+        assert VALID_VIOLATION_MODES == {"log", "raise", "flag"}
+
 
 class TestLayeredValidatorIntegration:
     """Tests for LayeredValidator integration pattern."""
@@ -233,3 +247,68 @@ class TestLayeredValidatorIntegration:
         params = list(sig.parameters.keys())
 
         assert "validator" in params
+
+
+class TestOnViolationValidation:
+    """Tests for on_violation parameter validation (BUG-002)."""
+
+    def test_validate_on_violation_function_exists(self):
+        """Test that _validate_on_violation function exists."""
+        from sentinelseed.integrations.llamaindex import _validate_on_violation
+
+        assert callable(_validate_on_violation)
+
+    def test_validate_on_violation_accepts_valid_values(self):
+        """Test that valid values are accepted."""
+        from sentinelseed.integrations.llamaindex import _validate_on_violation
+
+        assert _validate_on_violation("log") == "log"
+        assert _validate_on_violation("raise") == "raise"
+        assert _validate_on_violation("flag") == "flag"
+
+    def test_validate_on_violation_defaults_to_log(self):
+        """Test that None defaults to 'log'."""
+        from sentinelseed.integrations.llamaindex import _validate_on_violation
+
+        assert _validate_on_violation(None) == "log"
+
+    def test_validate_on_violation_rejects_invalid_string(self):
+        """Test that invalid string values raise ValueError."""
+        from sentinelseed.integrations.llamaindex import _validate_on_violation
+
+        with pytest.raises(ValueError) as exc_info:
+            _validate_on_violation("invalid")
+
+        assert "Invalid on_violation" in str(exc_info.value)
+        assert "invalid" in str(exc_info.value)
+
+    def test_validate_on_violation_rejects_non_string(self):
+        """Test that non-string values raise ValueError."""
+        from sentinelseed.integrations.llamaindex import _validate_on_violation
+
+        with pytest.raises(ValueError):
+            _validate_on_violation(123)
+
+        with pytest.raises(ValueError):
+            _validate_on_violation(["log"])
+
+    @pytest.mark.skipif(not LLAMAINDEX_AVAILABLE, reason="llama-index-core not installed")
+    def test_callback_handler_validates_on_violation(self):
+        """Test that SentinelCallbackHandler validates on_violation."""
+        from sentinelseed.integrations.llamaindex import SentinelCallbackHandler
+
+        # Valid values should work
+        handler = SentinelCallbackHandler(on_violation="log")
+        assert handler.on_violation == "log"
+
+        handler = SentinelCallbackHandler(on_violation="raise")
+        assert handler.on_violation == "raise"
+
+        handler = SentinelCallbackHandler(on_violation="flag")
+        assert handler.on_violation == "flag"
+
+        # Invalid value should raise
+        with pytest.raises(ValueError) as exc_info:
+            SentinelCallbackHandler(on_violation="block")
+
+        assert "Invalid on_violation" in str(exc_info.value)
