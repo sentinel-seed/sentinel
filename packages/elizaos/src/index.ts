@@ -43,7 +43,19 @@ export {
   hasIntegrityMetadata,
   getMemorySource,
   getSignedTimestamp,
+  // Multi-instance registry functions (H001 fix)
+  getPluginInstance,
+  getPluginInstanceNames,
+  getActivePluginInstance,
+  removePluginInstance,
+  clearPluginRegistry,
+  // Error classes (H001 fix)
+  TextTooLargeError,
 } from './plugin';
+
+// Logger interface for custom logger implementations (H002 fix)
+// Plugin state interface for multi-instance access (M003 fix)
+export type { SentinelLogger, PluginStateInfo } from './plugin';
 
 // Validation functions
 export { validateContent, validateAction, quickCheck } from './validator';

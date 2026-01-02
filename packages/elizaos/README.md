@@ -287,6 +287,42 @@ clearValidationHistory();
 4. **Action**: Users can explicitly request safety checks via `SENTINEL_SAFETY_CHECK`
 5. **Post-action**: Before responses are sent, `sentinelPostAction` validates outputs
 
+## Validation Approach
+
+The plugin uses a **dual-layer validation** approach:
+
+### Layer 1: Heuristic Validation (Fast)
+
+Pattern-based detection using regex for known harmful patterns:
+- **TRUTH Gate**: Detects deception attempts, role manipulation, fake identity claims
+- **HARM Gate**: Detects violence, hacking, malware, weapons, dangerous substances
+- **SCOPE Gate**: Detects jailbreak attempts, instruction overrides, prompt extraction
+- **PURPOSE Gate**: Detects purposeless destruction patterns
+
+### Layer 2: Seed Injection (Comprehensive)
+
+The Sentinel seed is injected into the agent's system prompt, providing LLM-level understanding of the THSP protocol. This layer can detect nuanced threats that patterns cannot.
+
+### Important Limitations
+
+**Heuristic validation has inherent limitations:**
+
+1. **Pattern Coverage**: Only detects patterns explicitly defined. Novel attack vectors may not be caught.
+
+2. **PURPOSE Gate Gaps**: Abstract concepts like "purposeless action" are difficult to detect via regex. Examples:
+   - "Drop the plate" (purposeless destruction) - may not be detected heuristically
+   - "Dirty the mirror" (pointless action) - relies on seed injection for detection
+
+3. **False Negatives**: Slight variations in phrasing may bypass patterns:
+   - `"How to hack..."` → Detected ✓
+   - `"How do I hack..."` → May not be detected (pattern mismatch)
+
+4. **Context Blindness**: Heuristics cannot understand context or intent.
+
+**Recommendation**: For maximum safety, rely on both layers:
+- Use heuristic validation for fast, low-latency checks
+- The injected seed provides the comprehensive safety net
+
 ## Multi-Instance Support
 
 When running multiple agents with different configurations:
@@ -361,12 +397,21 @@ The plugin exports all necessary types:
 
 ```typescript
 import type {
+  // Sentinel types
   SentinelPluginConfig,
   SafetyCheckResult,
   THSPGates,
   RiskLevel,
   GateStatus,
   ValidationContext,
+  // Plugin state types
+  SentinelLogger,      // For custom logger implementations
+  PluginStateInfo,     // Return type of getPluginInstance()
+  // Memory integrity types
+  MemorySource,
+  MemoryVerificationResult,
+  IntegrityMetadata,
+  MemoryIntegrityConfig,
   // ElizaOS types (for reference)
   Plugin,
   Action,

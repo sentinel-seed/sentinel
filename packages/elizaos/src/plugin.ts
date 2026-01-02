@@ -51,6 +51,24 @@ export interface SentinelLogger {
 }
 
 /**
+ * Public interface for plugin state information
+ * Returned by getPluginInstance, getActivePluginInstance, etc.
+ * Provides read-only access to plugin state for multi-instance scenarios.
+ */
+export interface PluginStateInfo {
+  /** Validation history (last 1000 entries) */
+  readonly validationHistory: SafetyCheckResult[];
+  /** Memory verification history (last 1000 entries) */
+  readonly memoryVerificationHistory: MemoryVerificationResult[];
+  /** Memory integrity checker instance (null if disabled) */
+  readonly memoryChecker: MemoryIntegrityChecker | null;
+  /** Current plugin configuration */
+  readonly config: SentinelPluginConfig;
+  /** Maximum text size in bytes */
+  readonly maxTextSize: number;
+}
+
+/**
  * Default logger using console
  */
 const defaultLogger: SentinelLogger = {
@@ -719,9 +737,9 @@ let activeState: PluginState | null = null;
 /**
  * Get a specific plugin instance by name
  * @param name - Plugin instance name (from config.instanceName or auto-generated)
- * @returns PluginState or null if not found
+ * @returns Plugin state info or null if not found
  */
-export function getPluginInstance(name: string): PluginState | null {
+export function getPluginInstance(name: string): PluginStateInfo | null {
   return pluginRegistry.get(name) || null;
 }
 
@@ -735,9 +753,9 @@ export function getPluginInstanceNames(): string[] {
 
 /**
  * Get the active (most recently created) plugin instance
- * @returns PluginState or null if no plugins created
+ * @returns Plugin state info or null if no plugins created
  */
-export function getActivePluginInstance(): PluginState | null {
+export function getActivePluginInstance(): PluginStateInfo | null {
   return activeState;
 }
 

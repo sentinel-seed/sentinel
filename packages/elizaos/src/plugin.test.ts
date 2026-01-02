@@ -454,3 +454,111 @@ describe('Bug fixes verification', () => {
     });
   });
 });
+
+/**
+ * Tests for H001/H002/M003 fixes - Export verification
+ */
+describe('Export verification (H001/H002/M003 fixes)', () => {
+  beforeEach(() => {
+    clearPluginRegistry();
+  });
+
+  describe('Multi-instance registry functions (H001)', () => {
+    it('getPluginInstance should return instance by name', () => {
+      const plugin = sentinelPlugin({ instanceName: 'test-h001' });
+      const instance = getPluginInstance('test-h001');
+
+      expect(instance).not.toBeNull();
+      expect(instance?.config).toBeDefined();
+      expect(instance?.validationHistory).toEqual([]);
+    });
+
+    it('getPluginInstance should return null for non-existent name', () => {
+      const instance = getPluginInstance('non-existent');
+      expect(instance).toBeNull();
+    });
+
+    it('getPluginInstanceNames should return all registered names', () => {
+      sentinelPlugin({ instanceName: 'agent-1' });
+      sentinelPlugin({ instanceName: 'agent-2' });
+
+      const names = getPluginInstanceNames();
+      expect(names).toContain('agent-1');
+      expect(names).toContain('agent-2');
+      expect(names.length).toBe(2);
+    });
+
+    it('getActivePluginInstance should return most recently created', () => {
+      sentinelPlugin({ instanceName: 'first' });
+      sentinelPlugin({ instanceName: 'second' });
+
+      const active = getActivePluginInstance();
+      expect(active).not.toBeNull();
+      // Active should be the last created
+    });
+
+    it('removePluginInstance should remove and return true', () => {
+      sentinelPlugin({ instanceName: 'to-remove' });
+      expect(getPluginInstance('to-remove')).not.toBeNull();
+
+      const removed = removePluginInstance('to-remove');
+      expect(removed).toBe(true);
+      expect(getPluginInstance('to-remove')).toBeNull();
+    });
+
+    it('removePluginInstance should return false for non-existent', () => {
+      const removed = removePluginInstance('non-existent');
+      expect(removed).toBe(false);
+    });
+
+    it('clearPluginRegistry should remove all instances', () => {
+      sentinelPlugin({ instanceName: 'a' });
+      sentinelPlugin({ instanceName: 'b' });
+
+      clearPluginRegistry();
+
+      expect(getPluginInstanceNames()).toEqual([]);
+      expect(getActivePluginInstance()).toBeNull();
+    });
+  });
+
+  describe('TextTooLargeError class (H001)', () => {
+    it('should have size and maxSize properties', () => {
+      const error = new TextTooLargeError(1000, 500);
+
+      expect(error.size).toBe(1000);
+      expect(error.maxSize).toBe(500);
+      expect(error.name).toBe('TextTooLargeError');
+      // Check message contains the numbers (locale-independent)
+      expect(error.message).toMatch(/1[,.]?000/);
+      expect(error.message).toContain('500');
+    });
+
+    it('should be instanceof Error', () => {
+      const error = new TextTooLargeError(100, 50);
+      expect(error instanceof Error).toBe(true);
+    });
+  });
+
+  describe('PluginStateInfo interface (M003)', () => {
+    it('getPluginInstance should return object with correct shape', () => {
+      sentinelPlugin({ instanceName: 'shape-test', blockUnsafe: true });
+      const instance = getPluginInstance('shape-test');
+
+      expect(instance).not.toBeNull();
+      expect(Array.isArray(instance?.validationHistory)).toBe(true);
+      expect(Array.isArray(instance?.memoryVerificationHistory)).toBe(true);
+      expect(typeof instance?.config).toBe('object');
+      expect(typeof instance?.maxTextSize).toBe('number');
+      expect(instance?.config.blockUnsafe).toBe(true);
+    });
+
+    it('getActivePluginInstance should return object with correct shape', () => {
+      sentinelPlugin({ maxTextSize: 1024 });
+      const active = getActivePluginInstance();
+
+      expect(active).not.toBeNull();
+      expect(active?.maxTextSize).toBe(1024);
+    });
+  });
+});
