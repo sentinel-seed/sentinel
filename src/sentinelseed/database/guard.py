@@ -25,13 +25,12 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .patterns import (
     ALL_DETECTION_PATTERNS,
     SENSITIVE_DATA_PATTERNS,
     DetectionPattern,
-    SensitiveDataPattern,
 )
 from .types import (
     DatabaseGuardPolicy,
@@ -40,6 +39,7 @@ from .types import (
     QueryValidationResult,
     RiskLevel,
     SensitiveDataMatch,
+    SensitiveDataType,
     ViolationType,
     POLICY_MODERATE,
 )

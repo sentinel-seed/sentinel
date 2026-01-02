@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from json import dumps
 from threading import Lock
 from typing import Any, Callable
@@ -253,7 +253,7 @@ class SentinelX402Middleware:
 
             # Log audit entry
             entry = PaymentAuditEntry(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 wallet_address=wallet_address,
                 endpoint=endpoint,
                 amount=amount,
@@ -345,12 +345,12 @@ class SentinelX402Middleware:
             daily_record = records.get("daily")
 
             # Check if record is stale (from previous day)
-            if daily_record and daily_record.period_start.date() != datetime.utcnow().date():
+            if daily_record and daily_record.period_start.date() != datetime.now(timezone.utc).date():
                 daily_record = None
                 records.pop("daily", None)
 
             # Clean up old hourly counts
-            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
             hourly_timestamps = self._hourly_counts.get(wallet_address, [])
             hourly_timestamps = [ts for ts in hourly_timestamps if ts > one_hour_ago]
             self._hourly_counts[wallet_address] = hourly_timestamps
@@ -477,10 +477,10 @@ class SentinelX402Middleware:
 
         # Get or create daily record
         daily = records.get("daily")
-        if not daily or daily.period_start.date() != datetime.utcnow().date():
+        if not daily or daily.period_start.date() != datetime.now(timezone.utc).date():
             daily = SpendingRecord(
                 wallet_address=wallet_address,
-                period_start=datetime.utcnow(),
+                period_start=datetime.now(timezone.utc),
                 period_type="daily",
             )
             records["daily"] = daily
@@ -488,18 +488,18 @@ class SentinelX402Middleware:
         daily.add_payment(amount, endpoint)
 
         # Record hourly transaction
-        self._hourly_counts[wallet_address].append(datetime.utcnow())
+        self._hourly_counts[wallet_address].append(datetime.now(timezone.utc))
 
     def _record_endpoint_interaction(self, endpoint: str) -> None:
         """Record interaction with an endpoint."""
-        self._endpoint_history[endpoint].append(datetime.utcnow())
+        self._endpoint_history[endpoint].append(datetime.now(timezone.utc))
 
     def _record_recipient_interaction(self, recipient: str) -> None:
         """Record interaction with a recipient address."""
         if recipient is None:
             return
         recipient = recipient.lower()
-        self._recipient_history[recipient].append(datetime.utcnow())
+        self._recipient_history[recipient].append(datetime.now(timezone.utc))
 
     def _log_audit(
         self,
@@ -510,7 +510,7 @@ class SentinelX402Middleware:
     ) -> None:
         """Log an audit entry."""
         entry = PaymentAuditEntry(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             wallet_address=wallet_address,
             endpoint=endpoint,
             amount=payment_requirements.get_amount_float(),

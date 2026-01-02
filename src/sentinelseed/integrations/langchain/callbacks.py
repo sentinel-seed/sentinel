@@ -19,6 +19,7 @@ from sentinelseed.validation import (
     ValidationConfig,
     ValidationResult,
 )
+from sentinelseed.integrations._base import SentinelIntegration
 
 from .utils import (
     DEFAULT_MAX_VIOLATIONS,
@@ -112,12 +113,14 @@ class StreamingBuffer:
             self._buffer = ""
 
 
-class SentinelCallback(BaseCallbackHandler):
+class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
     """
     LangChain callback handler for Sentinel safety monitoring.
 
     Monitors LLM inputs and outputs for safety violations using
     the THSP protocol. Thread-safe and supports streaming.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Example:
         from langchain_openai import ChatOpenAI
@@ -135,6 +138,9 @@ class SentinelCallback(BaseCallbackHandler):
         print(callback.get_violations())
         print(callback.get_stats())
     """
+
+    # Integration name for logging
+    _integration_name = "langchain_callback"
 
     # BaseCallbackHandler properties
     raise_error: bool = False
@@ -194,14 +200,29 @@ class SentinelCallback(BaseCallbackHandler):
             max_violations=max_violations,
         )
 
+        # Initialize BaseCallbackHandler if available
         if LANGCHAIN_AVAILABLE and BaseCallbackHandler is not object:
-            super().__init__()
+            BaseCallbackHandler.__init__(self)
+
+        # Create LayeredValidator with config
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration with the validator
+        SentinelIntegration.__init__(self, validator=validator)
 
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.seed_level = seed_level
         self.on_violation = on_violation
-        self.validate_input = validate_input
-        self.validate_output = validate_output
+        self.validate_input_enabled = validate_input
+        self.validate_output_enabled = validate_output
         self.log_safe = log_safe
         self.max_violations = max_violations
         self.sanitize_logs = sanitize_logs
@@ -214,19 +235,6 @@ class SentinelCallback(BaseCallbackHandler):
         if not fail_closed:
             warn_fail_open_default(self._logger, "SentinelCallback")
 
-        # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
-            config = ValidationConfig(
-                use_heuristic=True,
-                use_semantic=use_semantic and bool(semantic_api_key),
-                semantic_api_key=semantic_api_key,
-                max_text_size=max_text_size,
-                validation_timeout=validation_timeout,
-            )
-            self._validator = LayeredValidator(config=config)
-
         # Thread-safe storage
         self._violations_log = ThreadSafeDeque(maxlen=max_violations)
         self._validation_log = ThreadSafeDeque(maxlen=max_violations)
@@ -234,6 +242,30 @@ class SentinelCallback(BaseCallbackHandler):
         # Streaming buffer for robust token validation
         self._streaming_buffer = StreamingBuffer()
         self._streaming_lock = threading.Lock()
+
+    # ========================================================================
+    # Backwards Compatibility Properties
+    # ========================================================================
+
+    @property
+    def validate_input(self) -> bool:
+        """Backwards compatibility property for validate_input."""
+        return self.validate_input_enabled
+
+    @validate_input.setter
+    def validate_input(self, value: bool) -> None:
+        """Backwards compatibility setter for validate_input."""
+        self.validate_input_enabled = value
+
+    @property
+    def validate_output(self) -> bool:
+        """Backwards compatibility property for validate_output."""
+        return self.validate_output_enabled
+
+    @validate_output.setter
+    def validate_output(self, value: bool) -> None:
+        """Backwards compatibility setter for validate_output."""
+        self.validate_output_enabled = value
 
     # ========================================================================
     # LLM Callbacks
@@ -246,7 +278,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when LLM starts. Validates input prompts."""
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return
 
         for prompt in prompts:
@@ -259,7 +291,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when chat model starts. Validates input messages."""
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return
 
         for message_list in messages:
@@ -270,7 +302,7 @@ class SentinelCallback(BaseCallbackHandler):
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         """Called when LLM finishes. Validates output."""
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return
 
         # Flush streaming buffer first
@@ -296,7 +328,7 @@ class SentinelCallback(BaseCallbackHandler):
         Uses buffering to accumulate tokens into complete phrases
         before validation, avoiding false positives from partial tokens.
         """
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return
 
         with self._streaming_lock:
@@ -325,7 +357,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when chain starts. Validates chain inputs."""
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return
 
         for key, value in inputs.items():
@@ -338,7 +370,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when chain ends. Validates chain outputs."""
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return
 
         for key, value in outputs.items():
@@ -356,7 +388,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when tool starts. Validates tool input."""
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return
 
         if input_str:
@@ -368,7 +400,7 @@ class SentinelCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """Called when tool ends. Validates tool output."""
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return
 
         if output:
@@ -383,14 +415,14 @@ class SentinelCallback(BaseCallbackHandler):
         action: Any,
         **kwargs: Any
     ) -> None:
-        """Called on agent action. Validates action using LayeredValidator."""
-        if not self.validate_input:
+        """Called on agent action. Validates action using inherited validate() method."""
+        if not self.validate_input_enabled:
             return
 
         action_str = str(action)
         try:
-            # Use LayeredValidator for action validation
-            result = self._validator.validate(action_str)
+            # Use inherited validate() method from SentinelIntegration
+            result = self.validate(action_str)
             if not result.is_safe:
                 self._handle_violation(
                     stage="agent_action",
@@ -423,8 +455,8 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Use LayeredValidator for validation (has built-in timeout support)
-            result = self._validator.validate(text)
+            # Use inherited validate() method from SentinelIntegration
+            result = self.validate(text)
 
             # Log validation
             self._validation_log.append(ValidationResult(
@@ -475,8 +507,8 @@ class SentinelCallback(BaseCallbackHandler):
             return
 
         try:
-            # Use LayeredValidator for validation (has built-in timeout support)
-            result = self._validator.validate(text)
+            # Use inherited validate() method from SentinelIntegration
+            result = self.validate(text)
 
             # Log validation
             self._validation_log.append(ValidationResult(

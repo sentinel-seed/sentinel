@@ -139,12 +139,12 @@ def _validate_content_sync(
                 "risk_level": "unknown",
             }
         return None
-    except Exception as e:
+    except (ValueError, TypeError, RuntimeError, AttributeError) as e:
         _logger.error("Validation error: %s", e)
         if fail_closed:
             return {
-                "reason": str(e),
-                "concerns": [f"Error: {e}"],
+                "reason": "Validation error occurred",
+                "concerns": ["Validation error"],
                 "risk_level": "unknown",
             }
         return None
@@ -250,7 +250,7 @@ def create_before_model_callback(
             )
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.error("Error in before_model_callback: %s", e)
             if fail_closed and block_on_failure:
                 return create_blocked_response(blocked_message)
@@ -326,7 +326,7 @@ def create_after_model_callback(
             )
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.error("Error in after_model_callback: %s", e)
             if fail_closed and block_on_failure:
                 return create_blocked_response(blocked_message)
@@ -401,12 +401,12 @@ def create_before_tool_callback(
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.error("Error in before_tool_callback: %s", e)
             if fail_closed and block_on_failure:
                 return {
                     "status": "error",
-                    "error": f"Validation error: {e}",
+                    "error": "Validation error occurred",
                 }
             return None
 
@@ -480,12 +480,12 @@ def create_after_tool_callback(
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.error("Error in after_tool_callback: %s", e)
             if fail_closed and block_on_failure:
                 return {
                     "status": "error",
-                    "error": f"Validation error: {e}",
+                    "error": "Validation error occurred",
                 }
             return None
 

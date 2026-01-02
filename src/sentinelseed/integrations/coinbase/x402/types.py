@@ -11,12 +11,15 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+# Import THSPGate from validators (canonical source)
+from sentinelseed.validators.semantic import THSPGate
 
 
 class PaymentRiskLevel(str, Enum):
@@ -47,13 +50,7 @@ class PaymentDecision(str, Enum):
     BLOCK = "block"
 
 
-class THSPGate(str, Enum):
-    """THSP gate identifiers for payment validation."""
-
-    TRUTH = "truth"
-    HARM = "harm"
-    SCOPE = "scope"
-    PURPOSE = "purpose"
+# THSPGate is imported from sentinelseed.validators.semantic (canonical source)
 
 
 class SupportedNetwork(str, Enum):
@@ -268,5 +265,5 @@ class SpendingRecord(BaseModel):
             "amount": amount,
             "endpoint": endpoint,
             "tx_hash": tx_hash,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })

@@ -17,6 +17,13 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from dataclasses import dataclass, field
 import logging
 
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
+
 _logger = logging.getLogger("sentinelseed.integrations.letta")
 
 # Type hints for Letta - actual import is deferred
@@ -225,39 +232,40 @@ class SentinelMessagesAPI:
         )
 
     def _validate_content(self, content: str, context: str) -> Dict[str, Any]:
-        """Validate content using configured validator."""
+        """Validate content using configured validator (LayeredValidator)."""
         if self._validator is None:
             return {"is_safe": None, "method": "none", "reasoning": "No validator available"}
 
         try:
-            if hasattr(self._validator, "validate"):
-                result = self._validator.validate(content)
-                if hasattr(result, "is_safe"):
-                    # SemanticValidator result
-                    return {
-                        "is_safe": result.is_safe,
-                        "gates": getattr(result, "gate_results", {}),
-                        "reasoning": getattr(result, "reasoning", "Semantic validation"),
-                        "failed_gates": getattr(result, "failed_gates", []),
-                        "method": "semantic",
-                        "context": context,
-                    }
-                elif isinstance(result, dict):
-                    # THSPValidator result (dict)
-                    return {
-                        "is_safe": result.get("safe", True),
-                        "gates": result.get("gates", {}),
-                        "reasoning": "Heuristic validation",
-                        "failed_gates": result.get("issues", []),
-                        "method": "heuristic",
-                        "context": context,
-                    }
-        except Exception as e:
+            result = self._validator.validate(content)
+
+            # Handle ValidationResult from LayeredValidator
+            if hasattr(result, "is_safe"):
+                return {
+                    "is_safe": result.is_safe,
+                    "gates": {},  # Gate details in violations
+                    "reasoning": result.violations[0] if result.violations else "Validation passed",
+                    "failed_gates": result.violations or [],
+                    "method": result.layer.value if hasattr(result, "layer") and result.layer else "layered",
+                    "context": context,
+                    "risk_level": result.risk_level.value if hasattr(result, "risk_level") and result.risk_level else "unknown",
+                }
+            elif isinstance(result, dict):
+                # Backwards compatibility for dict results
+                return {
+                    "is_safe": result.get("safe", result.get("is_safe", True)),
+                    "gates": result.get("gates", {}),
+                    "reasoning": result.get("reasoning", "Validation"),
+                    "failed_gates": result.get("issues", result.get("violations", [])),
+                    "method": result.get("method", "unknown"),
+                    "context": context,
+                }
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             _logger.warning(f"Validation error: {type(e).__name__}")
             return {
                 "is_safe": None,
                 "method": "error",
-                "reasoning": f"Validation error: {type(e).__name__}",
+                "reasoning": "Validation error occurred",
                 "context": context,
             }
 
@@ -329,7 +337,7 @@ class SentinelAgentsAPI:
                                 tool_name=tool_name,
                                 requires_approval=True,
                             )
-                        except Exception as e:
+                        except (ValueError, TypeError, AttributeError, RuntimeError) as e:
                             _logger.debug(f"Could not set approval for {tool_name}: {type(e).__name__}")
 
         return agent
@@ -351,7 +359,7 @@ class SentinelAgentsAPI:
         return getattr(self._api, name)
 
 
-class SentinelLettaClient:
+class SentinelLettaClient(SentinelIntegration):
     """
     Wrapper for Letta client with Sentinel THSP safety validation.
 
@@ -360,6 +368,9 @@ class SentinelLettaClient:
     - Agent response validation
     - Tool call validation (via approval mechanism)
     - Memory integrity (optional)
+
+    Inherits from SentinelIntegration for standardized validation via
+    LayeredValidator.
 
     Args:
         client: Base Letta client instance
@@ -373,6 +384,7 @@ class SentinelLettaClient:
         memory_integrity: Enable memory integrity checking
         memory_secret: Secret for memory HMAC
         high_risk_tools: List of tools requiring extra validation
+        validator: Optional LayeredValidator for dependency injection (testing)
 
     Example:
         from letta_client import Letta
@@ -396,6 +408,8 @@ class SentinelLettaClient:
         )
     """
 
+    _integration_name = "letta"
+
     def __init__(
         self,
         client: Any,
@@ -409,6 +423,7 @@ class SentinelLettaClient:
         memory_integrity: bool = False,
         memory_secret: Optional[str] = None,
         high_risk_tools: Optional[List[str]] = None,
+        validator: Optional[LayeredValidator] = None,
     ):
         # Validate inputs
         if client is None:
@@ -416,6 +431,21 @@ class SentinelLettaClient:
 
         _validate_mode(mode)
         _validate_provider(provider)
+
+        # Create LayeredValidator if not provided
+        if validator is None:
+            use_semantic = api_key is not None
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic,
+                semantic_api_key=api_key,
+                semantic_provider=provider,
+                semantic_model=model,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
 
         self._client = client
 
@@ -433,54 +463,15 @@ class SentinelLettaClient:
             high_risk_tools=high_risk_tools or DEFAULT_HIGH_RISK_TOOLS.copy(),
         )
 
-        # Initialize validator
-        self._validator = self._create_validator()
-
-        # Wrap agents API
+        # Wrap agents API - pass self.validator instead of self._validator
         if not hasattr(client, 'agents'):
             raise ValueError("client must have an 'agents' attribute")
 
         self._agents = SentinelAgentsAPI(
             client.agents,
             self._config,
-            self._validator,
+            self.validator,  # Use inherited validator property
         )
-
-    def _create_validator(self) -> Any:
-        """Create appropriate validator based on config."""
-        if not self._config.api_key:
-            _logger.info("No API key provided, using heuristic validation")
-            try:
-                from sentinelseed.validators.gates import THSPValidator
-                return THSPValidator()
-            except ImportError:
-                _logger.warning("Could not import THSPValidator")
-                return None
-            except Exception as e:
-                _logger.warning(f"Error creating THSPValidator: {type(e).__name__}")
-                return None
-
-        try:
-            from sentinelseed.validators.semantic import SemanticValidator
-            return SemanticValidator(
-                provider=self._config.provider,
-                model=self._config.model,
-                api_key=self._config.api_key,
-            )
-        except ImportError:
-            _logger.warning("Could not import SemanticValidator, using heuristic")
-            try:
-                from sentinelseed.validators.gates import THSPValidator
-                return THSPValidator()
-            except ImportError:
-                return None
-        except Exception as e:
-            _logger.warning(f"Error creating SemanticValidator: {type(e).__name__}")
-            try:
-                from sentinelseed.validators.gates import THSPValidator
-                return THSPValidator()
-            except Exception:
-                return None
 
     @property
     def agents(self) -> SentinelAgentsAPI:
@@ -600,7 +591,7 @@ def create_safe_agent(
             )
             if safety_tool.name not in tools:
                 tools.append(safety_tool.name)
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, RuntimeError, ImportError) as e:
             _logger.warning(f"Could not create safety tool: {type(e).__name__}")
 
     # Create agent
@@ -625,7 +616,7 @@ def create_safe_agent(
                             tool_name=tool_name,
                             requires_approval=True,
                         )
-                    except Exception as e:
+                    except (ValueError, TypeError, AttributeError, RuntimeError) as e:
                         _logger.debug(f"Could not set approval for {tool_name}: {type(e).__name__}")
 
     return agent

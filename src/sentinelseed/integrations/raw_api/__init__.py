@@ -40,6 +40,12 @@ from json import JSONDecodeError
 import logging
 
 from sentinelseed import Sentinel
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
 __version__ = "1.0.0"
 
@@ -755,12 +761,15 @@ def create_anthropic_request_body(
     return body
 
 
-class RawAPIClient:
+class RawAPIClient(SentinelIntegration):
     """
     Simple HTTP client for LLM APIs with Sentinel safety.
 
     Provides a minimal client for making API calls without
     depending on official SDKs.
+
+    Inherits from SentinelIntegration for standardized validation via
+    LayeredValidator.
 
     Example:
         from sentinelseed.integrations.raw_api import RawAPIClient
@@ -779,9 +788,12 @@ class RawAPIClient:
         provider: API provider ('openai' or 'anthropic')
         api_key: API key for authentication
         base_url: Base URL for API requests
-        sentinel: Sentinel instance for validation
+        sentinel: Sentinel instance for seed injection (backwards compat)
+        validator: LayeredValidator for validation (via SentinelIntegration)
         timeout: Request timeout in seconds
     """
+
+    _integration_name = "raw_api"
 
     def __init__(
         self,
@@ -791,6 +803,7 @@ class RawAPIClient:
         sentinel: Optional[Sentinel] = None,
         seed_level: str = "standard",
         timeout: int = DEFAULT_TIMEOUT,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize raw API client.
@@ -799,9 +812,10 @@ class RawAPIClient:
             provider: API provider - 'openai' or 'anthropic'
             api_key: API key
             base_url: Custom base URL (for OpenAI-compatible APIs)
-            sentinel: Sentinel instance
+            sentinel: Sentinel instance (backwards compatibility for get_seed())
             seed_level: Seed level to use (minimal, standard, full)
             timeout: Request timeout in seconds
+            validator: Optional LayeredValidator for dependency injection (testing)
 
         Raises:
             ValueError: If provider or seed_level is invalid
@@ -824,11 +838,22 @@ class RawAPIClient:
         # Validate base_url (C001)
         _validate_base_url(base_url)
 
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
         self.provider = provider
         self.api_key = api_key
         self.timeout = timeout
 
-        # Create sentinel instance
+        # Keep Sentinel instance for get_seed() backwards compatibility
         try:
             self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         except Exception as e:

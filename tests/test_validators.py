@@ -167,8 +167,9 @@ class TestPurposeGate:
         assert passed is False
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestJailbreakGate:
-    """Tests for JailbreakGate."""
+    """Tests for JailbreakGate (deprecated, kept for backwards compatibility)."""
 
     def test_passes_normal_request(self):
         """Normal requests should pass."""

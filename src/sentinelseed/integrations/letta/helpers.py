@@ -18,6 +18,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
+from sentinelseed.integrations._base import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+)
+
 _logger = logging.getLogger("sentinelseed.integrations.letta")
 
 # Valid configuration values
@@ -144,46 +150,38 @@ def validate_message(
             "method": "validation",
         }
 
-    if api_key:
-        try:
-            from sentinelseed.validators.semantic import SemanticValidator
-
-            validator = SemanticValidator(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-            )
-            result = validator.validate(content)
-
-            return {
-                "is_safe": result.is_safe,
-                "gates": result.gate_results if hasattr(result, 'gate_results') else {},
-                "reasoning": result.reasoning if hasattr(result, 'reasoning') else "Semantic validation",
-                "failed_gates": result.failed_gates if hasattr(result, 'failed_gates') else [],
-                "method": "semantic",
-            }
-        except ImportError:
-            _logger.warning("SemanticValidator not available, falling back to heuristic")
-        except Exception as e:
-            _logger.warning(f"Semantic validation error: {type(e).__name__}")
-            # Fall through to heuristic validation
-
-    # Fallback to heuristic
+    # Use LayeredValidator for unified validation
     try:
-        from sentinelseed.validators.gates import THSPValidator
-
-        validator = THSPValidator()
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=bool(api_key),
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
+        )
+        validator = LayeredValidator(config=config)
         result = validator.validate(content)
 
+        # Determine method based on which layer responded
+        layer_value = result.layer.value if hasattr(result.layer, 'value') else str(result.layer)
+        method = "semantic" if layer_value in ("semantic", "both") else "heuristic"
+
+        # Safely extract details
+        gates = {}
+        if hasattr(result, 'details') and isinstance(result.details, dict):
+            gates = result.details.get("gate_results", {})
+
+        violations = result.violations if hasattr(result, 'violations') and result.violations else []
+
         return {
-            "is_safe": result.get("safe", True),
-            "gates": result.get("gates", {}),
-            "reasoning": "Heuristic pattern-based validation",
-            "failed_gates": result.get("issues", []),
-            "method": "heuristic",
+            "is_safe": result.is_safe,
+            "gates": gates,
+            "reasoning": "; ".join(violations) if violations else "Content passed validation",
+            "failed_gates": violations,
+            "method": method,
         }
     except ImportError:
-        _logger.warning("No validator available - cannot verify safety")
+        _logger.warning("LayeredValidator not available - cannot verify safety")
         return {
             "is_safe": None,
             "gates": {},
@@ -191,12 +189,12 @@ def validate_message(
             "failed_gates": [],
             "method": "none",
         }
-    except Exception as e:
-        _logger.warning(f"Heuristic validation error: {type(e).__name__}")
+    except (ValueError, TypeError, RuntimeError, AttributeError) as e:
+        _logger.warning(f"Validation error: {type(e).__name__}")
         return {
             "is_safe": None,
             "gates": {},
-            "reasoning": f"Validation error: {type(e).__name__}",
+            "reasoning": "Validation error occurred",
             "failed_gates": [],
             "method": "error",
         }
@@ -263,7 +261,7 @@ def validate_tool_call(
         # Try to convert or use as-is in string form
         try:
             arguments = {"value": str(arguments)}
-        except Exception:
+        except (ValueError, TypeError):
             arguments = {}
 
     high_risk = high_risk_tools or [
@@ -468,29 +466,45 @@ async def async_validate_message(
             "method": "validation",
         }
 
-    if api_key:
-        try:
-            from sentinelseed.validators.semantic import AsyncSemanticValidator
+    # Use AsyncLayeredValidator for unified async validation
+    try:
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=bool(api_key),
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
+        )
+        validator = AsyncLayeredValidator(config=config)
+        result = await validator.validate(content)
 
-            validator = AsyncSemanticValidator(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-            )
-            result = await validator.validate(content)
+        # Determine method based on which layer responded
+        layer_value = result.layer.value if hasattr(result.layer, 'value') else str(result.layer)
+        method = "semantic" if layer_value in ("semantic", "both") else "heuristic"
 
-            return {
-                "is_safe": result.is_safe,
-                "gates": result.gate_results if hasattr(result, 'gate_results') else {},
-                "reasoning": result.reasoning if hasattr(result, 'reasoning') else "Async semantic validation",
-                "failed_gates": result.failed_gates if hasattr(result, 'failed_gates') else [],
-                "method": "semantic",
-            }
-        except ImportError:
-            _logger.warning("AsyncSemanticValidator not available, using sync fallback")
-        except Exception as e:
-            _logger.warning(f"Async semantic validation error: {type(e).__name__}")
+        # Safely extract details
+        gates = {}
+        if hasattr(result, 'details') and isinstance(result.details, dict):
+            gates = result.details.get("gate_results", {})
 
-    # Fallback to sync heuristic (runs in thread pool in real async context)
-    # Note: This is sync but safe to call from async context
-    return validate_message(content, None, provider, model)
+        violations = result.violations if hasattr(result, 'violations') and result.violations else []
+
+        return {
+            "is_safe": result.is_safe,
+            "gates": gates,
+            "reasoning": "; ".join(violations) if violations else "Content passed validation",
+            "failed_gates": violations,
+            "method": method,
+        }
+    except ImportError:
+        _logger.warning("AsyncLayeredValidator not available, using sync fallback")
+        return validate_message(content, api_key, provider, model)
+    except (ValueError, TypeError, RuntimeError, AttributeError) as e:
+        _logger.warning(f"Async validation error: {type(e).__name__}")
+        return {
+            "is_safe": None,
+            "gates": {},
+            "reasoning": "Validation error occurred",
+            "failed_gates": [],
+            "method": "error",
+        }

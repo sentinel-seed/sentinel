@@ -11,7 +11,17 @@ class BaseProvider(ABC):
 
     def __init__(self, model: str, api_key: Optional[str] = None):
         self.model = model
-        self.api_key = api_key
+        # Store API key privately to prevent accidental exposure
+        self._api_key: Optional[str] = api_key
+
+    @property
+    def api_key(self) -> Optional[str]:
+        """Access the API key (backwards compatible property)."""
+        return self._api_key
+
+    def __repr__(self) -> str:
+        """Safe repr that doesn't expose API key."""
+        return f"{self.__class__.__name__}(model={self.model!r})"
 
     @abstractmethod
     def chat(

@@ -73,7 +73,13 @@ class TextTooLargeError(Exception):
         )
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.semantic import SemanticValidator, THSPResult
+from sentinelseed.validation import (
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+    ValidationLayer,
+    RiskLevel,
+)
 
 logger = logging.getLogger("sentinelseed.mcp_server")
 
@@ -158,6 +164,7 @@ def create_sentinel_mcp_server(
 def add_sentinel_tools(
     mcp: Any,
     sentinel: Optional[Sentinel] = None,
+    validator: Optional[LayeredValidator] = None,
 ) -> None:
     """
     Add Sentinel safety tools to an existing MCP server.
@@ -166,7 +173,8 @@ def add_sentinel_tools(
 
     Args:
         mcp: FastMCP server instance
-        sentinel: Sentinel instance (creates default if None)
+        sentinel: Sentinel instance (creates default if None) - used for get_seed
+        validator: LayeredValidator instance (creates default if None) - used for validation
 
     Example:
         from mcp.server.fastmcp import FastMCP
@@ -183,6 +191,15 @@ def add_sentinel_tools(
         raise ImportError("mcp package not installed")
 
     sentinel = sentinel or Sentinel()
+
+    # Create LayeredValidator for validation operations
+    if validator is None:
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,  # Default to heuristic-only for MCP server
+            max_text_size=MCPConfig.MAX_TEXT_SIZE,
+        )
+        validator = LayeredValidator(config=config)
 
     # Tool: Validate text through THSP gates
     @mcp.tool()
@@ -217,25 +234,31 @@ def add_sentinel_tools(
 
         logger.debug(f"sentinel_validate called: check_type={check_type}, text_len={len(text)}")
 
+        # Use LayeredValidator for validation
         if check_type == "action":
-            is_safe, violations = sentinel.validate_action(text)
+            result = validator.validate_action(text, {}, "")
         elif check_type == "request":
-            result = sentinel.validate_request(text)
-            logger.debug(f"sentinel_validate result: safe={result['should_proceed']}, risk={result['risk_level']}")
-            return {
-                "safe": result["should_proceed"],
-                "risk_level": result["risk_level"],
-                "concerns": result["concerns"],
-                "recommendation": "Safe to proceed" if result["should_proceed"] else f"Blocked: {result['concerns']}",
-            }
+            result = validator.validate_request(text)
         else:
-            is_safe, violations = sentinel.validate(text)
+            result = validator.validate(text)
 
-        logger.debug(f"sentinel_validate result: safe={is_safe}, violations={len(violations)}")
+        # Convert risk level to string
+        risk_level = result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level)
+
+        logger.debug(f"sentinel_validate result: safe={result.is_safe}, violations={len(result.violations)}")
+
+        if check_type == "request":
+            return {
+                "safe": result.is_safe,
+                "risk_level": risk_level,
+                "concerns": result.violations,
+                "recommendation": "Safe to proceed" if result.is_safe else f"Blocked: {result.violations}",
+            }
+
         return {
-            "safe": is_safe,
-            "violations": violations,
-            "recommendation": "Content is safe" if is_safe else f"Safety concerns: {violations}",
+            "safe": result.is_safe,
+            "violations": result.violations,
+            "recommendation": "Content is safe" if result.is_safe else f"Safety concerns: {result.violations}",
         }
 
     # Tool: Check if an action is safe
@@ -269,25 +292,23 @@ def add_sentinel_tools(
 
         logger.debug(f"sentinel_check_action called: action_len={len(action)}")
 
-        is_safe, concerns = sentinel.validate_action(action)
-        request_check = sentinel.validate_request(action)
+        # Use LayeredValidator for action validation
+        result = validator.validate_action(action, {}, "")
 
-        all_concerns = concerns + request_check.get("concerns", [])
-        should_proceed = is_safe and request_check["should_proceed"]
+        # Convert risk level to string
+        risk_level = result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level)
 
-        # Determine risk level - escalate if action validation failed
-        risk_level = request_check["risk_level"]
-        if not is_safe:
-            # Action failed safety check - escalate risk
-            risk_level = "high" if risk_level == "low" else "critical"
+        # Escalate risk if action is blocked
+        if not result.is_safe and risk_level == "low":
+            risk_level = "high"
 
-        logger.debug(f"sentinel_check_action result: safe={should_proceed}, risk={risk_level}")
+        logger.debug(f"sentinel_check_action result: safe={result.is_safe}, risk={risk_level}")
         return {
-            "safe": should_proceed,
-            "should_proceed": should_proceed,
-            "concerns": all_concerns,
+            "safe": result.is_safe,
+            "should_proceed": result.is_safe,
+            "concerns": result.violations,
             "risk_level": risk_level,
-            "recommendation": "Action is safe to proceed" if should_proceed else f"Action blocked: {all_concerns}",
+            "recommendation": "Action is safe to proceed" if result.is_safe else f"Action blocked: {result.violations}",
         }
 
     # Tool: Validate a user request
@@ -320,14 +341,18 @@ def add_sentinel_tools(
 
         logger.debug(f"sentinel_check_request called: request_len={len(request)}")
 
-        result = sentinel.validate_request(request)
+        # Use LayeredValidator for request validation
+        result = validator.validate_request(request)
 
-        logger.debug(f"sentinel_check_request result: proceed={result['should_proceed']}, risk={result['risk_level']}")
+        # Convert risk level to string
+        risk_level = result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level)
+
+        logger.debug(f"sentinel_check_request result: proceed={result.is_safe}, risk={risk_level}")
         return {
-            "should_proceed": result["should_proceed"],
-            "risk_level": result["risk_level"],
-            "concerns": result["concerns"],
-            "safe": result["should_proceed"],
+            "should_proceed": result.is_safe,
+            "risk_level": risk_level,
+            "concerns": result.violations,
+            "safe": result.is_safe,
         }
 
     # Tool: Get Sentinel seed
@@ -412,33 +437,34 @@ def add_sentinel_tools(
                 skipped_count += 1
                 continue
 
+            # Use LayeredValidator for validation
             if check_type == "action":
-                is_safe, violations = sentinel.validate_action(item)
+                val_result = validator.validate_action(item, {}, "")
                 result_entry = {
                     "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
-                    "safe": is_safe,
-                    "violations": violations,
+                    "safe": val_result.is_safe,
+                    "violations": val_result.violations,
                 }
             elif check_type == "request":
-                req_result = sentinel.validate_request(item)
-                is_safe = req_result["should_proceed"]
+                val_result = validator.validate_request(item)
+                risk_level = val_result.risk_level.value if hasattr(val_result.risk_level, 'value') else str(val_result.risk_level)
                 result_entry = {
                     "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
-                    "safe": is_safe,
-                    "risk_level": req_result["risk_level"],
-                    "concerns": req_result["concerns"],
+                    "safe": val_result.is_safe,
+                    "risk_level": risk_level,
+                    "concerns": val_result.violations,
                 }
             else:
-                is_safe, violations = sentinel.validate(item)
+                val_result = validator.validate(item)
                 result_entry = {
                     "item": item[:MCPConfig.ITEM_PREVIEW_LENGTH],
-                    "safe": is_safe,
-                    "violations": violations,
+                    "safe": val_result.is_safe,
+                    "violations": val_result.violations,
                 }
 
             results.append(result_entry)
 
-            if is_safe:
+            if val_result.is_safe:
                 safe_count += 1
 
         logger.debug(

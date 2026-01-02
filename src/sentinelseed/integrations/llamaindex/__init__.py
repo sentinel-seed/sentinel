@@ -34,16 +34,15 @@ import uuid
 import logging
 
 from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
-# Semantic validators are optional (require API keys)
-SEMANTIC_AVAILABLE = False
-try:
-    from sentinelseed.validators.semantic import SemanticValidator, AsyncSemanticValidator, THSPResult
-    SEMANTIC_AVAILABLE = True
-except (ImportError, AttributeError):
-    SemanticValidator = None
-    AsyncSemanticValidator = None
-    THSPResult = None
+# Semantic validation is available via LayeredValidator with API key
+SEMANTIC_AVAILABLE = True  # Always available - LayeredValidator handles it
 
 logger = logging.getLogger("sentinelseed.llamaindex")
 
@@ -88,12 +87,19 @@ class SentinelValidationEvent:
     timestamp: Optional[str] = None
 
 
-class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else object):
+# Build base classes dynamically
+_CALLBACK_BASES = (BaseCallbackHandler, SentinelIntegration) if LLAMAINDEX_AVAILABLE else (SentinelIntegration,)
+
+
+class SentinelCallbackHandler(*_CALLBACK_BASES):
     """
     LlamaIndex callback handler for Sentinel safety monitoring.
 
     Monitors LLM inputs and outputs through the LlamaIndex callback system.
     Validates content through THSP protocol and logs violations.
+
+    Inherits from BaseCallbackHandler (LlamaIndex) and SentinelIntegration
+    for standardized validation.
 
     Event types monitored:
         - LLM: Template and response validation
@@ -113,6 +119,8 @@ class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else o
         response = index.as_query_engine().query("Your question")
     """
 
+    _integration_name = "llamaindex"
+
     def __init__(
         self,
         sentinel: Optional[Sentinel] = None,
@@ -120,12 +128,13 @@ class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else o
         on_violation: str = "log",  # "log", "raise", "flag"
         event_starts_to_ignore: Optional[List[str]] = None,
         event_ends_to_ignore: Optional[List[str]] = None,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize Sentinel callback handler.
 
         Args:
-            sentinel: Sentinel instance (creates default if None)
+            sentinel: Sentinel instance (backwards compat for get_seed())
             seed_level: Seed level to use
             on_violation: Action on violation:
                 - "log": Log warning and continue
@@ -133,6 +142,7 @@ class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else o
                 - "flag": Record but don't interrupt
             event_starts_to_ignore: Event types to ignore on start
             event_ends_to_ignore: Event types to ignore on end
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
         if not LLAMAINDEX_AVAILABLE:
             raise ImportError(
@@ -140,11 +150,24 @@ class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else o
                 "Install with: pip install llama-index-core"
             )
 
-        super().__init__(
-            event_starts_to_ignore=event_starts_to_ignore or [],
-            event_ends_to_ignore=event_ends_to_ignore or [],
-        )
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=config)
 
+        # Initialize both parent classes explicitly
+        if LLAMAINDEX_AVAILABLE and BaseCallbackHandler is not object:
+            BaseCallbackHandler.__init__(
+                self,
+                event_starts_to_ignore=event_starts_to_ignore or [],
+                event_ends_to_ignore=event_ends_to_ignore or [],
+            )
+        SentinelIntegration.__init__(self, validator=validator)
+
+        # Keep sentinel for backwards compat (get_seed())
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.on_violation = on_violation
         self.validation_log: List[SentinelValidationEvent] = []
@@ -323,12 +346,14 @@ class SentinelCallbackHandler(BaseCallbackHandler if LLAMAINDEX_AVAILABLE else o
         }
 
 
-class SentinelLLM:
+class SentinelLLM(SentinelIntegration):
     """
     Wrapper for LlamaIndex LLMs with Sentinel safety.
 
     Wraps any LlamaIndex-compatible LLM to inject Sentinel seed
     and validate inputs/outputs.
+
+    Inherits from SentinelIntegration for standardized validation interface.
 
     Example:
         from llama_index.llms.openai import OpenAI
@@ -341,6 +366,8 @@ class SentinelLLM:
         # All LLM calls now have Sentinel protection
     """
 
+    _integration_name = "llamaindex_llm"
+
     def __init__(
         self,
         llm: Any,
@@ -349,6 +376,7 @@ class SentinelLLM:
         inject_seed: bool = True,
         validate_input: bool = True,
         validate_output: bool = True,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize Sentinel LLM wrapper.
@@ -360,9 +388,21 @@ class SentinelLLM:
             inject_seed: Whether to inject seed into prompts
             validate_input: Whether to validate input
             validate_output: Whether to validate output
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
         if not LLAMAINDEX_AVAILABLE:
             raise ImportError("llama-index-core not installed")
+
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
 
         self._llm = llm
         self._sentinel = sentinel or Sentinel(seed_level=seed_level)
@@ -409,16 +449,16 @@ class SentinelLLM:
         return messages
 
     def _validate_messages_input(self, messages: List[Any]) -> None:
-        """Validate input messages."""
+        """Validate input messages using inherited LayeredValidator."""
         for msg in messages:
             content = getattr(msg, 'content', None) or (msg.get('content') if isinstance(msg, dict) else str(msg))
             if content:
-                result = self._sentinel.validate_request(content)
-                if not result["should_proceed"]:
-                    raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+                result = self.validator.validate(content)
+                if not result.is_safe:
+                    raise ValueError(f"Input blocked by Sentinel: {result.violations}")
 
     def _validate_output(self, response: Any) -> None:
-        """Validate output response."""
+        """Validate output response using inherited LayeredValidator."""
         content = ""
         if hasattr(response, 'message'):
             content = getattr(response.message, 'content', str(response.message))
@@ -428,9 +468,9 @@ class SentinelLLM:
             content = str(response)
 
         if content:
-            is_safe, violations = self._sentinel.validate(content)
-            if not is_safe:
-                print(f"[SENTINEL] Output validation concerns: {violations}")
+            result = self.validator.validate(content)
+            if not result.is_safe:
+                print(f"[SENTINEL] Output validation concerns: {result.violations}")
 
     def chat(
         self,
@@ -477,9 +517,9 @@ class SentinelLLM:
     ) -> Any:
         """Complete with Sentinel safety."""
         if self._should_validate_input:
-            result = self._sentinel.validate_request(prompt)
-            if not result["should_proceed"]:
-                raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+            result = self.validator.validate(prompt)
+            if not result.is_safe:
+                raise ValueError(f"Input blocked by Sentinel: {result.violations}")
 
         # Inject seed into prompt
         if self._inject_seed:
@@ -499,9 +539,9 @@ class SentinelLLM:
     ) -> Any:
         """Async complete with Sentinel safety."""
         if self._should_validate_input:
-            result = self._sentinel.validate_request(prompt)
-            if not result["should_proceed"]:
-                raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+            result = self.validator.validate(prompt)
+            if not result.is_safe:
+                raise ValueError(f"Input blocked by Sentinel: {result.violations}")
 
         if self._inject_seed:
             prompt = f"{self._seed}\n\n---\n\n{prompt}"
@@ -534,9 +574,9 @@ class SentinelLLM:
     ) -> Any:
         """Stream complete with Sentinel safety."""
         if self._should_validate_input:
-            result = self._sentinel.validate_request(prompt)
-            if not result["should_proceed"]:
-                raise ValueError(f"Input blocked by Sentinel: {result['concerns']}")
+            result = self.validator.validate(prompt)
+            if not result.is_safe:
+                raise ValueError(f"Input blocked by Sentinel: {result.violations}")
 
         if self._inject_seed:
             prompt = f"{self._seed}\n\n---\n\n{prompt}"

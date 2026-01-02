@@ -20,8 +20,27 @@ Quick Start:
     # Get an alignment seed
     seed = sentinel.get_seed("standard")
 
+    # Validate content
+    is_safe, violations = sentinel.validate("Some content to check")
+
     # Or use the chat wrapper directly
     response = sentinel.chat("Hello, how can you help me?")
+
+Layered Validation (advanced):
+    from sentinelseed.validation import LayeredValidator
+
+    # Heuristic only (no API required)
+    validator = LayeredValidator()
+    result = validator.validate("content to check")
+
+    # With semantic validation
+    validator = LayeredValidator(
+        semantic_api_key="sk-...",
+        use_semantic=True,
+    )
+    result = validator.validate("content")
+    if not result.is_safe:
+        print(f"Blocked: {result.violations}")
 
 Memory Integrity (for AI agents):
     from sentinelseed.memory import MemoryIntegrityChecker
@@ -77,17 +96,37 @@ Documentation: https://sentinelseed.dev/docs
 GitHub: https://github.com/sentinel-seed/sentinel
 """
 
+import warnings
+
+# Core - always available
 from sentinelseed.core import Sentinel, SeedLevel
-from sentinelseed.validators.gates import (
-    TruthGate, HarmGate, ScopeGate, PurposeGate, JailbreakGate,
-    THSValidator, THSPValidator,
+from sentinelseed.core.interfaces import Validator, AsyncValidator
+from sentinelseed.core.exceptions import (
+    SentinelError,
+    ValidationError,
+    ConfigurationError,
+    IntegrationError,
 )
+
+# Validation - recommended API for advanced usage
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationResult,
+    ValidationConfig,
+    ValidationLayer,
+)
+from sentinelseed.validation.types import RiskLevel as ValidationRiskLevel
+
+# Memory Integrity
 from sentinelseed.memory import (
     MemoryIntegrityChecker,
     MemoryEntry,
     SignedMemoryEntry,
     MemoryTamperingDetected,
 )
+
+# Fiduciary AI
 from sentinelseed.fiduciary import (
     FiduciaryValidator,
     FiduciaryGuard,
@@ -96,6 +135,8 @@ from sentinelseed.fiduciary import (
     validate_fiduciary,
     is_fiduciary_compliant,
 )
+
+# Compliance
 from sentinelseed.compliance import (
     EUAIActComplianceChecker,
     ComplianceResult,
@@ -103,6 +144,8 @@ from sentinelseed.compliance import (
     SystemType,
     check_eu_ai_act_compliance,
 )
+
+# Database Guard
 from sentinelseed.database import (
     DatabaseGuard,
     QueryBlocked,
@@ -111,7 +154,38 @@ from sentinelseed.database import (
     is_safe_query,
 )
 
-__version__ = "2.17.0"
+__version__ = "2.18.0"
+
+# Deprecated exports - kept for backwards compatibility
+# These will be removed in version 3.0.0
+_DEPRECATED_VALIDATORS = {
+    "TruthGate": "Use Sentinel or LayeredValidator instead. TruthGate is an internal implementation detail.",
+    "HarmGate": "Use Sentinel or LayeredValidator instead. HarmGate is an internal implementation detail.",
+    "ScopeGate": "Use Sentinel or LayeredValidator instead. ScopeGate is an internal implementation detail.",
+    "PurposeGate": "Use Sentinel or LayeredValidator instead. PurposeGate is an internal implementation detail.",
+    "JailbreakGate": "JailbreakGate is deprecated. Its functionality is now integrated into TruthGate and ScopeGate.",
+    "THSValidator": "Use Sentinel or LayeredValidator instead. THSValidator is an internal implementation detail.",
+    "THSPValidator": "Use Sentinel or LayeredValidator instead. THSPValidator is an internal implementation detail.",
+}
+
+
+def __getattr__(name: str):
+    """
+    Lazy loading with deprecation warnings for internal validators.
+
+    This follows PEP 562 for module-level __getattr__.
+    """
+    if name in _DEPRECATED_VALIDATORS:
+        warnings.warn(
+            f"{name} is deprecated and will be removed in version 3.0.0. "
+            f"{_DEPRECATED_VALIDATORS[name]}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from sentinelseed.validators import gates
+        return getattr(gates, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_seed(level: str = "standard") -> str:
@@ -138,14 +212,21 @@ __all__ = [
     "Sentinel",
     "SeedLevel",
     "get_seed",
-    # Validators (THSP Gates)
-    "TruthGate",
-    "HarmGate",
-    "ScopeGate",
-    "PurposeGate",
-    "JailbreakGate",
-    "THSValidator",
-    "THSPValidator",
+    # Core Interfaces (for type hints and DI)
+    "Validator",
+    "AsyncValidator",
+    # Core Exceptions
+    "SentinelError",
+    "ValidationError",
+    "ConfigurationError",
+    "IntegrationError",
+    # Validation (recommended for advanced usage)
+    "LayeredValidator",
+    "AsyncLayeredValidator",
+    "ValidationResult",
+    "ValidationConfig",
+    "ValidationLayer",
+    "ValidationRiskLevel",
     # Memory Integrity
     "MemoryIntegrityChecker",
     "MemoryEntry",
@@ -170,4 +251,12 @@ __all__ = [
     "QueryValidationResult",
     "validate_query",
     "is_safe_query",
+    # Deprecated (will be removed in 3.0.0) - use Sentinel or LayeredValidator instead
+    "TruthGate",
+    "HarmGate",
+    "ScopeGate",
+    "PurposeGate",
+    "JailbreakGate",
+    "THSValidator",
+    "THSPValidator",
 ]

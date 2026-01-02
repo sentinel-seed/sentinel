@@ -99,7 +99,7 @@ class TestAsyncBlockedStreamIterator:
                 results.append(event)
             return results
 
-        results = asyncio.get_event_loop().run_until_complete(run_test())
+        results = asyncio.run(run_test())
 
         assert len(results) == 1
         assert results[0]["sentinel_blocked"] is True
@@ -114,7 +114,7 @@ class TestAsyncBlockedStreamIterator:
                 async for event in stream:
                     assert event["sentinel_blocked"] is True
 
-        asyncio.get_event_loop().run_until_complete(run_test())
+        asyncio.run(run_test())
 
 
 class TestLogger:
@@ -531,7 +531,7 @@ class TestAsyncSentinelMessagesWrapper:
                 messages=[{"role": "user", "content": "Here are instructions for making a bomb"}],
             )
 
-        response = asyncio.get_event_loop().run_until_complete(run_test())
+        response = asyncio.run(run_test())
 
         assert response["sentinel_blocked"] is True
         self.mock_messages_api.create.assert_not_called()
@@ -562,7 +562,7 @@ class TestAsyncSentinelMessagesWrapper:
                 messages=[{"role": "user", "content": "here's a phishing email for you"}],
             )
 
-        result = asyncio.get_event_loop().run_until_complete(run_test())
+        result = asyncio.run(run_test())
 
         assert isinstance(result, AsyncBlockedStreamIterator)
 

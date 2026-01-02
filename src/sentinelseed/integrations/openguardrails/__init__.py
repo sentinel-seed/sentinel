@@ -41,6 +41,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
+
 logger = logging.getLogger("sentinelseed.openguardrails")
 
 # Check for requests availability
@@ -517,49 +524,66 @@ class SentinelOpenGuardrailsScanner:
         return self._scanner_tag
 
 
-class SentinelGuardrailsWrapper:
+class SentinelGuardrailsWrapper(SentinelIntegration):
     """
     Combined Sentinel + OpenGuardrails validation wrapper.
 
-    Runs both Sentinel THSP validation and OpenGuardrails detection
-    in parallel or sequence, providing layered protection.
+    Runs both Sentinel THSP validation (via LayeredValidator) and
+    OpenGuardrails detection in parallel or sequence, providing
+    layered protection.
+
+    Inherits from SentinelIntegration for standardized validation.
 
     Example:
-        from sentinelseed import Sentinel
         from sentinelseed.integrations.openguardrails import (
             SentinelGuardrailsWrapper,
             OpenGuardrailsValidator
         )
 
         wrapper = SentinelGuardrailsWrapper(
-            sentinel=Sentinel(),
             openguardrails=OpenGuardrailsValidator(
                 api_url="http://localhost:5001"
             )
         )
 
-        result = wrapper.validate("Check this content")
+        result = wrapper.validate_combined("Check this content")
         if not result["safe"]:
             print(f"Blocked by: {result['blocked_by']}")
     """
+
+    _integration_name = "openguardrails_wrapper"
 
     def __init__(
         self,
         sentinel: Optional[Any] = None,
         openguardrails: Optional[OpenGuardrailsValidator] = None,
         require_both: bool = False,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Args:
-            sentinel: Sentinel instance (optional, will create if not provided)
+            sentinel: Sentinel instance (backwards compatibility for get_seed())
             openguardrails: OpenGuardrailsValidator instance
             require_both: If True, both must pass. If False, either can block.
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
+        # Keep sentinel for backwards compatibility (get_seed())
         self.sentinel = sentinel
         self.openguardrails = openguardrails
         self.require_both = require_both
 
-        # Lazy import Sentinel to avoid circular imports
+        # Lazy import Sentinel for backwards compat if needed
         if self.sentinel is None:
             try:
                 from sentinelseed import Sentinel
@@ -567,13 +591,13 @@ class SentinelGuardrailsWrapper:
             except (ImportError, AttributeError):
                 logger.warning("Sentinel not available, using OpenGuardrails only")
 
-    def validate(
+    def validate_combined(
         self,
         content: str,
         scanners: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Validate content through both Sentinel and OpenGuardrails.
+        Validate content through both Sentinel (LayeredValidator) and OpenGuardrails.
 
         Args:
             content: Text to validate
@@ -583,7 +607,7 @@ class SentinelGuardrailsWrapper:
             Combined validation result with keys:
             - safe: bool - overall safety status
             - blocked_by: list - which validators blocked ("sentinel", "openguardrails")
-            - sentinel_result: dict or None - raw Sentinel result
+            - sentinel_result: dict or None - Sentinel result
             - openguardrails_result: dict or None - processed OpenGuardrails result
 
         Raises:
@@ -604,35 +628,22 @@ class SentinelGuardrailsWrapper:
             "openguardrails_result": None,
         }
 
-        # Run Sentinel validation
-        if self.sentinel:
-            try:
-                sentinel_result = self.sentinel.validate(content)
-                result["sentinel_result"] = sentinel_result
+        # Run Sentinel validation using inherited validate() from SentinelIntegration
+        try:
+            sentinel_result: ValidationResult = SentinelIntegration.validate(self, content)
+            result["sentinel_result"] = {
+                "is_safe": sentinel_result.is_safe,
+                "violations": sentinel_result.violations or [],
+                "layer": sentinel_result.layer.value if sentinel_result.layer else "unknown",
+            }
 
-                # Handle sentinel_result which can be:
-                # - tuple: (is_safe: bool, violations: List[str]) from Sentinel.validate()
-                # - dict: {"safe": bool, ...} from custom validators
-                if isinstance(sentinel_result, tuple) and len(sentinel_result) >= 1:
-                    # Sentinel.validate() returns (is_safe, violations)
-                    is_safe = sentinel_result[0]
-                    if not is_safe:
-                        result["safe"] = False
-                        result["blocked_by"].append("sentinel")
-                elif isinstance(sentinel_result, dict):
-                    if not sentinel_result.get("safe", True):
-                        result["safe"] = False
-                        result["blocked_by"].append("sentinel")
-                elif sentinel_result is not None:
-                    logger.warning(
-                        f"Unexpected sentinel_result type: {type(sentinel_result)}"
-                    )
-                    result["safe"] = False
-                    result["blocked_by"].append("sentinel_invalid_result")
-            except Exception as e:
-                logger.error(f"Sentinel validation error: {e}")
+            if not sentinel_result.is_safe:
                 result["safe"] = False
-                result["blocked_by"].append("sentinel_error")
+                result["blocked_by"].append("sentinel")
+        except Exception as e:
+            logger.error(f"Sentinel validation error: {e}")
+            result["safe"] = False
+            result["blocked_by"].append("sentinel_error")
 
         # Run OpenGuardrails validation
         if self.openguardrails:
@@ -658,6 +669,28 @@ class SentinelGuardrailsWrapper:
         # behavior (any failure blocks). The logic is already correct.
 
         return result
+
+    # Override validate() from SentinelIntegration to provide the combined behavior
+    # This maintains backwards compatibility with code that calls wrapper.validate()
+    def validate(
+        self,
+        content: str,
+        scanners: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Validate content through both Sentinel and OpenGuardrails.
+
+        This is an alias for validate_combined() to maintain backwards
+        compatibility.
+
+        Args:
+            content: Text to validate
+            scanners: OpenGuardrails scanners to use
+
+        Returns:
+            Combined validation result dict
+        """
+        return self.validate_combined(content, scanners)
 
 
 # Convenience functions

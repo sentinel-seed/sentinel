@@ -3,13 +3,18 @@ Anthropic (Claude) provider implementation.
 """
 
 import os
-from typing import Optional, List, Dict, Any, Iterator
+from typing import Optional, List, Dict, Any, Iterator, TYPE_CHECKING
 
 from sentinelseed.providers.base import BaseProvider
+
+if TYPE_CHECKING:
+    from anthropic import Anthropic
 
 
 class AnthropicProvider(BaseProvider):
     """Anthropic Claude API provider."""
+
+    _client: Optional["Anthropic"]
 
     def __init__(
         self,
@@ -84,7 +89,10 @@ class AnthropicProvider(BaseProvider):
         if not response.content:
             raise ValueError("Anthropic API returned empty content array")
 
-        return response.content[0].text
+        # Get text from first TextBlock content
+        first_block = response.content[0]
+        content = first_block.text if hasattr(first_block, "text") else str(first_block)
+        return str(content)
 
     def stream(
         self,

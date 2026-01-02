@@ -25,40 +25,46 @@ from typing import Optional, Tuple
 # IMPORTANT: Keccak-256 (used by Ethereum) is NOT the same as SHA3-256!
 # SHA3-256 is the NIST-standardized version which produces different hashes.
 # We must use the original Keccak algorithm, not hashlib.sha3_256.
+#
+# Priority order:
+# 1. eth-hash - Standard in Ethereum ecosystem
+# 2. pysha3 - Clean implementation of Keccak
+# 3. pycryptodome - General crypto library with Keccak support
 try:
-    from Crypto.Hash import keccak as pycryptodome_keccak
+    from eth_hash.auto import keccak as eth_keccak
 
     def keccak256(data: bytes) -> bytes:
-        """Compute keccak256 hash using pycryptodome."""
-        k = pycryptodome_keccak.new(digest_bits=256)
-        k.update(data)
-        return k.digest()
+        """Compute keccak256 hash using eth-hash (Ethereum standard)."""
+        return eth_keccak(data)
 
     KECCAK_AVAILABLE = True
-    _KECCAK_BACKEND = "pycryptodome"
+    _KECCAK_BACKEND = "eth-hash"
 except ImportError:
     try:
-        from eth_hash.auto import keccak as eth_keccak
+        # pysha3 provides the original Keccak algorithm
+        import sha3 as pysha3
 
         def keccak256(data: bytes) -> bytes:
-            """Compute keccak256 hash using eth-hash."""
-            return eth_keccak(data)
+            """Compute keccak256 hash using pysha3."""
+            k = pysha3.keccak_256()
+            k.update(data)
+            return k.digest()
 
         KECCAK_AVAILABLE = True
-        _KECCAK_BACKEND = "eth-hash"
+        _KECCAK_BACKEND = "pysha3"
     except ImportError:
         try:
-            # Try pysha3 which provides the original Keccak
-            import sha3 as pysha3
+            # pycryptodome as fallback (nosec B413 - pycryptodome is actively maintained)
+            from Crypto.Hash import keccak as pycryptodome_keccak  # nosec B413
 
             def keccak256(data: bytes) -> bytes:
-                """Compute keccak256 hash using pysha3."""
-                k = pysha3.keccak_256()
+                """Compute keccak256 hash using pycryptodome."""
+                k = pycryptodome_keccak.new(digest_bits=256)
                 k.update(data)
                 return k.digest()
 
             KECCAK_AVAILABLE = True
-            _KECCAK_BACKEND = "pysha3"
+            _KECCAK_BACKEND = "pycryptodome"
         except ImportError:
             # No valid Keccak implementation available
             # DO NOT use hashlib.sha3_256 - it's NOT compatible with Ethereum!
@@ -70,7 +76,7 @@ except ImportError:
                 raise ImportError(
                     "No Keccak-256 implementation available. "
                     "EIP-55 checksum requires Keccak-256 (NOT SHA3-256). "
-                    "Install one of: pip install pycryptodome OR pip install pysha3 OR pip install eth-hash[pycryptodome]"
+                    "Install one of: pip install eth-hash[pycryptodome] OR pip install pysha3 OR pip install pycryptodome"
                 )
 
 

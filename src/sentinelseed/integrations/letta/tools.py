@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Literal, Optional
 from dataclasses import dataclass, field
 import logging
 
+from sentinelseed.integrations._base import LayeredValidator, ValidationConfig
+
 _logger = logging.getLogger("sentinelseed.integrations.letta")
 
 # Valid configuration values
@@ -167,29 +169,20 @@ class SentinelSafetyTool:
             if hasattr(self._validator, "validate"):
                 result = self._validator.validate(content)
 
+                # LayeredValidator returns ValidationResult with is_safe attribute
                 if hasattr(result, "is_safe"):
-                    # SemanticValidator
                     if result.is_safe:
-                        reasoning = getattr(result, "reasoning", "Validation passed")
-                        return f"SAFE: {reasoning}"
+                        return f"SAFE: Validation passed (context={context}, gates={check_gates})"
                     else:
-                        failed_gates = getattr(result, "failed_gates", [])
-                        reasoning = getattr(result, "reasoning", "Validation failed")
-                        failed = ", ".join(failed_gates) if failed_gates else "unknown"
-                        return f"UNSAFE: {failed}: {reasoning}"
-                elif isinstance(result, dict):
-                    # THSPValidator (dict)
-                    if result.get("safe", True):
-                        return f"SAFE: Heuristic validation passed (context={context}, gates={check_gates})"
-                    else:
-                        issues = result.get("issues", [])
-                        return f"UNSAFE: {', '.join(issues)}"
+                        violations = getattr(result, "violations", [])
+                        failed = ", ".join(violations) if violations else "unknown"
+                        return f"UNSAFE: {failed}"
                 else:
                     return "WARNING: Validator returned unexpected result type"
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.warning(f"Safety check error: {type(e).__name__}")
-            return f"ERROR: Validation failed - {type(e).__name__}"
+            return f"ERROR: Validation failed"
 
         return "WARNING: Validation completed but no result returned"
 
@@ -320,35 +313,22 @@ def create_sentinel_tool(
     if provider not in VALID_PROVIDERS:
         raise ValueError(f"Invalid provider '{provider}'. Must be one of: {VALID_PROVIDERS}")
 
-    # Initialize validator
-    if api_key:
-        try:
-            from sentinelseed.validators.semantic import SemanticValidator
-            tool._validator = SemanticValidator(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-            )
-        except ImportError:
-            _logger.warning("SemanticValidator not available, using heuristic")
-            try:
-                from sentinelseed.validators.gates import THSPValidator
-                tool._validator = THSPValidator()
-            except ImportError:
-                pass
-        except Exception as e:
-            _logger.warning(f"Error creating SemanticValidator: {type(e).__name__}")
-            try:
-                from sentinelseed.validators.gates import THSPValidator
-                tool._validator = THSPValidator()
-            except Exception:
-                pass
-    else:
-        try:
-            from sentinelseed.validators.gates import THSPValidator
-            tool._validator = THSPValidator()
-        except ImportError:
-            pass
+    # Initialize LayeredValidator
+    try:
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=bool(api_key),
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
+        )
+        tool._validator = LayeredValidator(config=config)
+    except ImportError:
+        _logger.warning("LayeredValidator not available")
+        tool._validator = None
+    except (ValueError, TypeError, RuntimeError, AttributeError) as e:
+        _logger.warning(f"Error creating LayeredValidator: {type(e).__name__}")
+        tool._validator = None
 
     # Register tool with Letta
     if client is None:
@@ -375,7 +355,7 @@ def create_sentinel_tool(
 
         _logger.info(f"Registered Sentinel safety tool: {tool.name}")
 
-    except Exception as e:
+    except (ValueError, TypeError, AttributeError, RuntimeError) as e:
         _logger.warning(f"Could not register tool with Letta: {type(e).__name__}")
         # Tool can still be used with source_code
 
@@ -435,7 +415,7 @@ def create_memory_guard_tool(
         else:
             _logger.warning("Client does not have tools API - tool not registered")
 
-    except Exception as e:
+    except (ValueError, TypeError, AttributeError, RuntimeError) as e:
         _logger.warning(f"Could not register tool with Letta: {type(e).__name__}")
 
     return tool

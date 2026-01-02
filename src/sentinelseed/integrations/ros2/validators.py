@@ -17,16 +17,25 @@ Classes:
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+import logging
 import math
 import re
 
-# Import core THSPValidator for text validation
+logger = logging.getLogger("sentinelseed.integrations.ros2.validators")
+
+# Import LayeredValidator for text validation (replaces direct THSPValidator usage)
 try:
-    from sentinelseed.validators.gates import THSPValidator
-    THSP_VALIDATOR_AVAILABLE = True
+    from sentinelseed.validation import (
+        LayeredValidator,
+        ValidationConfig,
+        ValidationResult as ValResult,
+        ValidationLayer,
+    )
+    LAYERED_VALIDATOR_AVAILABLE = True
 except (ImportError, AttributeError):
-    THSPValidator = None
-    THSP_VALIDATOR_AVAILABLE = False
+    LayeredValidator = None
+    ValidationConfig = None
+    LAYERED_VALIDATOR_AVAILABLE = False
 
 
 # Validation constants
@@ -312,19 +321,24 @@ class RobotSafetyRules:
         safety_zone: Optional[SafetyZone] = None,
         require_purpose: bool = False,
         emergency_stop_on_violation: bool = True,
+        validator: Optional["LayeredValidator"] = None,
     ):
         self.velocity_limits = velocity_limits or VelocityLimits()
         self.safety_zone = safety_zone or SafetyZone()
         self.require_purpose = require_purpose
         self.emergency_stop_on_violation = emergency_stop_on_violation
 
-        # Initialize core THSPValidator for text/command validation
-        self._thsp_validator = None
-        if THSP_VALIDATOR_AVAILABLE and THSPValidator is not None:
+        # Initialize LayeredValidator for text/command validation
+        self._validator = validator
+        if self._validator is None and LAYERED_VALIDATOR_AVAILABLE and LayeredValidator is not None:
             try:
-                self._thsp_validator = THSPValidator()
-            except Exception:
-                pass  # Fall back to local patterns
+                config = ValidationConfig(
+                    use_heuristic=True,
+                    use_semantic=False,  # ROS2 nodes typically need fast validation
+                )
+                self._validator = LayeredValidator(config=config)
+            except (ImportError, RuntimeError) as e:
+                logger.debug(f"Text validator not available, using local patterns only: {e}")
 
         # Compile robotics-specific patterns (used in addition to core)
         self._danger_patterns = [
@@ -471,17 +485,17 @@ class RobotSafetyRules:
                 reasoning="Empty command - no action required.",
             )
 
-        # Step 1: Use core THSPValidator for comprehensive text validation
+        # Step 1: Use LayeredValidator for comprehensive text validation
         # This catches jailbreaks, prompt injection, SQL injection, XSS, etc.
-        if self._thsp_validator is not None:
-            thsp_result = self._thsp_validator.validate(command)
-            if not thsp_result.get("is_safe", True):
-                thsp_gates = thsp_result.get("gates", {})
-                for gate_name in ["truth", "harm", "scope", "purpose"]:
-                    if thsp_gates.get(gate_name) == "fail":
-                        gates[gate_name] = False
-                thsp_violations = thsp_result.get("violations", [])
-                violations.extend(thsp_violations)
+        if self._validator is not None:
+            try:
+                val_result = self._validator.validate(command)
+                if not val_result.is_safe:
+                    # Map violations to gates - if any violation, mark harm gate as failed
+                    gates["harm"] = False
+                    violations.extend(val_result.violations)
+            except (RuntimeError, ValueError) as e:
+                logger.warning(f"Text validation failed, using robotics patterns only: {e}")
 
         # Step 2: Apply robotics-specific patterns (additional checks)
         # Harm Gate: Check for dangerous robot-specific patterns

@@ -7,6 +7,10 @@ Each integration is a subpackage with:
 - __init__.py: The integration module
 - example.py: Usage examples
 
+Base classes (for integration developers):
+    from sentinelseed.integrations._base import SentinelIntegration
+    from sentinelseed.integrations._base import AsyncSentinelIntegration
+
 Available integrations:
     from sentinelseed.integrations.agno import SentinelGuardrail  # Agno multi-agent framework
     from sentinelseed.integrations.google_adk import SentinelPlugin  # Google ADK
@@ -115,7 +119,14 @@ Google Agent Development Kit (ADK):
     )
 """
 
+# Base classes for integration developers
+from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIntegration
+
 __all__ = [
+    # Base classes
+    'SentinelIntegration',
+    'AsyncSentinelIntegration',
+    # Integration subpackages
     'agent_validation',
     'agno',
     'anthropic_sdk',

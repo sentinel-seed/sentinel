@@ -3,13 +3,18 @@ OpenAI provider implementation.
 """
 
 import os
-from typing import Optional, List, Dict, Any, Iterator
+from typing import Optional, List, Dict, Any, Iterator, TYPE_CHECKING
 
 from sentinelseed.providers.base import BaseProvider
+
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 
 class OpenAIProvider(BaseProvider):
     """OpenAI API provider."""
+
+    _client: Optional["OpenAI"]
 
     def __init__(
         self,
@@ -78,7 +83,7 @@ class OpenAIProvider(BaseProvider):
         content = response.choices[0].message.content
         if content is None:
             return ""
-        return content
+        return str(content)
 
     def stream(
         self,

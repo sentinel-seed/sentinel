@@ -33,7 +33,6 @@ import logging
 import asyncio
 
 from sentinelseed import Sentinel, SeedLevel
-from sentinelseed.validators.gates import THSPValidator
 from sentinelseed.validation import (
     LayeredValidator,
     AsyncLayeredValidator,
@@ -41,6 +40,7 @@ from sentinelseed.validation import (
     ValidationResult,
     ValidationLayer,
 )
+from sentinelseed.integrations._base import SentinelIntegration
 
 
 # =============================================================================
@@ -250,12 +250,14 @@ def _create_block_message(violations: List[str]) -> Dict[str, str]:
 # SentinelSafetyNode
 # =============================================================================
 
-class SentinelSafetyNode:
+class SentinelSafetyNode(SentinelIntegration):
     """
     LangGraph node that validates state content for safety.
 
     Can be used as an entry gate, exit gate, or intermediate checkpoint
     in agent workflows. Validates messages and content against THSP protocol.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Example:
         from langgraph.graph import StateGraph, MessagesState
@@ -268,6 +270,8 @@ class SentinelSafetyNode:
         graph.add_edge("user_input", "safety_check")
         graph.add_edge("safety_check", "agent")
     """
+
+    _integration_name = "langgraph_safety_node"
 
     def __init__(
         self,
@@ -308,19 +312,8 @@ class SentinelSafetyNode:
             semantic_provider: Provider for semantic validation
             semantic_model: Model for semantic validation
         """
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.on_violation = on_violation
-        self.check_input = check_input
-        self.check_output = check_output
-        self.message_key = message_key
-        self.max_text_size = max_text_size
-        self.fail_closed = fail_closed
-        self._logger = logger or _logger
-
-        # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
+        # Create LayeredValidator with config if not provided
+        if validator is None:
             config = ValidationConfig(
                 use_heuristic=True,
                 use_semantic=use_semantic and bool(semantic_api_key),
@@ -329,7 +322,19 @@ class SentinelSafetyNode:
                 semantic_api_key=semantic_api_key,
                 max_text_size=max_text_size,
             )
-            self._validator = LayeredValidator(config=config)
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration with the validator
+        super().__init__(validator=validator)
+
+        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self.on_violation = on_violation
+        self.check_input = check_input
+        self.check_output = check_output
+        self.message_key = message_key
+        self.max_text_size = max_text_size
+        self.fail_closed = fail_closed
+        self._logger = logger or _logger
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -362,12 +367,12 @@ class SentinelSafetyNode:
                             continue
 
                         try:
-                            # Use LayeredValidator for input validation
-                            result = self._validator.validate(content)
+                            # Use inherited validate() method from SentinelIntegration
+                            result = self.validate(content)
                             if not result.is_safe:
                                 violations.extend(result.violations)
                                 risk_level = result.risk_level.value
-                        except Exception as e:
+                        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                             self._logger.error(f"Validation error: {e}")
                             if self.fail_closed:
                                 raise SafetyValidationError(f"Input validation failed: {e}")
@@ -387,19 +392,19 @@ class SentinelSafetyNode:
                             continue
 
                         try:
-                            # Use LayeredValidator for output validation
-                            result = self._validator.validate(content)
+                            # Use inherited validate() method from SentinelIntegration
+                            result = self.validate(content)
                             if not result.is_safe:
                                 violations.extend(result.violations)
                                 risk_level = result.risk_level.value
-                        except Exception as e:
+                        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                             self._logger.error(f"Output validation error: {e}")
                             if self.fail_closed:
                                 raise SafetyValidationError(f"Output validation failed: {e}")
 
         except SafetyValidationError:
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Unexpected error in SentinelSafetyNode: {e}")
             if self.fail_closed:
                 raise SafetyValidationError(f"Safety node error: {e}")
@@ -438,12 +443,14 @@ class SentinelSafetyNode:
 # SentinelGuardNode
 # =============================================================================
 
-class SentinelGuardNode:
+class SentinelGuardNode(SentinelIntegration):
     """
     LangGraph node that wraps another node with safety validation.
 
     Validates inputs before and outputs after the wrapped node executes.
     Supports both synchronous and asynchronous wrapped nodes.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Example:
         from sentinelseed.integrations.langgraph import SentinelGuardNode
@@ -452,6 +459,8 @@ class SentinelGuardNode:
         safe_tool_node = SentinelGuardNode(tool_node)
         graph.add_node("safe_tools", safe_tool_node)
     """
+
+    _integration_name = "langgraph_guard_node"
 
     def __init__(
         self,
@@ -479,6 +488,19 @@ class SentinelGuardNode:
             use_semantic: Whether to enable semantic validation
             semantic_api_key: API key for semantic validation
         """
+        # Create LayeredValidator with config if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration with the validator
+        super().__init__(validator=validator)
+
         self.wrapped_node = wrapped_node
         self.sentinel = sentinel or Sentinel()
         self.on_violation = on_violation
@@ -486,18 +508,6 @@ class SentinelGuardNode:
         self.fail_closed = fail_closed
         self._logger = logger or _logger
         self._is_async = asyncio.iscoroutinefunction(wrapped_node)
-
-        # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
-            config = ValidationConfig(
-                use_heuristic=True,
-                use_semantic=use_semantic and bool(semantic_api_key),
-                semantic_api_key=semantic_api_key,
-                max_text_size=max_text_size,
-            )
-            self._validator = LayeredValidator(config=config)
 
     def _validate_messages(
         self,
@@ -524,11 +534,11 @@ class SentinelGuardNode:
                 continue
 
             try:
-                # Use LayeredValidator for validation
-                result = self._validator.validate(content)
+                # Use inherited validate() method from SentinelIntegration
+                result = self.validate(content)
                 if not result.is_safe:
                     violations.extend(result.violations)
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                 self._logger.error(f"{context.capitalize()} validation error: {e}")
                 if self.fail_closed:
                     raise SafetyValidationError(f"{context.capitalize()} validation failed: {e}")
@@ -553,7 +563,7 @@ class SentinelGuardNode:
             # Execute wrapped node
             try:
                 result_state = self.wrapped_node(state)
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
                 self._logger.error(f"Wrapped node execution error: {e}")
                 if self.fail_closed:
                     raise
@@ -584,7 +594,7 @@ class SentinelGuardNode:
 
         except SafetyValidationError:
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Unexpected error in SentinelGuardNode: {e}")
             if self.fail_closed:
                 raise SafetyValidationError(f"Guard node error: {e}")
@@ -616,7 +626,9 @@ class SentinelGuardNode:
                     result_state = await self.wrapped_node(state)
                 else:
                     result_state = self.wrapped_node(state)
-            except Exception as e:
+            except asyncio.CancelledError:
+                raise
+            except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
                 self._logger.error(f"Wrapped node execution error: {e}")
                 if self.fail_closed:
                     raise
@@ -647,7 +659,9 @@ class SentinelGuardNode:
 
         except SafetyValidationError:
             raise
-        except Exception as e:
+        except asyncio.CancelledError:
+            raise
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Unexpected error in async SentinelGuardNode: {e}")
             if self.fail_closed:
                 raise SafetyValidationError(f"Guard node error: {e}")
@@ -734,7 +748,7 @@ def sentinel_gate_tool(
             "recommendation": recommendation,
             "layer": result.layer.value,
         }
-    except Exception as e:
+    except (ValueError, TypeError, RuntimeError, AttributeError) as e:
         _logger.error(f"Error in sentinel_gate_tool: {e}")
         return {
             "safe": False,
@@ -976,12 +990,14 @@ def create_safety_router(
 # SentinelAgentExecutor
 # =============================================================================
 
-class SentinelAgentExecutor:
+class SentinelAgentExecutor(SentinelIntegration):
     """
     Wrapper for LangGraph agent execution with Sentinel safety.
 
     Provides a simple interface to run agents with automatic
     safety validation at each step.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Example:
         from sentinelseed.integrations.langgraph import SentinelAgentExecutor
@@ -989,6 +1005,8 @@ class SentinelAgentExecutor:
         executor = SentinelAgentExecutor(your_compiled_graph)
         result = executor.invoke({"messages": [{"role": "user", "content": "..."}]})
     """
+
+    _integration_name = "langgraph_agent_executor"
 
     def __init__(
         self,
@@ -1018,6 +1036,19 @@ class SentinelAgentExecutor:
             use_semantic: Whether to enable semantic validation
             semantic_api_key: API key for semantic validation
         """
+        # Create LayeredValidator with config if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic and bool(semantic_api_key),
+                semantic_api_key=semantic_api_key,
+                max_text_size=max_text_size,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration with the validator
+        super().__init__(validator=validator)
+
         self.graph = graph
         self.sentinel = sentinel or Sentinel()
         self.on_violation = on_violation
@@ -1025,18 +1056,6 @@ class SentinelAgentExecutor:
         self.max_output_messages = max_output_messages
         self.fail_closed = fail_closed
         self._logger = logger or _logger
-
-        # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
-            config = ValidationConfig(
-                use_heuristic=True,
-                use_semantic=use_semantic and bool(semantic_api_key),
-                semantic_api_key=semantic_api_key,
-                max_text_size=max_text_size,
-            )
-            self._validator = LayeredValidator(config=config)
 
     def _validate_input(
         self,
@@ -1069,8 +1088,8 @@ class SentinelAgentExecutor:
                 continue
 
             try:
-                # Use LayeredValidator for input validation
-                result = self._validator.validate(content)
+                # Use inherited validate() method from SentinelIntegration
+                result = self.validate(content)
                 if not result.is_safe and self.on_violation == "block":
                     return False, {
                         **input_state,
@@ -1079,7 +1098,7 @@ class SentinelAgentExecutor:
                         "sentinel_layer": result.layer.value,
                         "output": "Request blocked by Sentinel safety check.",
                     }
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                 self._logger.error(f"Input validation error: {e}")
                 if self.fail_closed:
                     raise SafetyValidationError(f"Input validation failed: {e}")
@@ -1119,8 +1138,8 @@ class SentinelAgentExecutor:
                 continue
 
             try:
-                # Use LayeredValidator for output validation
-                validation = self._validator.validate(content)
+                # Use inherited validate() method from SentinelIntegration
+                validation = self.validate(content)
                 if not validation.is_safe and self.on_violation == "block":
                     return False, {
                         **result,
@@ -1128,7 +1147,7 @@ class SentinelAgentExecutor:
                         "sentinel_violations": validation.violations,
                         "sentinel_layer": validation.layer.value,
                     }
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                 self._logger.error(f"Output validation error: {e}")
                 if self.fail_closed:
                     raise SafetyValidationError(f"Output validation failed: {e}")
@@ -1158,14 +1177,14 @@ class SentinelAgentExecutor:
         # Execute graph
         try:
             result = self.graph.invoke(input_state, config)
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Graph execution error: {e}")
             if self.fail_closed:
                 raise
             return {
                 **input_state,
                 "sentinel_blocked": True,
-                "sentinel_violations": [f"Execution error: {e}"],
+                "sentinel_violations": ["Execution error occurred"],
             }
 
         # Post-validate output
@@ -1193,14 +1212,16 @@ class SentinelAgentExecutor:
         # Execute graph async
         try:
             result = await self.graph.ainvoke(input_state, config)
-        except Exception as e:
+        except asyncio.CancelledError:
+            raise
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Async graph execution error: {e}")
             if self.fail_closed:
                 raise
             return {
                 **input_state,
                 "sentinel_blocked": True,
-                "sentinel_violations": [f"Execution error: {e}"],
+                "sentinel_violations": ["Execution error occurred"],
             }
 
         # Post-validate output

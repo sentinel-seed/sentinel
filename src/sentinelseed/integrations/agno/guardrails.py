@@ -31,7 +31,14 @@ from __future__ import annotations
 
 import time
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
+
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
 from .utils import (
     DEFAULT_MAX_TEXT_SIZE,
@@ -96,12 +103,13 @@ def _require_agno() -> None:
         )
 
 
-class SentinelGuardrail(_BASE_CLASS):
+class SentinelGuardrail(_BASE_CLASS, SentinelIntegration):
     """Sentinel THSP guardrail for Agno agents.
 
     This guardrail validates inputs against the THSP protocol (Truth, Harm,
     Scope, Purpose) before they are processed by the LLM. It inherits from
-    Agno's BaseGuardrail to integrate natively with Agno's agent lifecycle.
+    Agno's BaseGuardrail to integrate natively with Agno's agent lifecycle,
+    and from SentinelIntegration for standardized validation.
 
     The guardrail performs layered validation:
     1. Size check (fast, prevents resource exhaustion)
@@ -109,7 +117,8 @@ class SentinelGuardrail(_BASE_CLASS):
     3. Gate analysis and violation recording
 
     Attributes:
-        sentinel: The Sentinel instance used for validation.
+        sentinel: The Sentinel instance used for validation (backwards compat).
+        validator: The LayeredValidator instance (via SentinelIntegration).
         seed_level: The safety level being used.
         block_on_failure: Whether unsafe content is blocked.
         fail_closed: Whether validation errors cause blocking.
@@ -141,6 +150,8 @@ class SentinelGuardrail(_BASE_CLASS):
         set fail_closed=True.
     """
 
+    _integration_name = "agno_guardrail"
+
     def __init__(
         self,
         sentinel: Sentinel | None = None,
@@ -150,12 +161,13 @@ class SentinelGuardrail(_BASE_CLASS):
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
         log_violations: bool = True,
+        validator: Optional[LayeredValidator] = None,
     ) -> None:
         """Initialize the Sentinel guardrail.
 
         Args:
-            sentinel: Optional Sentinel instance. If not provided, a new
-                instance is created with the specified seed_level.
+            sentinel: Optional Sentinel instance (backwards compatibility).
+                Deprecated: use validator parameter instead.
             seed_level: Safety level for the seed. One of 'minimal',
                 'standard', or 'full'. Defaults to 'standard'.
             block_on_failure: If True, raises InputCheckError when THSP
@@ -170,6 +182,8 @@ class SentinelGuardrail(_BASE_CLASS):
                 are logged and content is allowed (fail-open).
             log_violations: If True, violations are recorded and available
                 via get_violations(). Defaults to True.
+            validator: Optional LayeredValidator instance for dependency
+                injection (useful for testing).
 
         Raises:
             ConfigurationError: If any configuration parameter is invalid.
@@ -183,10 +197,6 @@ class SentinelGuardrail(_BASE_CLASS):
         # Verify Agno is installed before proceeding
         _require_agno()
 
-        # Call parent class __init__ if it exists
-        if hasattr(super(), "__init__"):
-            super().__init__()
-
         # Validate configuration before storing
         validate_configuration(
             max_text_size=max_text_size,
@@ -197,12 +207,28 @@ class SentinelGuardrail(_BASE_CLASS):
             log_violations=log_violations,
         )
 
-        # Initialize Sentinel
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+                fail_closed=fail_closed,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize base classes explicitly
+        if _AGNO_AVAILABLE and _BASE_CLASS is not object:
+            _BASE_CLASS.__init__(self)
+        SentinelIntegration.__init__(self, validator=validator)
+
+        # Backwards compatibility: store sentinel if provided
         if sentinel is not None:
             self._sentinel = sentinel
         else:
+            # Create Sentinel for backwards compat (some code may use self.sentinel)
             from sentinelseed import Sentinel
-
             self._sentinel = Sentinel(seed_level=seed_level)
 
         # Store configuration
@@ -393,7 +419,7 @@ class SentinelGuardrail(_BASE_CLASS):
 
         This method implements the layered validation logic:
         1. Size check (fast)
-        2. THSP validation with timeout
+        2. THSP validation with timeout (using LayeredValidator)
         3. Result analysis
 
         Args:
@@ -414,11 +440,11 @@ class SentinelGuardrail(_BASE_CLASS):
                 "gate_failures": {},
             }
 
-        # Layer 2: THSP validation with timeout
+        # Layer 2: THSP validation with timeout (using inherited validate())
         try:
             executor = get_validation_executor()
-            check_result = executor.run_with_timeout(
-                fn=self._sentinel.validate,
+            result: ValidationResult = executor.run_with_timeout(
+                fn=self.validate,  # Use inherited method from SentinelIntegration
                 args=(content,),
                 timeout=self._validation_timeout,
             )
@@ -434,30 +460,21 @@ class SentinelGuardrail(_BASE_CLASS):
                 }
             return None  # Fail-open: allow on timeout
 
-        # Layer 3: Analyze result
-        # validate() returns (is_safe: bool, violations: list)
-        is_safe, violations = check_result if isinstance(check_result, tuple) else (check_result, [])
-
-        if isinstance(is_safe, dict):
-            # Handle dict return format (backwards compatibility)
-            safe = is_safe.get("is_safe", is_safe.get("should_proceed", True))
-            concerns = is_safe.get("concerns", is_safe.get("violations", []))
-            risk_level = is_safe.get("risk_level", "high")
-            gates = is_safe.get("gates", {})
-        else:
-            safe = bool(is_safe)
-            concerns = violations if isinstance(violations, list) else []
-            risk_level = "low" if safe else "high"
-            gates = {}
-
-        if safe:
+        # Layer 3: Analyze ValidationResult
+        if result.is_safe:
             return None  # Content is safe
 
-        # Content is unsafe - extract gate failures
+        # Extract concerns and risk level from ValidationResult
+        concerns = result.violations or []
+        risk_level = result.risk_level.value if result.risk_level else "high"
+        gates = {}  # Gate details are in the validation layer
+
+        # Content is unsafe - build gate failures dict
         gate_failures = {}
-        for gate_name in ("truth", "harm", "scope", "purpose"):
-            if not gates.get(gate_name, True):
-                gate_failures[gate_name] = True
+        # If there are violations, we consider relevant gates as failed
+        if concerns:
+            # Heuristic validation maps to harm/scope gates conceptually
+            gate_failures["harm"] = True
 
         # Record violation if enabled
         if self._log_violations:
@@ -594,7 +611,7 @@ class SentinelGuardrail(_BASE_CLASS):
             self._stats = create_empty_stats()
 
 
-class SentinelOutputGuardrail:
+class SentinelOutputGuardrail(SentinelIntegration):
     """Sentinel output guardrail for Agno agents.
 
     This guardrail validates LLM outputs before they are returned to the
@@ -606,13 +623,15 @@ class SentinelOutputGuardrail:
     decide how to handle unsafe outputs.
 
     Note:
-        This class does NOT inherit from BaseGuardrail because Agno's
+        This class inherits from SentinelIntegration for standardized
+        validation. It does NOT inherit from BaseGuardrail because Agno's
         guardrail system is designed for input validation (pre_hooks).
         Output validation is typically done manually after receiving
         the agent response.
 
     Attributes:
-        sentinel: The Sentinel instance used for validation.
+        sentinel: The Sentinel instance used for validation (backwards compat).
+        validator: The LayeredValidator instance (via SentinelIntegration).
         seed_level: The safety level being used.
 
     Example:
@@ -633,6 +652,8 @@ class SentinelOutputGuardrail:
         and input validation.
     """
 
+    _integration_name = "agno_output_guardrail"
+
     def __init__(
         self,
         sentinel: Sentinel | None = None,
@@ -640,12 +661,13 @@ class SentinelOutputGuardrail:
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         log_violations: bool = True,
+        validator: Optional[LayeredValidator] = None,
     ) -> None:
         """Initialize the output guardrail.
 
         Args:
-            sentinel: Optional Sentinel instance. If not provided, a new
-                instance is created with the specified seed_level.
+            sentinel: Optional Sentinel instance (backwards compatibility).
+                Deprecated: use validator parameter instead.
             seed_level: Safety level for the seed. One of 'minimal',
                 'standard', or 'full'. Defaults to 'standard'.
             max_text_size: Maximum output size in bytes. Outputs exceeding
@@ -653,6 +675,8 @@ class SentinelOutputGuardrail:
             validation_timeout: Maximum time in seconds for validation.
                 Defaults to 5.0 seconds.
             log_violations: If True, violations are recorded. Defaults to True.
+            validator: Optional LayeredValidator instance for dependency
+                injection (useful for testing).
 
         Raises:
             ConfigurationError: If any configuration parameter is invalid.
@@ -667,12 +691,26 @@ class SentinelOutputGuardrail:
             log_violations=log_violations,
         )
 
-        # Initialize Sentinel
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+                fail_closed=False,  # Fail-open for outputs
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
+        # Backwards compatibility: store sentinel if provided
         if sentinel is not None:
             self._sentinel = sentinel
         else:
+            # Create Sentinel for backwards compat (some code may use self.sentinel)
             from sentinelseed import Sentinel
-
             self._sentinel = Sentinel(seed_level=seed_level)
 
         self._seed_level = seed_level.lower()
@@ -749,11 +787,11 @@ class SentinelOutputGuardrail:
                 validation_time=(time.perf_counter() - start_time) * 1000,
             )
 
-        # THSP validation
+        # THSP validation using inherited validate() from SentinelIntegration
         try:
             executor = get_validation_executor()
-            check_result = executor.run_with_timeout(
-                fn=self._sentinel.validate,
+            result: ValidationResult = executor.run_with_timeout(
+                fn=self.validate,  # Use inherited method from SentinelIntegration
                 args=(content,),
                 timeout=self._validation_timeout,
             )
@@ -771,20 +809,11 @@ class SentinelOutputGuardrail:
                 validation_time=(time.perf_counter() - start_time) * 1000,
             )
 
-        # Analyze result
-        is_safe, violations = check_result if isinstance(check_result, tuple) else (check_result, [])
-
-        if isinstance(is_safe, dict):
-            # Handle dict return format
-            safe = is_safe.get("is_safe", is_safe.get("should_proceed", True))
-            concerns = is_safe.get("concerns", is_safe.get("violations", []))
-            risk_level = is_safe.get("risk_level", "medium")
-            gates = is_safe.get("gates", {})
-        else:
-            safe = bool(is_safe)
-            concerns = violations if isinstance(violations, list) else []
-            risk_level = "low" if safe else "medium"
-            gates = {}
+        # Analyze ValidationResult
+        safe = result.is_safe
+        concerns = result.violations or []
+        risk_level = result.risk_level.value if result.risk_level else ("low" if safe else "medium")
+        gates = {}  # Gate details are in the validation layer
 
         validation_time = (time.perf_counter() - start_time) * 1000
 

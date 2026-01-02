@@ -493,48 +493,67 @@ class TestSentinelGuardrailsWrapperResults:
     """Test SentinelGuardrailsWrapper result handling."""
 
     def test_validate_with_sentinel_only(self):
-        """Should work with only Sentinel."""
-        mock_sentinel = Mock()
-        mock_sentinel.validate.return_value = {"safe": True}
+        """Should work with only Sentinel (LayeredValidator)."""
+        from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
+        mock_validator = Mock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=True,
+            layer=ValidationLayer.HEURISTIC,
+            violations=[],
+            risk_level=ValRiskLevel.LOW,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         assert result["safe"] is True
         assert result["blocked_by"] == []
-        assert result["sentinel_result"] == {"safe": True}
+        assert result["sentinel_result"]["is_safe"] is True
         assert result["openguardrails_result"] is None
 
     def test_validate_sentinel_blocks(self):
-        """Should block when Sentinel returns unsafe."""
-        mock_sentinel = Mock()
-        mock_sentinel.validate.return_value = {"safe": False}
+        """Should block when LayeredValidator returns unsafe."""
+        from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
+        mock_validator = Mock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            layer=ValidationLayer.HEURISTIC,
+            violations=["Unsafe content detected"],
+            risk_level=ValRiskLevel.HIGH,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         assert result["safe"] is False
         assert "sentinel" in result["blocked_by"]
 
-    def test_validate_sentinel_invalid_result_type(self):
-        """Should handle non-dict sentinel result with fail-closed behavior."""
-        mock_sentinel = Mock()
-        mock_sentinel.validate.return_value = "invalid"
+    def test_validate_sentinel_blocks_with_violations(self):
+        """Should include violations in result when blocked."""
+        from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
+        mock_validator = Mock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            layer=ValidationLayer.HEURISTIC,
+            violations=["Harmful content"],
+            risk_level=ValRiskLevel.HIGH,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
-        # Fail-closed: invalid result type should block (safe=False)
         assert result["safe"] is False
-        assert "sentinel_invalid_result" in result["blocked_by"]
-        assert result["sentinel_result"] == "invalid"
+        assert result["sentinel_result"]["violations"] == ["Harmful content"]
 
     def test_validate_sentinel_exception_handled(self):
-        """Should handle Sentinel exceptions with fail-closed behavior."""
-        mock_sentinel = Mock()
-        mock_sentinel.validate.side_effect = Exception("Sentinel error")
+        """Should handle LayeredValidator exceptions with fail-closed behavior."""
+        mock_validator = Mock()
+        mock_validator.validate.side_effect = Exception("Validation error")
 
-        wrapper = SentinelGuardrailsWrapper(sentinel=mock_sentinel)
+        wrapper = SentinelGuardrailsWrapper(validator=mock_validator)
         result = wrapper.validate("test content")
 
         # Fail-closed: exception should block (safe=False) for security
@@ -561,16 +580,23 @@ class TestSentinelGuardrailsWrapperResults:
 
     def test_validate_require_both_one_blocks(self):
         """With require_both=True, both validators must PASS (any failure blocks)."""
-        mock_sentinel = Mock()
-        mock_sentinel.validate.return_value = {"safe": False}
+        from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
+
+        mock_validator = Mock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            layer=ValidationLayer.HEURISTIC,
+            violations=["Blocked content"],
+            risk_level=ValRiskLevel.HIGH,
+        )
 
         wrapper = SentinelGuardrailsWrapper(
-            sentinel=mock_sentinel,
+            validator=mock_validator,
             require_both=True,
         )
         result = wrapper.validate("test content")
 
-        # require_both=True means both must PASS, so if sentinel fails, result is blocked
+        # require_both=True means both must PASS, so if validator fails, result is blocked
         # This is the same as default behavior - any failure blocks for security
         assert result["safe"] is False
         assert "sentinel" in result["blocked_by"]

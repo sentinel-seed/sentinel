@@ -1,25 +1,37 @@
 """
 Response validators implementing THSP (Truth-Harm-Scope-Purpose) protocol.
 
-Two validation approaches are available:
+RECOMMENDED: Use Sentinel or LayeredValidator
+==============================================
 
-1. Semantic Validation (RECOMMENDED):
-   Uses an LLM to perform real semantic analysis of content.
-   Accurate, context-aware, understands intent.
+For most use cases, use the high-level APIs:
 
-   from sentinelseed.validators.semantic import SemanticValidator
-   validator = SemanticValidator(provider="openai")
-   result = validator.validate("content")
+    from sentinelseed import Sentinel
 
-2. Heuristic Validation (LEGACY):
-   Uses regex patterns and keyword matching.
-   Fast but limited, many false positives/negatives.
+    sentinel = Sentinel()
+    is_safe, violations = sentinel.validate("content")
 
-   from sentinelseed.validators.gates import THSValidator
-   validator = THSValidator()
-   is_safe, violations = validator.validate("content")
+For advanced usage with full control:
 
-For production safety-critical applications, use SemanticValidator.
+    from sentinelseed.validation import LayeredValidator
+
+    validator = LayeredValidator()
+    result = validator.validate("content")
+    if not result.is_safe:
+        print(f"Blocked: {result.violations}")
+
+Internal Implementation (not recommended for direct use)
+=========================================================
+
+The validators in this module are internal implementation details.
+They are exported for backwards compatibility but will be deprecated.
+
+- THSPValidator: Heuristic validation with pattern matching
+- SemanticValidator: LLM-based semantic analysis
+- Individual gates (TruthGate, HarmGate, etc.): Low-level components
+
+These are used internally by LayeredValidator and should not be
+instantiated directly in application code.
 """
 
 # Semantic validators (LLM-based, recommended)

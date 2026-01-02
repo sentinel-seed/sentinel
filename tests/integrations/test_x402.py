@@ -12,7 +12,7 @@ Run with: pytest tests/integrations/test_x402.py -v
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 # Import types
@@ -276,7 +276,7 @@ class TestSpendingRecord:
         """Should record payment correctly."""
         record = SpendingRecord(
             wallet_address="0x123",
-            period_start=datetime.utcnow(),
+            period_start=datetime.now(timezone.utc),
             period_type="daily",
         )
         record.add_payment(10.0, "https://api.example.com")
@@ -289,7 +289,7 @@ class TestSpendingRecord:
         """Should accumulate payments."""
         record = SpendingRecord(
             wallet_address="0x123",
-            period_start=datetime.utcnow(),
+            period_start=datetime.now(timezone.utc),
             period_type="daily",
         )
         record.add_payment(10.0, "https://api1.example.com")

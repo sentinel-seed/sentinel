@@ -27,7 +27,7 @@ Reference: https://genai.owasp.org/resource/owasp-top-10-for-agentic-application
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from enum import Enum
 from datetime import datetime
 import logging

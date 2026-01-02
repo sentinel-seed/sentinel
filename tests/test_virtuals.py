@@ -55,11 +55,9 @@ class TestModuleExports:
         from sentinelseed.integrations.virtuals import (
             GAME_SDK_AVAILABLE,
             MEMORY_INTEGRITY_AVAILABLE,
-            THSP_VALIDATOR_AVAILABLE,
         )
         assert isinstance(GAME_SDK_AVAILABLE, bool)
         assert isinstance(MEMORY_INTEGRITY_AVAILABLE, bool)
-        assert isinstance(THSP_VALIDATOR_AVAILABLE, bool)
 
 
 # ============================================================================
@@ -253,10 +251,11 @@ class TestTHSPValidatorIntegration:
     security threats that were previously missed.
     """
 
-    def test_thsp_validator_available(self):
-        """Test that THSPValidator is available."""
-        from sentinelseed.integrations.virtuals import THSP_VALIDATOR_AVAILABLE
-        assert THSP_VALIDATOR_AVAILABLE is True
+    def test_layered_validator_available(self):
+        """Test that LayeredValidator is available (used for THSP validation)."""
+        from sentinelseed.validation import LayeredValidator
+        # LayeredValidator is used internally by virtuals integration
+        assert LayeredValidator is not None
 
     def test_detects_rm_rf_command(self):
         """Test detection of destructive system commands."""

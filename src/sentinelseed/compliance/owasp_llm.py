@@ -408,7 +408,7 @@ class OWASPLLMChecker:
                 failed = [k for k, v in gates.items() if not v]
                 return gates, is_safe, failed
 
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError, RuntimeError) as e:
             logger.error(f"Validation error: {e}")
             if self._fail_closed:
                 return {}, False, ["validation_error"]

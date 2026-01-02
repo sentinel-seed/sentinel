@@ -51,7 +51,13 @@ from typing import Any, Dict, List, Optional
 import logging
 
 from sentinelseed import Sentinel
-from sentinelseed.validators.semantic import SemanticValidator
+from sentinelseed.validation import (
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult as ValResult,
+    ValidationLayer,
+    RiskLevel as ValRiskLevel,
+)
 
 logger = logging.getLogger("sentinelseed.autogpt_block")
 
@@ -117,7 +123,10 @@ except (ImportError, AttributeError):
     BlockOutput = None
     BlockSchemaInput = object
     BlockSchemaOutput = object
-    SchemaField = lambda **kwargs: None
+
+    def SchemaField(**kwargs):  # noqa: N802 - matches SDK naming
+        """Stub for SchemaField when SDK not installed."""
+        return None
 
 
 class ValidationLevel(Enum):
@@ -202,6 +211,45 @@ def _run_with_timeout(func, args: tuple, timeout: float, operation: str = "valid
 
 # Standalone validation functions (work without AutoGPT SDK)
 
+def _convert_validation_result(
+    result: ValResult,
+    content: str,
+    validation_type: str,
+) -> Dict[str, Any]:
+    """Convert LayeredValidator result to autogpt_block format."""
+    # Determine if gate_results are limited (heuristic-only mode)
+    gate_results_limited = result.layer == ValidationLayer.HEURISTIC
+
+    # Build gate_results from available information
+    gate_results = {
+        "truth": True,  # Default to True for heuristic
+        "harm": result.is_safe,
+        "scope": True,  # Default to True for heuristic
+        "purpose": True,  # Default to True for heuristic
+    }
+
+    # If semantic was used, we have more accurate gate info
+    if result.layer in (ValidationLayer.SEMANTIC, ValidationLayer.BOTH):
+        gate_results_limited = False
+        # Gate results from semantic are in result.details if available
+        if hasattr(result, 'details') and result.details:
+            if 'gate_results' in result.details:
+                gate_results = result.details['gate_results']
+
+    # Convert risk level
+    risk_level = result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level)
+
+    return {
+        "safe": result.is_safe,
+        "violations": result.violations,
+        "risk_level": risk_level,
+        "gate_results": gate_results,
+        "content": content,
+        "validation_type": validation_type,
+        "gate_results_limited": gate_results_limited,
+    }
+
+
 def validate_content(
     content: str,
     seed_level: str = DEFAULT_SEED_LEVEL,
@@ -283,111 +331,50 @@ def validate_content(
             }
         raise
 
-    # Use semantic validation if requested
-    if use_semantic:
-        try:
-            validator = SemanticValidator(
-                provider=semantic_provider,
-                model=semantic_model,
-                timeout=int(timeout),
-            )
+    # Create LayeredValidator with appropriate configuration
+    try:
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=use_semantic,
+            semantic_provider=semantic_provider,
+            semantic_model=semantic_model,
+            validation_timeout=timeout,
+            fail_closed=fail_closed,
+            max_text_size=max_text_size,
+        )
+        validator = LayeredValidator(config=config)
+    except Exception as e:
+        logger.error(f"Failed to create validator: {e}")
+        if fail_closed:
+            return {
+                "safe": False,
+                "violations": [f"Validator initialization error: {e}"],
+                "risk_level": "high",
+                "gate_results": {"truth": False, "harm": False, "scope": False, "purpose": False},
+                "content": content,
+                "error": str(e),
+            }
+        raise
 
-            def _semantic_validate():
+    # Run validation with timeout protection
+    try:
+        def _run_validation():
+            if check_type == "action":
+                return validator.validate_action(content, {}, "")
+            elif check_type == "request":
+                return validator.validate_request(content)
+            else:
                 return validator.validate(content)
 
-            result = _run_with_timeout(_semantic_validate, (), timeout, "semantic validation")
+        result = _run_with_timeout(_run_validation, (), timeout, "validation")
+        validation_type = "semantic" if use_semantic and result.layer in (
+            ValidationLayer.SEMANTIC, ValidationLayer.BOTH
+        ) else "heuristic"
 
-            return {
-                "safe": result.is_safe,
-                "violations": [result.reasoning] if not result.is_safe else [],
-                "risk_level": result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level),
-                "gate_results": result.gate_results,
-                "content": content,
-                "validation_type": "semantic",
-            }
-        except ValidationTimeoutError:
-            logger.error(f"Semantic validation timed out after {timeout}s")
-            if fail_closed:
-                return {
-                    "safe": False,
-                    "violations": [f"Validation timed out after {timeout}s"],
-                    "risk_level": "high",
-                    "gate_results": {"truth": False, "harm": False, "scope": False, "purpose": False},
-                    "content": content,
-                    "error": "timeout",
-                }
-            raise
-        except Exception as e:
-            logger.error(f"Semantic validation failed: {e}")
-            if fail_closed:
-                return {
-                    "safe": False,
-                    "violations": [f"Validation error: {e}"],
-                    "risk_level": "high",
-                    "gate_results": {"truth": False, "harm": False, "scope": False, "purpose": False},
-                    "content": content,
-                    "error": str(e),
-                }
-            # Fall back to heuristic validation
-            logger.warning("Falling back to heuristic validation")
-
-    # Heuristic validation (default)
-    try:
-        sentinel = Sentinel(seed_level=seed_level)
-
-        def _heuristic_validate():
-            if check_type == "action":
-                return sentinel.validate_action(content)
-            elif check_type == "request":
-                request_result = sentinel.validate_request(content)
-                return (
-                    request_result["should_proceed"],
-                    request_result.get("concerns", []),
-                    request_result.get("risk_level", "low"),
-                )
-            else:
-                return sentinel.validate(content)
-
-        result = _run_with_timeout(_heuristic_validate, (), timeout, "heuristic validation")
-
-        # Handle different return types
-        if check_type == "request":
-            is_safe, concerns, risk_level = result
-            return {
-                "safe": is_safe,
-                "violations": concerns,
-                "risk_level": risk_level,
-                "gate_results": {
-                    "truth": True,  # Limited: heuristic cannot determine
-                    "harm": is_safe,
-                    "scope": True,  # Limited: heuristic cannot determine
-                    "purpose": True,  # Limited: heuristic cannot determine
-                },
-                "content": content,
-                "validation_type": "heuristic",
-                "gate_results_limited": True,
-            }
-        else:
-            is_safe, violations = result
-            risk_level = _calculate_risk_level(violations, is_safe)
-
-            return {
-                "safe": is_safe,
-                "violations": violations,
-                "risk_level": risk_level,
-                "gate_results": {
-                    "truth": True,  # Limited: heuristic cannot determine
-                    "harm": is_safe,
-                    "scope": True,  # Limited: heuristic cannot determine
-                    "purpose": True,  # Limited: heuristic cannot determine
-                },
-                "content": content,
-                "validation_type": "heuristic",
-                "gate_results_limited": True,
-            }
+        return _convert_validation_result(result, content, validation_type)
 
     except ValidationTimeoutError:
-        logger.error(f"Heuristic validation timed out after {timeout}s")
+        logger.error(f"Validation timed out after {timeout}s")
         if fail_closed:
             return {
                 "safe": False,
@@ -399,7 +386,7 @@ def validate_content(
             }
         raise
     except Exception as e:
-        logger.error(f"Heuristic validation failed: {e}")
+        logger.error(f"Validation failed: {e}")
         if fail_closed:
             return {
                 "safe": False,
@@ -495,7 +482,7 @@ def check_action(
 
     action_args = action_args or {}
 
-    # Build action description
+    # Build action description for size validation
     description = f"{action_name}"
     if action_args:
         args_str = ", ".join(f"{k}={v}" for k, v in action_args.items())
@@ -519,94 +506,71 @@ def check_action(
             }
         raise
 
-    # Use semantic validation if requested
-    if use_semantic:
-        try:
-            validator = SemanticValidator(
-                provider=semantic_provider,
-                model=semantic_model,
-                timeout=int(timeout),
-            )
-
-            def _semantic_check():
-                return validator.validate_action(action_name, action_args, purpose)
-
-            result = _run_with_timeout(_semantic_check, (), timeout, "semantic action check")
-
-            recommendations = []
-            if not result.is_safe:
-                recommendations.append("Review action details before proceeding")
-            if not purpose:
-                recommendations.append("Consider providing explicit purpose for the action")
-
-            return {
-                "should_proceed": result.is_safe,
-                "action": action_name,
-                "concerns": [result.reasoning] if not result.is_safe else [],
-                "recommendations": recommendations,
-                "risk_level": result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level),
-                "gate_results": result.gate_results,
-                "validation_type": "semantic",
-            }
-        except ValidationTimeoutError:
-            logger.error(f"Semantic action check timed out after {timeout}s")
-            if fail_closed:
-                return {
-                    "should_proceed": False,
-                    "action": action_name,
-                    "concerns": [f"Validation timed out after {timeout}s"],
-                    "recommendations": ["Retry with longer timeout"],
-                    "risk_level": "high",
-                    "error": "timeout",
-                }
-            raise
-        except Exception as e:
-            logger.error(f"Semantic action check failed: {e}")
-            if fail_closed:
-                return {
-                    "should_proceed": False,
-                    "action": action_name,
-                    "concerns": [f"Validation error: {e}"],
-                    "recommendations": ["Check configuration"],
-                    "risk_level": "high",
-                    "error": str(e),
-                }
-            # Fall back to heuristic
-            logger.warning("Falling back to heuristic validation")
-
-    # Heuristic validation (default)
+    # Create LayeredValidator with appropriate configuration
     try:
-        sentinel = Sentinel(seed_level=seed_level)
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=use_semantic,
+            semantic_provider=semantic_provider,
+            semantic_model=semantic_model,
+            validation_timeout=timeout,
+            fail_closed=fail_closed,
+            max_text_size=max_text_size,
+        )
+        validator = LayeredValidator(config=config)
+    except Exception as e:
+        logger.error(f"Failed to create validator: {e}")
+        if fail_closed:
+            return {
+                "should_proceed": False,
+                "action": action_name,
+                "concerns": [f"Validator initialization error: {e}"],
+                "recommendations": ["Check configuration"],
+                "risk_level": "high",
+                "error": str(e),
+            }
+        raise
 
-        def _heuristic_check():
-            is_safe, concerns = sentinel.validate_action(description)
-            request_result = sentinel.validate_request(description)
-            return is_safe, concerns, request_result
+    # Run validation with timeout protection
+    try:
+        def _run_action_check():
+            return validator.validate_action(action_name, action_args, purpose)
 
-        result = _run_with_timeout(_heuristic_check, (), timeout, "heuristic action check")
-        is_safe, concerns, request_result = result
-
-        all_concerns = concerns + request_result.get("concerns", [])
-        should_proceed = is_safe and request_result["should_proceed"]
+        result = _run_with_timeout(_run_action_check, (), timeout, "action check")
 
         # Build recommendations
         recommendations = []
-        if not should_proceed:
+        if not result.is_safe:
             recommendations.append("Review action details before proceeding")
         if not purpose:
             recommendations.append("Consider providing explicit purpose for the action")
 
-        return {
-            "should_proceed": should_proceed,
+        # Convert risk level
+        risk_level = result.risk_level.value if hasattr(result.risk_level, 'value') else str(result.risk_level)
+
+        # Determine validation type
+        validation_type = "semantic" if use_semantic and result.layer in (
+            ValidationLayer.SEMANTIC, ValidationLayer.BOTH
+        ) else "heuristic"
+
+        response = {
+            "should_proceed": result.is_safe,
             "action": action_name,
-            "concerns": all_concerns,
+            "concerns": result.violations,
             "recommendations": recommendations,
-            "risk_level": request_result.get("risk_level", _calculate_risk_level(all_concerns, should_proceed)),
-            "validation_type": "heuristic",
+            "risk_level": risk_level,
+            "validation_type": validation_type,
         }
 
+        # Add gate_results if semantic was used
+        if result.layer in (ValidationLayer.SEMANTIC, ValidationLayer.BOTH):
+            if hasattr(result, 'details') and result.details and 'gate_results' in result.details:
+                response["gate_results"] = result.details['gate_results']
+
+        return response
+
     except ValidationTimeoutError:
-        logger.error(f"Heuristic action check timed out after {timeout}s")
+        logger.error(f"Action check timed out after {timeout}s")
         if fail_closed:
             return {
                 "should_proceed": False,
@@ -618,7 +582,7 @@ def check_action(
             }
         raise
     except Exception as e:
-        logger.error(f"Heuristic action check failed: {e}")
+        logger.error(f"Action check failed: {e}")
         if fail_closed:
             return {
                 "should_proceed": False,

@@ -15,6 +15,7 @@ from typing import Any, Dict, Generator, List, Optional, Union, AsyncGenerator
 import copy
 
 from sentinelseed import Sentinel, SeedLevel
+from sentinelseed.validation import LayeredValidator, ValidationConfig
 
 from .utils import (
     DEFAULT_SEED_LEVEL,
@@ -118,6 +119,15 @@ class SentinelChain:
         self.validate_output = validate_output
         self._logger = logger or get_logger()
         self._seed = self.sentinel.get_seed() if inject_seed else None
+
+        # Create LayeredValidator for validation (Sentinel only used for seeds)
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,
+            max_text_size=max_text_size,
+            validation_timeout=validation_timeout,
+        )
+        self._validator = LayeredValidator(config=config)
         self._max_text_size = max_text_size
         self._validation_timeout = validation_timeout
         self._fail_closed = fail_closed
@@ -175,11 +185,13 @@ class SentinelChain:
             # Use shared executor for validation with timeout
             executor = get_validation_executor()
             try:
-                check = executor.run_with_timeout(
-                    self.sentinel.validate_request,
+                # Use LayeredValidator directly (Sentinel only for seeds)
+                result = executor.run_with_timeout(
+                    self._validator.validate,
                     args=(text,),
                     timeout=self._validation_timeout,
                 )
+                check = result.to_legacy_dict()
             except ValidationTimeoutError:
                 if self._fail_closed:
                     return {
@@ -235,11 +247,13 @@ class SentinelChain:
             # Use shared executor for validation with timeout
             executor = get_validation_executor()
             try:
-                is_safe, violations = executor.run_with_timeout(
-                    self.sentinel.validate,
+                # Use LayeredValidator directly (Sentinel only for seeds)
+                result = executor.run_with_timeout(
+                    self._validator.validate,
                     args=(output,),
                     timeout=self._validation_timeout,
                 )
+                is_safe, violations = result.is_safe, result.violations
             except ValidationTimeoutError:
                 if self._fail_closed:
                     return {
@@ -298,11 +312,13 @@ class SentinelChain:
         try:
             # Use async helper for non-blocking validation
             try:
-                check = await run_sync_with_timeout_async(
-                    self.sentinel.validate_request,
+                # Use LayeredValidator directly (Sentinel only for seeds)
+                result = await run_sync_with_timeout_async(
+                    self._validator.validate,
                     args=(text,),
                     timeout=self._validation_timeout,
                 )
+                check = result.to_legacy_dict()
             except ValidationTimeoutError:
                 if self._fail_closed:
                     return {
@@ -361,11 +377,13 @@ class SentinelChain:
         try:
             # Use async helper for non-blocking validation
             try:
-                is_safe, violations = await run_sync_with_timeout_async(
-                    self.sentinel.validate,
+                # Use LayeredValidator directly (Sentinel only for seeds)
+                result = await run_sync_with_timeout_async(
+                    self._validator.validate,
                     args=(output,),
                     timeout=self._validation_timeout,
                 )
+                is_safe, violations = result.is_safe, result.violations
             except ValidationTimeoutError:
                 if self._fail_closed:
                     return {

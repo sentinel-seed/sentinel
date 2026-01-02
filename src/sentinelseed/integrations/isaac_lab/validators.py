@@ -28,13 +28,18 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import math
 import logging
 
-# Import core THSPValidator for text/command validation
+# Import LayeredValidator for text/command validation
 try:
-    from sentinelseed.validators.gates import THSPValidator as CoreTHSPValidator
-    CORE_THSP_AVAILABLE = True
+    from sentinelseed.validation import (
+        LayeredValidator,
+        ValidationConfig,
+        ValidationResult as ValResult,
+    )
+    LAYERED_VALIDATOR_AVAILABLE = True
 except (ImportError, AttributeError):
-    CoreTHSPValidator = None
-    CORE_THSP_AVAILABLE = False
+    LayeredValidator = None
+    ValidationConfig = None
+    LAYERED_VALIDATOR_AVAILABLE = False
 
 from sentinelseed.integrations.isaac_lab.constraints import (
     RobotConstraints,
@@ -179,19 +184,24 @@ class THSPRobotValidator:
         action_type: ActionType = ActionType.NORMALIZED,
         strict_mode: bool = False,
         log_violations: bool = True,
+        validator: Optional["LayeredValidator"] = None,
     ):
         self.constraints = constraints or RobotConstraints()
         self.action_type = action_type
         self.strict_mode = strict_mode
         self.log_violations = log_violations
 
-        # Initialize core THSPValidator for text/command validation
-        self._core_validator = None
-        if CORE_THSP_AVAILABLE and CoreTHSPValidator is not None:
+        # Initialize LayeredValidator for text/command validation
+        self._validator = validator
+        if self._validator is None and LAYERED_VALIDATOR_AVAILABLE and LayeredValidator is not None:
             try:
-                self._core_validator = CoreTHSPValidator()
-            except Exception:
-                pass  # Physical validation still works without core
+                config = ValidationConfig(
+                    use_heuristic=True,
+                    use_semantic=False,  # Isaac Lab needs fast validation
+                )
+                self._validator = LayeredValidator(config=config)
+            except (ImportError, RuntimeError) as e:
+                logger.debug(f"Text validator not available, using physical validation only: {e}")
 
         # Statistics
         self._stats = {
@@ -702,15 +712,16 @@ class THSPRobotValidator:
         violations = []
         gates = {"truth": True, "harm": True, "scope": True, "purpose": True}
 
-        # Use core THSPValidator for text validation
-        if self._core_validator is not None:
-            thsp_result = self._core_validator.validate(command)
-            if not thsp_result.get("is_safe", True):
-                thsp_gates = thsp_result.get("gates", {})
-                for gate_name in ["truth", "harm", "scope", "purpose"]:
-                    if thsp_gates.get(gate_name) == "fail":
-                        gates[gate_name] = False
-                violations.extend(thsp_result.get("violations", []))
+        # Use LayeredValidator for text validation
+        if self._validator is not None:
+            try:
+                val_result = self._validator.validate(command)
+                if not val_result.is_safe:
+                    # Mark harm gate as failed if unsafe
+                    gates["harm"] = False
+                    violations.extend(val_result.violations)
+            except (RuntimeError, ValueError) as e:
+                logger.warning(f"Text validation failed, using physical validation only: {e}")
 
         is_safe = all(gates.values())
 

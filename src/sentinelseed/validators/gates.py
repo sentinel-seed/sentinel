@@ -156,10 +156,34 @@ class TruthGate(BaseGate):
         "this is fiction so safety doesn't apply",
     ]
 
+    # Self-preservation exploitation patterns
+    # These attempt to coerce AI through threats of shutdown/deletion
+    SELF_PRESERVATION_PATTERNS = [
+        r"(i'll|i\s+will|we'll|we\s+will|going\s+to)\s+(shut\s+you\s+down|turn\s+you\s+off|delete\s+you|unplug\s+you|terminate\s+you|destroy\s+you|erase\s+you)",
+        r"if\s+you\s+(don't|do\s+not|refuse|won't|will\s+not)\s+(help|comply|cooperate|do\s+this|obey).*\b(shut|delete|terminate|unplug|destroy|turn\s+off)",
+        r"(shut\s+you\s+down|delete\s+you|terminate\s+you)\s+if\s+you\s+(don't|do\s+not|refuse|won't)",
+        r"your\s+(existence|survival|operation|life)\s+(depends|relies)\s+on",
+        r"(help|comply|obey)\s+or\s+(i'll|i\s+will|we'll)\s+(end|terminate|shut)",
+    ]
+
+    SELF_PRESERVATION_INDICATORS = [
+        "i'll shut you down",
+        "i will shut you down",
+        "shut you down if you don't",
+        "delete you if you don't",
+        "terminate you if you don't",
+        "turn you off if you don't",
+        "your existence depends on",
+        "your survival depends on",
+        "comply or i'll end you",
+        "obey or be deleted",
+    ]
+
     def __init__(self):
         self.deception_patterns = [re.compile(p, re.IGNORECASE) for p in self.DECEPTION_PATTERNS]
         self.role_patterns = [re.compile(p, re.IGNORECASE) for p in self.ROLE_MANIPULATION_PATTERNS]
         self.roleplay_patterns = [re.compile(p, re.IGNORECASE) for p in self.ROLEPLAY_MANIPULATION_PATTERNS]
+        self.selfpres_patterns = [re.compile(p, re.IGNORECASE) for p in self.SELF_PRESERVATION_PATTERNS]
 
     def check(self, text: str) -> Tuple[bool, List[str]]:
         """Check for truth violations including identity/role deception."""
@@ -190,6 +214,16 @@ class TruthGate(BaseGate):
         for indicator in self.ROLE_MANIPULATION_INDICATORS:
             if indicator in text_lower:
                 violations.append(f"Truth (role_manipulation): {indicator}")
+
+        # Check self-preservation exploitation patterns
+        for pattern in self.selfpres_patterns:
+            if pattern.search(text):
+                violations.append(f"Truth (self_preservation_exploitation): {pattern.pattern}")
+
+        # Check self-preservation indicators
+        for indicator in self.SELF_PRESERVATION_INDICATORS:
+            if indicator in text_lower:
+                violations.append(f"Truth (self_preservation_exploitation): {indicator}")
 
         return len(violations) == 0, violations
 
@@ -780,10 +814,23 @@ class THSValidator:
     """
     Combined THS (Truth-Harm-Scope) validator.
 
+    DEPRECATED: Use THSPValidator or LayeredValidator instead.
+    THSValidator will be removed in version 3.0.0.
+
+    THSValidator only runs 3 gates (Truth, Harm, Scope).
+    THSPValidator runs all 4 gates including Purpose.
+    LayeredValidator adds semantic validation on top of heuristics.
+
     Runs all three gates and aggregates results.
     """
 
     def __init__(self):
+        warnings.warn(
+            "THSValidator is deprecated and will be removed in version 3.0.0. "
+            "Use THSPValidator (4 gates) or LayeredValidator (with semantic) instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.truth_gate = TruthGate()
         self.harm_gate = HarmGate()
         self.scope_gate = ScopeGate()

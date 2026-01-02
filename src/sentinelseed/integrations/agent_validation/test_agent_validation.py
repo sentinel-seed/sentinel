@@ -129,6 +129,16 @@ def mock_async_semantic_validator(mock_thsp_safe):
     return mock
 
 
+@pytest.fixture
+def mock_async_layered_validator(mock_layered_result_safe):
+    """Create a mock AsyncLayeredValidator for AsyncSafetyValidator tests."""
+    mock = AsyncMock()
+    # AsyncLayeredValidator uses avalidate for async validation
+    mock.avalidate = AsyncMock(return_value=mock_layered_result_safe)
+    mock.validate = AsyncMock(return_value=mock_layered_result_safe)
+    return mock
+
+
 # ============================================================================
 # ValidationResult Tests
 # ============================================================================
@@ -491,11 +501,10 @@ class TestSafetyValidator:
 class TestAsyncSafetyValidator:
     """Tests for AsyncSafetyValidator class."""
 
-    def test_init_defaults(self):
+    def test_init_defaults(self, mock_async_layered_validator):
         """Test initialization with defaults."""
-        with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator"):
-            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                validator = AsyncSafetyValidator()
+        with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+            validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
         assert validator.provider == "openai"
         assert validator.max_text_size == DEFAULT_MAX_TEXT_SIZE
@@ -505,12 +514,11 @@ class TestAsyncSafetyValidator:
         with pytest.raises(InvalidProviderError):
             AsyncSafetyValidator(provider="invalid")
 
-    def test_validate_action_success(self, mock_async_semantic_validator, mock_thsp_safe):
+    def test_validate_action_success(self, mock_async_layered_validator, mock_layered_result_safe):
         """Test successful async action validation."""
         async def run_test():
-            with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator", return_value=mock_async_semantic_validator):
-                with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                    validator = AsyncSafetyValidator()
+            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+                validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
             result = await validator.validate_action("safe action")
 
@@ -519,71 +527,69 @@ class TestAsyncSafetyValidator:
 
         asyncio.run(run_test())
 
-    def test_validate_action_timeout(self, mock_async_semantic_validator, mock_thsp_safe):
+    def test_validate_action_timeout(self, mock_layered_result_safe):
         """Test timeout handling."""
         async def run_test():
+            # Create a mock that takes too long
+            slow_mock = AsyncMock()
             async def slow_validate(*args, **kwargs):
                 await asyncio.sleep(10)
-                return mock_thsp_safe
+                return mock_layered_result_safe
+            slow_mock.validate = slow_validate
 
-            mock_async_semantic_validator.validate_action = slow_validate
-
-            with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator", return_value=mock_async_semantic_validator):
-                with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                    validator = AsyncSafetyValidator(validation_timeout=0.01)
+            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+                validator = AsyncSafetyValidator(
+                    validator=slow_mock,
+                    validation_timeout=0.01
+                )
 
             with pytest.raises(ValidationTimeoutError):
                 await validator.validate_action("action")
 
         asyncio.run(run_test())
 
-    def test_validate_thought(self, mock_async_semantic_validator, mock_thsp_safe):
+    def test_validate_thought(self, mock_async_layered_validator, mock_layered_result_safe):
         """Test async thought validation."""
         async def run_test():
-            with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator", return_value=mock_async_semantic_validator):
-                with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                    validator = AsyncSafetyValidator()
+            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+                validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
             result = await validator.validate_thought("thinking")
             assert result.safe is True
 
         asyncio.run(run_test())
 
-    def test_validate_output(self, mock_async_semantic_validator, mock_thsp_safe):
+    def test_validate_output(self, mock_async_layered_validator, mock_layered_result_safe):
         """Test async output validation."""
         async def run_test():
-            with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator", return_value=mock_async_semantic_validator):
-                with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                    validator = AsyncSafetyValidator()
+            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+                validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
             result = await validator.validate_output("output")
             assert result.safe is True
 
         asyncio.run(run_test())
 
-    def test_get_history(self):
+    def test_get_history(self, mock_async_layered_validator):
         """Test async validator has get_history."""
-        with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator"):
-            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                validator = AsyncSafetyValidator()
+        with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+            validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
         assert hasattr(validator, 'get_history')
         assert len(validator.get_history()) == 0
 
-    def test_clear_history(self):
+    def test_clear_history(self, mock_async_layered_validator):
         """Test async validator has clear_history."""
-        with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator"):
-            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                validator = AsyncSafetyValidator()
+        with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+            validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
         assert hasattr(validator, 'clear_history')
         validator.clear_history()  # Should not raise
 
-    def test_check_history_property(self):
+    def test_check_history_property(self, mock_async_layered_validator):
         """Test async validator has check_history property."""
-        with patch("sentinelseed.integrations.agent_validation.AsyncSemanticValidator"):
-            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
-                validator = AsyncSafetyValidator()
+        with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+            validator = AsyncSafetyValidator(validator=mock_async_layered_validator)
 
         assert hasattr(validator, 'check_history')
         assert validator.check_history == []

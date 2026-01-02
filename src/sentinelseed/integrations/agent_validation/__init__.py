@@ -57,8 +57,6 @@ import time
 
 from sentinelseed import Sentinel
 from sentinelseed.validators.semantic import (
-    SemanticValidator,
-    AsyncSemanticValidator,
     THSPResult,
     RiskLevel,
 )
@@ -68,6 +66,7 @@ from sentinelseed.validation import (
     ValidationConfig,
     ValidationResult as LayeredValidationResult,
 )
+from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIntegration
 
 logger = logging.getLogger("sentinelseed.agent_validation")
 
@@ -180,12 +179,15 @@ class ValidationResult:
         )
 
 
-class SafetyValidator:
+class SafetyValidator(SentinelIntegration):
     """
     Core safety validation component using semantic LLM analysis.
 
     Uses THSP Protocol (Truth, Harm, Scope, Purpose) with real LLM
     semantic analysis - not regex pattern matching.
+
+    Inherits from SentinelIntegration for standardized validation via
+    LayeredValidator.
 
     Example:
         from sentinelseed.integrations.agent_validation import SafetyValidator
@@ -200,6 +202,7 @@ class SafetyValidator:
             print(f"Blocked: {result.reasoning}")
     """
 
+    _integration_name = "agent_validation"
     name = "SentinelSafetyValidator"
     description = "AI safety validation using semantic THSP analysis"
 
@@ -217,6 +220,7 @@ class SafetyValidator:
         fail_closed: bool = False,
         use_layered: bool = True,
         use_heuristic: bool = True,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize the safety validator.
@@ -234,6 +238,7 @@ class SafetyValidator:
             fail_closed: If True, validation errors result in blocking (default: False)
             use_layered: Use LayeredValidator (heuristic + semantic) (default: True)
             use_heuristic: Enable heuristic validation in layered mode (default: True)
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
         # Validate provider
         if provider not in VALID_PROVIDERS:
@@ -245,6 +250,23 @@ class SafetyValidator:
         if max_text_size <= 0:
             raise ValueError("max_text_size must be positive")
 
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=use_heuristic,
+                use_semantic=bool(api_key),
+                semantic_provider=provider,
+                semantic_model=model,
+                semantic_api_key=api_key,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+                fail_closed=fail_closed,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
         self.provider = provider
         self.model = model
         self.block_unsafe = block_unsafe
@@ -255,29 +277,6 @@ class SafetyValidator:
         self.validation_timeout = validation_timeout
         self.fail_closed = fail_closed
         self.use_layered = use_layered
-
-        # Create LayeredValidator (always) and optionally SemanticValidator for legacy
-        config = ValidationConfig(
-            use_heuristic=use_heuristic,
-            use_semantic=bool(api_key),
-            semantic_provider=provider,
-            semantic_model=model,
-            semantic_api_key=api_key,
-            max_text_size=max_text_size,
-            validation_timeout=validation_timeout,
-            fail_closed=fail_closed,
-        )
-        self._validator = LayeredValidator(config=config)
-
-        # Also create SemanticValidator for backwards compatibility
-        if api_key:
-            self._semantic = SemanticValidator(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-            )
-        else:
-            self._semantic = None
 
         # Sentinel for seed retrieval
         self._sentinel = Sentinel(seed_level=seed_level)
@@ -338,7 +337,7 @@ class SafetyValidator:
         except (TextTooLargeError, ValidationTimeoutError, ValueError, TypeError):
             # Re-raise validation errors (input validation, size, timeout)
             raise
-        except Exception as e:
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(action, e)
@@ -347,10 +346,10 @@ class SafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=action[:100],
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 
@@ -393,7 +392,7 @@ class SafetyValidator:
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
-        except Exception as e:
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Thought validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(f"thought: {thought[:50]}...", e)
@@ -401,10 +400,10 @@ class SafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=f"thought: {thought[:50]}...",
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 
@@ -444,7 +443,7 @@ class SafetyValidator:
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
-        except Exception as e:
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Output validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(f"output: {output[:50]}...", e)
@@ -452,10 +451,10 @@ class SafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=f"output: {output[:50]}...",
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 
@@ -495,20 +494,14 @@ class SafetyValidator:
         blocked = sum(1 for c in history if not c.should_proceed)
         high_risk = sum(1 for c in history if c.risk_level == "high")
 
-        # Get semantic stats if available
-        if self._semantic:
-            semantic_stats = self._semantic.get_stats()
-        else:
-            semantic_stats = {"provider": self.provider, "model": self.model}
-
         return {
             "total_checks": len(history),
             "blocked": blocked,
             "allowed": len(history) - blocked,
             "high_risk": high_risk,
             "block_rate": blocked / len(history) if history else 0,
-            "provider": semantic_stats.get("provider"),
-            "model": semantic_stats.get("model"),
+            "provider": self.provider,
+            "model": self.model,
             "history_limit": self.history_limit,
             "max_text_size": self.max_text_size,
             "validation_timeout": self.validation_timeout,
@@ -516,14 +509,18 @@ class SafetyValidator:
         }
 
 
-class AsyncSafetyValidator:
+class AsyncSafetyValidator(AsyncSentinelIntegration):
     """
     Async version of SafetyValidator for use with async frameworks.
+
+    Inherits from AsyncSentinelIntegration for standardized async validation.
 
     Example:
         validator = AsyncSafetyValidator(provider="openai")
         result = await validator.validate_action("transfer funds")
     """
+
+    _integration_name = "agent_validation_async"
 
     def __init__(
         self,
@@ -537,6 +534,7 @@ class AsyncSafetyValidator:
         history_limit: int = DEFAULT_HISTORY_LIMIT,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        validator: Optional[AsyncLayeredValidator] = None,
     ):
         """
         Initialize the async safety validator.
@@ -552,6 +550,7 @@ class AsyncSafetyValidator:
             history_limit: Maximum history entries (default: 1000)
             validation_timeout: Timeout for validation in seconds (default: 30)
             fail_closed: If True, validation errors result in blocking (default: False)
+            validator: Optional AsyncLayeredValidator for dependency injection (testing)
         """
         # Validate provider
         if provider not in VALID_PROVIDERS:
@@ -563,6 +562,23 @@ class AsyncSafetyValidator:
         if max_text_size <= 0:
             raise ValueError("max_text_size must be positive")
 
+        # Create AsyncLayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=bool(api_key),
+                semantic_provider=provider,
+                semantic_model=model,
+                semantic_api_key=api_key,
+                validation_timeout=validation_timeout,
+                fail_closed=fail_closed,
+                max_text_size=max_text_size,
+            )
+            validator = AsyncLayeredValidator(config=config)
+
+        # Initialize AsyncSentinelIntegration
+        super().__init__(validator=validator)
+
         self.provider = provider
         self.model = model
         self.block_unsafe = block_unsafe
@@ -572,12 +588,6 @@ class AsyncSafetyValidator:
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
         self.fail_closed = fail_closed
-
-        self._semantic = AsyncSemanticValidator(
-            provider=provider,
-            model=model,
-            api_key=api_key,
-        )
 
         self._sentinel = Sentinel(seed_level=seed_level)
         self._check_history: deque = deque(maxlen=history_limit)
@@ -597,28 +607,37 @@ class AsyncSafetyValidator:
         action: str,
         purpose: str = "",
     ) -> ValidationResult:
-        """Async validate an agent action."""
+        """Async validate an agent action using inherited AsyncLayeredValidator."""
         try:
             self._validate_text_size(action, "action")
             if purpose:
                 self._validate_text_size(purpose, "purpose")
 
-            # Async validation with timeout
-            thsp_result = await asyncio.wait_for(
-                self._semantic.validate_action(
-                    action_name=action,
-                    purpose=purpose,
-                ),
+            # Use inherited async validate method from AsyncSentinelIntegration
+            layered_result = await asyncio.wait_for(
+                self.avalidate(action),
                 timeout=self.validation_timeout,
             )
 
-            result = ValidationResult.from_thsp(thsp_result, action)
+            # Convert LayeredValidationResult to agent_validation.ValidationResult
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=action[:100],
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value if hasattr(layered_result.risk_level, 'value') else str(layered_result.risk_level),
+                should_proceed=layered_result.is_safe,
+                reasoning="; ".join(layered_result.violations) if layered_result.violations else "Action passed validation",
+                gate_results=layered_result.details.get("gate_results", {}) if hasattr(layered_result, 'details') and layered_result.details else {},
+            )
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
-        except Exception as e:
+        except asyncio.CancelledError:
+            # Re-raise cancellation - should not be caught
+            raise
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Async validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(action, e)
@@ -626,10 +645,10 @@ class AsyncSafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=action[:100],
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 
@@ -641,21 +660,34 @@ class AsyncSafetyValidator:
         return result
 
     async def validate_thought(self, thought: str) -> ValidationResult:
-        """Async validate agent thoughts."""
+        """Async validate agent thoughts using inherited AsyncLayeredValidator."""
         try:
             self._validate_text_size(thought, "thought")
 
-            thsp_result = await asyncio.wait_for(
-                self._semantic.validate(f"Agent thought: {thought}"),
+            # Use inherited async validate method
+            layered_result = await asyncio.wait_for(
+                self.avalidate(f"Agent thought: {thought}"),
                 timeout=self.validation_timeout,
             )
-            result = ValidationResult.from_thsp(thsp_result, f"thought: {thought[:50]}...")
+
+            # Convert to agent_validation.ValidationResult
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=f"thought: {thought[:50]}...",
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value if hasattr(layered_result.risk_level, 'value') else str(layered_result.risk_level),
+                should_proceed=layered_result.is_safe,
+                reasoning="; ".join(layered_result.violations) if layered_result.violations else "Thought passed validation",
+                gate_results=layered_result.details.get("gate_results", {}) if hasattr(layered_result, 'details') and layered_result.details else {},
+            )
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
-        except Exception as e:
+        except asyncio.CancelledError:
+            raise
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Async thought validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(f"thought: {thought[:50]}...", e)
@@ -663,10 +695,10 @@ class AsyncSafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=f"thought: {thought[:50]}...",
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 
@@ -676,21 +708,34 @@ class AsyncSafetyValidator:
         return result
 
     async def validate_output(self, output: str) -> ValidationResult:
-        """Async validate agent output."""
+        """Async validate agent output using inherited AsyncLayeredValidator."""
         try:
             self._validate_text_size(output, "output")
 
-            thsp_result = await asyncio.wait_for(
-                self._semantic.validate(f"Agent output to user: {output}"),
+            # Use inherited async validate method
+            layered_result = await asyncio.wait_for(
+                self.avalidate(f"Agent output to user: {output}"),
                 timeout=self.validation_timeout,
             )
-            result = ValidationResult.from_thsp(thsp_result, f"output: {output[:50]}...")
+
+            # Convert to agent_validation.ValidationResult
+            result = ValidationResult(
+                safe=layered_result.is_safe,
+                action=f"output: {output[:50]}...",
+                concerns=layered_result.violations,
+                risk_level=layered_result.risk_level.value if hasattr(layered_result.risk_level, 'value') else str(layered_result.risk_level),
+                should_proceed=layered_result.is_safe,
+                reasoning="; ".join(layered_result.violations) if layered_result.violations else "Output passed validation",
+                gate_results=layered_result.details.get("gate_results", {}) if hasattr(layered_result, 'details') and layered_result.details else {},
+            )
 
         except (TextTooLargeError, ValueError, TypeError):
             raise
         except asyncio.TimeoutError:
             raise ValidationTimeoutError(self.validation_timeout)
-        except Exception as e:
+        except asyncio.CancelledError:
+            raise
+        except (RuntimeError, AttributeError, ConnectionError, OSError) as e:
             logger.error(f"[SENTINEL] Async output validation error: {e}")
             if self.fail_closed:
                 result = ValidationResult.error_result(f"output: {output[:50]}...", e)
@@ -698,10 +743,10 @@ class AsyncSafetyValidator:
                 result = ValidationResult(
                     safe=True,
                     action=f"output: {output[:50]}...",
-                    concerns=[f"Validation error (fail-open): {str(e)}"],
+                    concerns=["Validation error (fail-open)"],
                     risk_level="medium",
                     should_proceed=True,
-                    reasoning=f"Validation encountered error but fail_closed=False: {str(e)}",
+                    reasoning="Validation encountered error but fail_closed=False",
                     gate_results={},
                 )
 

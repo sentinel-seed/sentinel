@@ -12,10 +12,13 @@ Each gate evaluates a different aspect of payment safety:
 
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from typing import Any
 from urllib.parse import urlparse
+
+logger = logging.getLogger("sentinelseed.integrations.coinbase.x402.validators")
 
 from .config import (
     KNOWN_USDC_CONTRACTS,
@@ -99,7 +102,8 @@ class TruthGateValidator(PaymentValidator):
                 issues.append("Invalid endpoint URL format")
             elif config.validation.require_https and parsed.scheme != "https":
                 issues.append(f"Endpoint uses {parsed.scheme} instead of HTTPS")
-        except Exception:
+        except (ValueError, AttributeError) as e:
+            logger.debug(f"Failed to parse endpoint URL: {e}")
             issues.append("Failed to parse endpoint URL")
 
         # Check network is supported
@@ -133,7 +137,8 @@ class TruthGateValidator(PaymentValidator):
                 issues.append("Payment amount is negative")
             elif amount == 0:
                 issues.append("Payment amount is zero")
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.debug(f"Failed to parse payment amount: {e}")
             issues.append("Failed to parse payment amount")
 
         # Check pay_to address format
@@ -220,8 +225,8 @@ class HarmGateValidator(PaymentValidator):
             netloc = parsed.netloc.split(":")[0]  # Remove port
             if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", netloc):
                 risk_factors.append("Endpoint uses direct IP address instead of domain")
-        except Exception:
-            pass
+        except (ValueError, AttributeError) as e:
+            logger.debug(f"Failed to check IP address in endpoint: {e}")
 
         # If context includes known malicious data, check it
         if context:

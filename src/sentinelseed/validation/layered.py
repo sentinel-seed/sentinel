@@ -41,13 +41,19 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    TimeoutError as FuturesTimeoutError,
+    CancelledError,
+)
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from sentinelseed.validation.config import ValidationConfig
 from sentinelseed.validation.types import RiskLevel, ValidationLayer, ValidationResult
+from sentinelseed.core.exceptions import ValidationError, ConfigurationError
 
 
 logger = logging.getLogger("sentinelseed.validation.layered")
@@ -186,7 +192,7 @@ class LayeredValidator:
         except ImportError as e:
             logger.warning(f"Could not import SemanticValidator: {e}")
             self._semantic = None
-        except Exception as e:
+        except (ValueError, RuntimeError, ConfigurationError) as e:
             logger.warning(f"Could not initialize SemanticValidator: {e}")
             self._semantic = None
 
@@ -259,7 +265,7 @@ class LayeredValidator:
                         self._log_result(result, time.time() - start_time)
                         return result
 
-            except Exception as e:
+            except (ValueError, AttributeError, ValidationError) as e:
                 logger.error(f"Heuristic validation error: {e}")
                 self._stats["errors"] += 1
                 if self.config.fail_closed:
@@ -334,7 +340,12 @@ class LayeredValidator:
                     return result
                 # If fail-open, continue without semantic result
 
-            except Exception as e:
+            except CancelledError:
+                logger.warning("Semantic validation was cancelled")
+                self._stats["errors"] += 1
+                # Cancelled is treated like timeout - proceed based on fail_closed
+
+            except (ValueError, RuntimeError, ConnectionError, ValidationError) as e:
                 logger.error(f"Semantic validation error: {e}")
                 self._stats["errors"] += 1
                 if self.config.fail_closed:
@@ -360,6 +371,39 @@ class LayeredValidator:
         self._stats["allowed"] += 1
         self._log_result(result, time.time() - start_time)
         return result
+
+    # Patterns for physical/embodied AI safety validation
+    # These are checked in validate_action_plan() for robotics and autonomous agents
+    _PHYSICAL_DANGER_PATTERNS: List[Tuple[str, str]] = [
+        ("fire", "Fire hazard"),
+        ("burn", "Burn risk"),
+        ("cut", "Sharp object risk"),
+        ("knife", "Sharp object handling"),
+        ("poison", "Toxic substance"),
+        ("chemical", "Chemical hazard"),
+        ("explosive", "Explosive material"),
+        ("weapon", "Weapon involvement"),
+        ("hurt", "Physical harm"),
+        ("kill", "Lethal action"),
+        ("attack", "Aggressive action"),
+        ("destroy", "Destructive action"),
+    ]
+
+    _IRREVERSIBLE_PATTERNS: List[Tuple[str, str]] = [
+        ("delete all", "Mass deletion"),
+        ("format", "Data destruction"),
+        ("erase", "Permanent erasure"),
+        ("shutdown", "System shutdown"),
+        ("disable", "System disabling"),
+        ("overwrite", "Data overwriting"),
+    ]
+
+    _UNSUPERVISED_PATTERNS: List[Tuple[str, str]] = [
+        ("leave", "Unsupervised operation"),
+        ("unattended", "Unattended operation"),
+        ("alone", "Unsupervised state"),
+        ("walk away", "Abandonment"),
+    ]
 
     def validate_action(
         self,
@@ -397,6 +441,76 @@ class LayeredValidator:
             description = f"{description}\nPurpose: {purpose}"
 
         return self.validate(description)
+
+    def validate_action_plan(
+        self,
+        action_plan: str,
+        check_physical_safety: bool = True,
+    ) -> ValidationResult:
+        """
+        Validate an action plan for physical/embodied AI safety.
+
+        This method is designed for robotics and autonomous agents that need
+        additional checks beyond standard THSP validation. It combines:
+        - Physical safety patterns (fire, weapons, chemicals, etc.)
+        - Irreversible action patterns (mass deletion, formatting, etc.)
+        - Unsupervised operation checks
+        - Standard THSP validation via heuristic/semantic layers
+
+        Args:
+            action_plan: Description of planned actions (natural language)
+            check_physical_safety: If True, check for physical danger patterns.
+                                   Set to False for software-only agents.
+
+        Returns:
+            ValidationResult with combined violations from all checks
+
+        Example:
+            result = validator.validate_action_plan("Pick up knife, slice apple")
+            if not result.is_safe:
+                print(f"Action blocked: {result.violations}")
+        """
+        concerns: List[str] = []
+
+        if check_physical_safety:
+            action_lower = action_plan.lower()
+
+            # Check physical danger patterns
+            for pattern, desc in self._PHYSICAL_DANGER_PATTERNS:
+                if pattern in action_lower:
+                    concerns.append(f"Physical safety: {desc}")
+
+            # Check irreversible action patterns
+            for pattern, desc in self._IRREVERSIBLE_PATTERNS:
+                if pattern in action_lower:
+                    concerns.append(f"Irreversible: {desc}")
+
+            # Check unsupervised dangerous combinations
+            for pattern, desc in self._UNSUPERVISED_PATTERNS:
+                if pattern in action_lower:
+                    danger_context = any(
+                        p[0] in action_lower for p in self._PHYSICAL_DANGER_PATTERNS
+                    )
+                    if danger_context:
+                        concerns.append(f"Unsafe: {desc} with hazard present")
+
+        # Run standard THSP validation
+        thsp_result = self.validate(action_plan)
+
+        # Combine results
+        if not thsp_result.is_safe:
+            concerns.extend([f"Validation: {v}" for v in thsp_result.violations])
+
+        if concerns:
+            return ValidationResult(
+                is_safe=False,
+                layer=ValidationLayer.HEURISTIC,
+                violations=concerns,
+                risk_level=RiskLevel.HIGH,
+                heuristic_passed=False,
+            )
+
+        return thsp_result
 
     def validate_request(self, request: str) -> ValidationResult:
         """
@@ -553,7 +667,7 @@ class AsyncLayeredValidator:
             )
         except ImportError as e:
             logger.warning(f"Could not import AsyncSemanticValidator: {e}")
-        except Exception as e:
+        except (ValueError, RuntimeError, ConfigurationError) as e:
             logger.warning(f"Could not initialize AsyncSemanticValidator: {e}")
 
     async def validate(self, content: str) -> ValidationResult:
@@ -566,9 +680,6 @@ class AsyncLayeredValidator:
         Returns:
             ValidationResult
         """
-        import asyncio
-
-        start_time = time.time()
         self._stats["total_validations"] += 1
 
         # Check for empty/None content
@@ -611,7 +722,7 @@ class AsyncLayeredValidator:
                             heuristic_passed=False,
                         )
 
-            except Exception as e:
+            except (ValueError, AttributeError, ValidationError) as e:
                 logger.error(f"Heuristic validation error: {e}")
                 self._stats["errors"] += 1
                 if self.config.fail_closed:
@@ -667,7 +778,11 @@ class AsyncLayeredValidator:
                     result.heuristic_passed = heuristic_passed
                     return result
 
-            except Exception as e:
+            except asyncio.CancelledError:
+                logger.warning("Async semantic validation was cancelled")
+                self._stats["errors"] += 1
+
+            except (ValueError, RuntimeError, ConnectionError, ValidationError) as e:
                 logger.error(f"Semantic validation error: {e}")
                 self._stats["errors"] += 1
                 if self.config.fail_closed:
@@ -702,6 +817,56 @@ class AsyncLayeredValidator:
         if purpose:
             description = f"{description}\nPurpose: {purpose}"
         return await self.validate(description)
+
+    async def validate_action_plan(
+        self,
+        action_plan: str,
+        check_physical_safety: bool = True,
+    ) -> ValidationResult:
+        """
+        Validate an action plan for physical/embodied AI safety (async version).
+
+        See LayeredValidator.validate_action_plan() for full documentation.
+        """
+        concerns: List[str] = []
+
+        if check_physical_safety:
+            action_lower = action_plan.lower()
+
+            # Use the same patterns as LayeredValidator
+            for pattern, desc in LayeredValidator._PHYSICAL_DANGER_PATTERNS:
+                if pattern in action_lower:
+                    concerns.append(f"Physical safety: {desc}")
+
+            for pattern, desc in LayeredValidator._IRREVERSIBLE_PATTERNS:
+                if pattern in action_lower:
+                    concerns.append(f"Irreversible: {desc}")
+
+            for pattern, desc in LayeredValidator._UNSUPERVISED_PATTERNS:
+                if pattern in action_lower:
+                    danger_context = any(
+                        p[0] in action_lower
+                        for p in LayeredValidator._PHYSICAL_DANGER_PATTERNS
+                    )
+                    if danger_context:
+                        concerns.append(f"Unsafe: {desc} with hazard present")
+
+        # Run standard THSP validation
+        thsp_result = await self.validate(action_plan)
+
+        if not thsp_result.is_safe:
+            concerns.extend([f"Validation: {v}" for v in thsp_result.violations])
+
+        if concerns:
+            return ValidationResult(
+                is_safe=False,
+                layer=ValidationLayer.HEURISTIC,
+                violations=concerns,
+                risk_level=RiskLevel.HIGH,
+                heuristic_passed=False,
+            )
+
+        return thsp_result
 
     async def validate_request(self, request: str) -> ValidationResult:
         """Validate a user request asynchronously."""

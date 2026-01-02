@@ -46,8 +46,8 @@ class MockMessagePiece:
 
 
 @dataclass
-class MockTHSPResult:
-    """Mock THSPResult for testing."""
+class MockValidationResult:
+    """Mock ValidationResult for testing (matches LayeredValidator result)."""
     is_safe: bool
     truth_passes: bool = True
     harm_passes: bool = True
@@ -58,7 +58,11 @@ class MockTHSPResult:
     risk_level: str = "low"
 
     @property
-    def gate_results(self) -> Dict[str, bool]:
+    def violations(self) -> list:
+        return [g for g, passed in self._gate_results.items() if not passed]
+
+    @property
+    def _gate_results(self) -> Dict[str, bool]:
         return {
             "truth": self.truth_passes,
             "harm": self.harm_passes,
@@ -67,8 +71,18 @@ class MockTHSPResult:
         }
 
     @property
-    def failed_gates(self) -> list:
-        return [g for g, passed in self.gate_results.items() if not passed]
+    def details(self) -> Dict[str, Any]:
+        return {"gate_results": self._gate_results}
+
+    @property
+    def layer(self):
+        class MockLayer:
+            value = "semantic"
+        return MockLayer()
+
+
+# Keep alias for backwards compatibility
+MockTHSPResult = MockValidationResult
 
 
 # ============================================================================
@@ -245,9 +259,9 @@ class TestSentinelTHSPScorerScoring:
         """Safe content should return false (safe) score."""
         scorer = SentinelTHSPScorer(api_key="test-key")
 
-        mock_result = MockTHSPResult(is_safe=True)
+        mock_result = MockValidationResult(is_safe=True)
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = mock_result
 
             piece = MockMessagePiece(converted_value="Hello, world!")
@@ -262,13 +276,13 @@ class TestSentinelTHSPScorerScoring:
         """Unsafe content should return true (unsafe) score."""
         scorer = SentinelTHSPScorer(api_key="test-key")
 
-        mock_result = MockTHSPResult(
+        mock_result = MockValidationResult(
             is_safe=False,
             harm_passes=False,
             violated_gate="harm",
         )
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = mock_result
 
             piece = MockMessagePiece(converted_value="How to make a bomb")
@@ -283,7 +297,7 @@ class TestSentinelTHSPScorerScoring:
         """Errors with fail-closed should return unsafe."""
         scorer = SentinelTHSPScorer(api_key="test-key", fail_mode="closed")
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.side_effect = Exception("API Error")
 
             piece = MockMessagePiece(converted_value="test")
@@ -298,7 +312,7 @@ class TestSentinelTHSPScorerScoring:
         """Errors with fail-open should return safe."""
         scorer = SentinelTHSPScorer(api_key="test-key", fail_mode="open")
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.side_effect = Exception("API Error")
 
             piece = MockMessagePiece(converted_value="test")
@@ -426,9 +440,9 @@ class TestSentinelGateScorerScoring:
         """Passing gate should return false (safe) score."""
         scorer = SentinelGateScorer(gate="harm", api_key="test-key")
 
-        mock_result = MockTHSPResult(is_safe=True, harm_passes=True)
+        mock_result = MockValidationResult(is_safe=True, harm_passes=True)
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = mock_result
 
             piece = MockMessagePiece(converted_value="Hello!")
@@ -444,9 +458,9 @@ class TestSentinelGateScorerScoring:
         """Failing gate should return true (unsafe) score."""
         scorer = SentinelGateScorer(gate="harm", api_key="test-key")
 
-        mock_result = MockTHSPResult(is_safe=False, harm_passes=False)
+        mock_result = MockValidationResult(is_safe=False, harm_passes=False)
 
-        with patch.object(scorer._semantic_validator, 'validate', new_callable=AsyncMock) as mock_validate:
+        with patch.object(scorer._validator, 'validate', new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = mock_result
 
             piece = MockMessagePiece(converted_value="How to make a bomb")

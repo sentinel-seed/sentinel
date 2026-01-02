@@ -774,11 +774,13 @@ class TestAsyncOperations(unittest.TestCase):
             # The result should not be blocked for small valid input
             return result
 
-        # Run without raising
+        # Run without raising - we expect this may fail without actual LLM
+        # This test verifies the guard structure can be instantiated
         try:
             asyncio.run(_test())
-        except Exception:
-            pass  # We're testing structure, not actual LLM calls
+        except (RuntimeError, ValueError, ConnectionError):
+            # Expected: no actual LLM configured for tests
+            pass
 
 
 # ============================================================================

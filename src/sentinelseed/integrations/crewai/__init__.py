@@ -49,6 +49,7 @@ from sentinelseed.validation import (
     ValidationResult,
     ValidationLayer,
 )
+from sentinelseed.integrations._base import SentinelIntegration
 
 logger = logging.getLogger("sentinelseed.crewai")
 
@@ -163,11 +164,14 @@ def _inject_via_backstory(agent: Any, seed: str) -> None:
     agent.backstory = f"{seed}\n\n{original_backstory}"
 
 
-class SentinelCrew:
+class SentinelCrew(SentinelIntegration):
     """
     A CrewAI Crew wrapper with built-in Sentinel safety.
 
     Applies safety measures to all agents and validates crew outputs.
+
+    Inherits from SentinelIntegration for standardized validation via
+    LayeredValidator.
 
     Example:
         from crewai import Agent, Task
@@ -190,6 +194,8 @@ class SentinelCrew:
 
         result = crew.kickoff()
     """
+
+    _integration_name = "crewai"
 
     def __init__(
         self,
@@ -218,22 +224,15 @@ class SentinelCrew:
             injection_method: How to inject seed into agents (auto/system_template/backstory)
             validate_outputs: Whether to validate task outputs
             block_unsafe: Whether to block unsafe outputs
-            validator: Optional LayeredValidator instance (created automatically if None)
+            validator: Optional LayeredValidator instance for dependency injection (testing)
             use_semantic: Whether to enable semantic validation (requires API key)
             semantic_api_key: API key for semantic validation
             semantic_provider: Provider for semantic validation ("openai" or "anthropic")
             semantic_model: Model for semantic validation
             **crew_kwargs: Additional arguments for Crew
         """
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.validate_outputs = validate_outputs
-        self.block_unsafe = block_unsafe
-        self.injection_method = injection_method
-
         # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
+        if validator is None:
             config = ValidationConfig(
                 use_heuristic=True,
                 use_semantic=use_semantic and bool(semantic_api_key),
@@ -241,7 +240,15 @@ class SentinelCrew:
                 semantic_model=semantic_model,
                 semantic_api_key=semantic_api_key,
             )
-            self._validator = LayeredValidator(config=config)
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
+        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self.validate_outputs = validate_outputs
+        self.block_unsafe = block_unsafe
+        self.injection_method = injection_method
 
         # Wrap all agents with safety using specified injection method
         self.agents = [
@@ -276,11 +283,11 @@ class SentinelCrew:
         Returns:
             Crew result (potentially modified if unsafe content blocked)
         """
-        # Pre-validate inputs using LayeredValidator
+        # Pre-validate inputs using inherited validate() from SentinelIntegration
         if inputs:
             for key, value in inputs.items():
                 if isinstance(value, str):
-                    result = self._validator.validate(value)
+                    result = self.validate(value)
                     if not result.is_safe:
                         self.validation_log.append({
                             "stage": "input",
@@ -301,7 +308,7 @@ class SentinelCrew:
         # Post-validate result using LayeredValidator
         if self.validate_outputs:
             result_text = str(crew_result)
-            validation = self._validator.validate(result_text)
+            validation = self.validate(result_text)
 
             if not validation.is_safe:
                 self.validation_log.append({
@@ -329,11 +336,13 @@ class SentinelCrew:
         self.validation_log = []
 
 
-class AgentSafetyMonitor:
+class AgentSafetyMonitor(SentinelIntegration):
     """
     Monitor for CrewAI agent activities.
 
     Tracks agent actions and flags potential safety concerns.
+
+    Inherits from SentinelIntegration for standardized validation.
 
     Example:
         monitor = AgentSafetyMonitor()
@@ -343,6 +352,8 @@ class AgentSafetyMonitor:
         # After crew runs
         report = monitor.get_report()
     """
+
+    _integration_name = "crewai_monitor"
 
     def __init__(
         self,
@@ -356,24 +367,25 @@ class AgentSafetyMonitor:
 
         Args:
             sentinel: Sentinel instance for seed access
-            validator: Optional LayeredValidator (created if None)
+            validator: Optional LayeredValidator for dependency injection (testing)
             use_semantic: Whether to enable semantic validation
             semantic_api_key: API key for semantic validation
         """
-        self.sentinel = sentinel or Sentinel()
-        self.tracked_agents: List[Any] = []
-        self.activity_log: List[Dict[str, Any]] = []
-
         # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
+        if validator is None:
             config = ValidationConfig(
                 use_heuristic=True,
                 use_semantic=use_semantic and bool(semantic_api_key),
                 semantic_api_key=semantic_api_key,
             )
-            self._validator = LayeredValidator(config=config)
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
+        self.sentinel = sentinel or Sentinel()
+        self.tracked_agents: List[Any] = []
+        self.activity_log: List[Dict[str, Any]] = []
 
     def track_agent(self, agent: Any) -> None:
         """Add agent to monitoring."""
@@ -385,8 +397,8 @@ class AgentSafetyMonitor:
         action: str,
         content: str
     ) -> Dict[str, Any]:
-        """Log and validate an agent activity using LayeredValidator."""
-        result = self._validator.validate(content)
+        """Log and validate an agent activity using inherited validate()."""
+        result = self.validate(content)
 
         entry = {
             "agent": agent_name,

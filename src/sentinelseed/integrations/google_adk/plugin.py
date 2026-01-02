@@ -34,6 +34,12 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
+from sentinelseed.validation import (
+    LayeredValidator,
+    ValidationConfig,
+)
+from sentinelseed.integrations._base import SentinelIntegration
+
 from .utils import (
     ADK_AVAILABLE,
     DEFAULT_MAX_TEXT_SIZE,
@@ -86,7 +92,7 @@ else:
 _logger = get_logger()
 
 
-class SentinelPlugin(_BASE_CLASS):
+class SentinelPlugin(_BASE_CLASS, SentinelIntegration):
     """Global Sentinel safety plugin for Google ADK.
 
     This plugin integrates Sentinel's THSP (Truth, Harm, Scope, Purpose)
@@ -96,6 +102,8 @@ class SentinelPlugin(_BASE_CLASS):
     The plugin operates at the Runner level, meaning it applies to ALL
     agents, tools, and LLM calls within the runner. For agent-specific
     validation, use the callback functions directly.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Validation Points:
         - before_model_callback: Validates user input before LLM processing
@@ -142,6 +150,8 @@ class SentinelPlugin(_BASE_CLASS):
         for security-critical applications.
     """
 
+    _integration_name = "google_adk"
+
     def __init__(
         self,
         sentinel: Optional[Sentinel] = None,
@@ -155,6 +165,7 @@ class SentinelPlugin(_BASE_CLASS):
         validate_outputs: bool = True,
         validate_tools: bool = True,
         blocked_message: str = "Request blocked by Sentinel safety validation.",
+        validator: Optional[LayeredValidator] = None,
     ) -> None:
         """Initialize the Sentinel plugin.
 
@@ -183,6 +194,7 @@ class SentinelPlugin(_BASE_CLASS):
                 Defaults to True.
             blocked_message: Message returned when content is blocked.
                 Defaults to "Request blocked by Sentinel safety validation."
+            validator: Optional LayeredValidator instance (created if None).
 
         Raises:
             ConfigurationError: If any configuration parameter is invalid.
@@ -195,9 +207,6 @@ class SentinelPlugin(_BASE_CLASS):
         # Verify ADK is installed
         require_adk()
 
-        # Initialize parent class
-        super().__init__(name="sentinel")
-
         # Validate configuration
         validate_configuration(
             max_text_size=max_text_size,
@@ -208,7 +217,23 @@ class SentinelPlugin(_BASE_CLASS):
             log_violations=log_violations,
         )
 
-        # Initialize Sentinel
+        # Create LayeredValidator with config if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+                max_text_size=max_text_size,
+                validation_timeout=validation_timeout,
+                fail_closed=fail_closed,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize parent classes
+        if ADK_AVAILABLE and _BASE_CLASS is not object:
+            _BASE_CLASS.__init__(self, name="sentinel")
+        SentinelIntegration.__init__(self, validator=validator)
+
+        # Initialize Sentinel (for seed access)
         if sentinel is not None:
             self._sentinel = sentinel
         else:
@@ -317,7 +342,7 @@ class SentinelPlugin(_BASE_CLASS):
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             validation_time = (time.perf_counter() - start_time) * 1000
             _logger.error("Error in before_model_callback: %s", e)
             self._update_stats(error=True, validation_time=validation_time)
@@ -382,7 +407,7 @@ class SentinelPlugin(_BASE_CLASS):
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             validation_time = (time.perf_counter() - start_time) * 1000
             _logger.error("Error in after_model_callback: %s", e)
             self._update_stats(error=True, validation_time=validation_time)
@@ -454,7 +479,7 @@ class SentinelPlugin(_BASE_CLASS):
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             validation_time = (time.perf_counter() - start_time) * 1000
             _logger.error("Error in before_tool_callback: %s", e)
             self._update_stats(error=True, validation_time=validation_time)
@@ -530,7 +555,7 @@ class SentinelPlugin(_BASE_CLASS):
 
             return None
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             validation_time = (time.perf_counter() - start_time) * 1000
             _logger.error("Error in after_tool_callback: %s", e)
             self._update_stats(error=True, validation_time=validation_time)
@@ -632,12 +657,13 @@ class SentinelPlugin(_BASE_CLASS):
                 "gate_failures": {},
             }
 
-        # THSP validation with timeout (run in thread to avoid blocking)
+        # THSP validation using inherited validate() method
         try:
             executor = get_validation_executor()
 
             def validate_sync():
-                return self._sentinel.validate(content)
+                # Use inherited validate() method from SentinelIntegration
+                return self.validate(content)
 
             check_result = await asyncio.to_thread(
                 executor.run_with_timeout,
@@ -658,29 +684,20 @@ class SentinelPlugin(_BASE_CLASS):
                 }
             return None  # Fail-open
 
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             _logger.error("Validation error for %s: %s", source, e)
             if self._fail_closed:
                 return {
-                    "reason": str(e),
-                    "concerns": [f"Validation error: {e}"],
+                    "reason": "Validation error occurred",
+                    "concerns": ["Validation error"],
                     "risk_level": "unknown",
                     "gate_failures": {},
                 }
             return None  # Fail-open
 
-        # Analyze result
-        # validate() returns (is_safe: bool, violations: list)
-        if isinstance(check_result, tuple):
-            is_safe, violations = check_result
-            concerns = violations if isinstance(violations, list) else []
-        elif isinstance(check_result, dict):
-            # Backwards compatibility with dict format
-            is_safe = check_result.get("should_proceed", check_result.get("is_safe", True))
-            concerns = check_result.get("concerns", check_result.get("violations", []))
-        else:
-            is_safe = bool(check_result)
-            concerns = []
+        # Analyze result - validate() returns ValidationResult object
+        is_safe = check_result.is_safe
+        concerns = check_result.violations if hasattr(check_result, 'violations') else []
 
         if is_safe:
             return None  # Content is safe

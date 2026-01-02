@@ -27,26 +27,25 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
+
 # Try to import AgentKit
 try:
-    from coinbase_agentkit import ActionProvider, create_action
+    from coinbase_agentkit import ActionProvider as _AgentKitActionProvider
+    from coinbase_agentkit import create_action
     from coinbase_agentkit.network import Network
 
     AGENTKIT_AVAILABLE = True
 except ImportError:
     AGENTKIT_AVAILABLE = False
+    _AgentKitActionProvider = None
 
     # Fallback types for development/testing
-    class ActionProvider:
-        """Fallback ActionProvider for development without agentkit."""
-
-        def __init__(self, name: str = "", action_providers: list = None) -> None:
-            self.name = name
-            self.action_providers = action_providers or []
-
-        def supports_network(self, network: "Network") -> bool:
-            return True
-
     class Network:
         """Fallback Network class."""
 
@@ -71,14 +70,6 @@ from ..validators.address import validate_address
 from ..validators.defi import DeFiValidator, assess_defi_risk
 from ..validators.transaction import TransactionValidator
 
-# Import THSP validator from core
-try:
-    from sentinelseed.validators.gates import THSPValidator
-    THSP_AVAILABLE = True
-except (ImportError, AttributeError):
-    THSPValidator = None
-    THSP_AVAILABLE = False
-
 # Import schemas
 from .schemas import (
     AssessDeFiRiskSchema,
@@ -95,9 +86,16 @@ from .schemas import (
 logger = logging.getLogger("sentinelseed.coinbase.agentkit")
 
 
-class SentinelActionProvider(ActionProvider):
+# Build the base classes tuple dynamically
+_PROVIDER_BASES = (_AgentKitActionProvider, SentinelIntegration) if AGENTKIT_AVAILABLE else (SentinelIntegration,)
+
+
+class SentinelActionProvider(*_PROVIDER_BASES):
     """
     Sentinel security ActionProvider for Coinbase AgentKit.
+
+    Inherits from ActionProvider (Coinbase) and SentinelIntegration for
+    standardized validation via LayeredValidator.
 
     Provides the following security actions:
     - sentinel_validate_transaction: Validate before any transfer
@@ -122,10 +120,13 @@ class SentinelActionProvider(ActionProvider):
         })
     """
 
+    _integration_name = "coinbase_agentkit"
+
     def __init__(
         self,
         config: Optional[SentinelCoinbaseConfig] = None,
         wallet_address: Optional[str] = None,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize the Sentinel ActionProvider.
@@ -133,11 +134,24 @@ class SentinelActionProvider(ActionProvider):
         Args:
             config: Security configuration. Uses default if not provided.
             wallet_address: Default wallet address for operations.
+            validator: Optional LayeredValidator for dependency injection (testing).
         """
-        super().__init__(
-            name="sentinel",
-            action_providers=[],
-        )
+        # Create LayeredValidator if not provided
+        if validator is None:
+            val_config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,  # Coinbase uses heuristic by default
+            )
+            validator = LayeredValidator(config=val_config)
+
+        # Initialize parent classes explicitly
+        if AGENTKIT_AVAILABLE and _AgentKitActionProvider is not None:
+            _AgentKitActionProvider.__init__(
+                self,
+                name="sentinel",
+                action_providers=[],
+            )
+        SentinelIntegration.__init__(self, validator=validator)
 
         self.config = config or get_default_config()
         self.wallet_address = wallet_address
@@ -145,14 +159,6 @@ class SentinelActionProvider(ActionProvider):
         # Initialize validators
         self.transaction_validator = TransactionValidator(config=self.config)
         self.defi_validator = DeFiValidator()
-
-        # Initialize THSP validator if available
-        self._thsp_validator = None
-        if THSP_AVAILABLE and THSPValidator is not None:
-            try:
-                self._thsp_validator = THSPValidator()
-            except Exception as e:
-                logger.warning(f"Could not initialize THSPValidator: {e}")
 
         logger.info(
             f"SentinelActionProvider initialized with profile: {self.config.security_profile.value}"
@@ -200,12 +206,12 @@ class SentinelActionProvider(ActionProvider):
                 purpose=validated.purpose,
             )
 
-            # Also run THSP validation if available
+            # Also run THSP validation using inherited validate() if purpose provided
             thsp_concerns = []
-            if self._thsp_validator and validated.purpose:
-                thsp_result = self._thsp_validator.validate(validated.purpose)
-                if not thsp_result.get("is_safe", True):
-                    thsp_concerns = thsp_result.get("violations", [])
+            if validated.purpose:
+                thsp_result: ValidationResult = self.validate(validated.purpose)
+                if not thsp_result.is_safe:
+                    thsp_concerns = thsp_result.violations or []
 
             response = {
                 "decision": result.decision.value,
@@ -220,10 +226,10 @@ class SentinelActionProvider(ActionProvider):
 
             return json.dumps(response, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Transaction validation error: {e}")
             return json.dumps({
-                "error": f"Validation error: {str(e)}",
+                "error": "Validation error occurred",
                 "decision": "block",
                 "approved": False,
             })
@@ -266,10 +272,10 @@ class SentinelActionProvider(ActionProvider):
 
             return json.dumps(response, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Address validation error: {e}")
             return json.dumps({
-                "error": f"Validation error: {str(e)}",
+                "error": "Validation error occurred",
                 "valid": False,
             })
 
@@ -310,19 +316,18 @@ class SentinelActionProvider(ActionProvider):
                 if self.config.require_purpose_for_transfers and not validated.purpose:
                     concerns.append("High-risk actions require a stated purpose")
 
-            # Run THSP validation on purpose if provided
-            if self._thsp_validator and validated.purpose:
-                thsp_result = self._thsp_validator.validate(validated.purpose)
-                if not thsp_result.get("is_safe", True):
-                    concerns.extend(thsp_result.get("violations", []))
+            # Run THSP validation on purpose if provided using inherited validate()
+            if validated.purpose:
+                thsp_result: ValidationResult = self.validate(validated.purpose)
+                if not thsp_result.is_safe:
+                    concerns.extend(thsp_result.violations or [])
 
             # Check args if provided
             if validated.action_args:
                 args_str = json.dumps(validated.action_args)
-                if self._thsp_validator:
-                    thsp_result = self._thsp_validator.validate(args_str)
-                    if not thsp_result.get("is_safe", True):
-                        concerns.append("Suspicious content detected in action arguments")
+                thsp_result: ValidationResult = self.validate(args_str)
+                if not thsp_result.is_safe:
+                    concerns.append("Suspicious content detected in action arguments")
 
             response = {
                 "safe": len(concerns) == 0,
@@ -335,10 +340,10 @@ class SentinelActionProvider(ActionProvider):
 
             return json.dumps(response, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Action safety check error: {e}")
             return json.dumps({
-                "error": f"Safety check error: {str(e)}",
+                "error": "Safety check error occurred",
                 "safe": False,
             })
 
@@ -374,10 +379,10 @@ class SentinelActionProvider(ActionProvider):
                 "summary": summary,
             }, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Spending summary error: {e}")
             return json.dumps({
-                "error": f"Error: {str(e)}",
+                "error": "Error occurred during spending summary",
                 "success": False,
             })
 
@@ -418,10 +423,10 @@ class SentinelActionProvider(ActionProvider):
                 "recommendations": assessment.recommendations,
             }, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"DeFi risk assessment error: {e}")
             return json.dumps({
-                "error": f"Assessment error: {str(e)}",
+                "error": "Assessment error occurred",
                 "risk_level": "critical",
             })
 
@@ -465,10 +470,10 @@ class SentinelActionProvider(ActionProvider):
                 "current_profile": self.config.security_profile.value,
             }, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Configure guardrails error: {e}")
             return json.dumps({
-                "error": f"Configuration error: {str(e)}",
+                "error": "Configuration error occurred",
                 "success": False,
             })
 
@@ -495,10 +500,10 @@ class SentinelActionProvider(ActionProvider):
                 "reason": validated.reason or "Manual block",
             })
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Block address error: {e}")
             return json.dumps({
-                "error": f"Error: {str(e)}",
+                "error": "Error occurred during block address",
                 "success": False,
             })
 
@@ -531,10 +536,10 @@ class SentinelActionProvider(ActionProvider):
                     "reason": "Address was not blocked",
                 })
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Unblock address error: {e}")
             return json.dumps({
-                "error": f"Error: {str(e)}",
+                "error": "Error occurred during unblock address",
                 "success": False,
             })
 
@@ -581,10 +586,10 @@ class SentinelActionProvider(ActionProvider):
                 "recent_validations": filtered,
             }, indent=2)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error(f"Get validation history error: {e}")
             return json.dumps({
-                "error": f"Error: {str(e)}",
+                "error": "Error occurred during get validation history",
             })
 
     # =========================================================================

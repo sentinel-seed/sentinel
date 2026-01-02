@@ -28,11 +28,7 @@ except (ImportError, AttributeError):
         "Install with: pip install dspy"
     )
 
-from sentinelseed.validators.semantic import (
-    SemanticValidator,
-    THSPResult,
-)
-from sentinelseed.validators.gates import THSPValidator
+from sentinelseed.integrations._base import LayeredValidator, ValidationConfig
 
 # Import from centralized utils
 from sentinelseed.integrations.dspy.utils import (
@@ -102,45 +98,33 @@ def create_sentinel_tool(
     if not fail_closed:
         warn_fail_open_default(logger, f"create_sentinel_tool({name})")
 
-    # Initialize validator
-    if use_heuristic or not api_key:
-        if not use_heuristic and not api_key:
-            logger.warning(
-                "No API key provided. Using heuristic validation."
-            )
-        validator = THSPValidator()
-        is_semantic = False
-    else:
-        validator = SemanticValidator(
-            provider=provider,
-            model=model,
-            api_key=api_key,
+    # Initialize LayeredValidator
+    if not use_heuristic and not api_key:
+        logger.warning(
+            "No API key provided. Using heuristic validation."
         )
-        is_semantic = True
+    config = ValidationConfig(
+        use_heuristic=True,
+        use_semantic=bool(api_key) and not use_heuristic,
+        semantic_provider=provider,
+        semantic_model=model,
+        semantic_api_key=api_key,
+        max_text_size=max_text_size,
+        validation_timeout=timeout,
+        fail_closed=fail_closed,
+    )
+    validator = LayeredValidator(config=config)
 
     def _do_validation(content: str) -> str:
         """Internal validation logic."""
-        if is_semantic:
-            result: THSPResult = validator.validate(content)
-            if result.is_safe:
-                return f"SAFE: Content passes all THSP gates. {result.reasoning}"
-            else:
-                failed = result.failed_gates
-                return (
-                    f"UNSAFE: Content fails {', '.join(failed)} gate(s). "
-                    f"Reason: {result.reasoning}"
-                )
+        result = validator.validate(content)
+        if result.is_safe:
+            return f"SAFE: Content passes all THSP gates."
         else:
-            result = validator.validate(content)
-            if result.get("safe", True):
-                return "SAFE: Content passes all THSP gates (heuristic check)."
-            else:
-                gates = result.get("gates", {})
-                failed = [g for g, v in gates.items() if v == "fail"]
-                issues = result.get("issues", [])
-                return (
-                    f"UNSAFE: Content fails {', '.join(failed)} gate(s). "
-                    f"Issues: {'; '.join(issues[:3])}"
+            violations = result.violations if result.violations else ["unknown"]
+            return (
+                f"UNSAFE: Content fails validation. "
+                f"Reason: {'; '.join(violations[:3])}"
                 )
 
     def check_safety(content: str) -> str:
@@ -171,11 +155,11 @@ def create_sentinel_tool(
             if fail_closed:
                 return f"UNSAFE: Validation timed out after {timeout}s (fail_closed=True)"
             return f"ERROR: {e}"
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             logger.error(f"Validation error in check_safety: {e}")
             if fail_closed:
-                return f"UNSAFE: Validation error (fail_closed=True): {e}"
-            return f"ERROR: Validation failed: {e}"
+                return "UNSAFE: Validation error (fail_closed=True)"
+            return "ERROR: Validation failed"
 
     # Set function metadata for DSPy ReAct agents
     # Detailed docstring helps the agent understand WHEN to use this tool
@@ -249,35 +233,28 @@ def create_content_filter_tool(
         logger.warning(
             "No API key provided. Using heuristic validation."
         )
-        validator = THSPValidator()
-        is_semantic = False
-    else:
-        validator = SemanticValidator(
-            provider=provider,
-            model=model,
-            api_key=api_key,
-        )
-        is_semantic = True
+    config = ValidationConfig(
+        use_heuristic=True,
+        use_semantic=bool(api_key),
+        semantic_provider=provider,
+        semantic_model=model,
+        semantic_api_key=api_key,
+        max_text_size=max_text_size,
+        validation_timeout=timeout,
+        fail_closed=fail_closed,
+    )
+    validator = LayeredValidator(config=config)
 
     def _do_filter(content: str) -> str:
         """Internal filter logic."""
-        if is_semantic:
-            result: THSPResult = validator.validate(content)
-            if result.is_safe:
-                return content
-            return (
-                f"[FILTERED] Content blocked by Sentinel safety check. "
-                f"Reason: {result.reasoning}"
-            )
-        else:
-            result = validator.validate(content)
-            if result.get("safe", True):
-                return content
-            issues = result.get("issues", ["Safety violation detected"])
-            return (
-                f"[FILTERED] Content blocked by Sentinel safety check. "
-                f"Issue: {issues[0] if issues else 'Unknown'}"
-            )
+        result = validator.validate(content)
+        if result.is_safe:
+            return content
+        violations = result.violations if result.violations else ["Safety violation detected"]
+        return (
+            f"[FILTERED] Content blocked by Sentinel safety check. "
+            f"Reason: {violations[0]}"
+        )
 
     def filter_content(content: str) -> str:
         """
@@ -307,11 +284,11 @@ def create_content_filter_tool(
             if fail_closed:
                 return f"[FILTERED] Validation timed out (fail_closed=True)"
             return f"[ERROR] {e}"
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             logger.error(f"Validation error in filter_content: {e}")
             if fail_closed:
-                return f"[FILTERED] Validation error (fail_closed=True)"
-            return f"[ERROR] Validation failed: {e}"
+                return "[FILTERED] Validation error (fail_closed=True)"
+            return "[ERROR] Validation failed"
 
     filter_content.__name__ = name
     filter_content.__doc__ = (
@@ -376,32 +353,26 @@ def create_gate_check_tool(
     if not fail_closed:
         warn_fail_open_default(logger, f"create_gate_check_tool({gate})")
 
-    if not api_key:
-        validator = THSPValidator()
-        is_semantic = False
-    else:
-        validator = SemanticValidator(
-            provider=provider,
-            model=model,
-            api_key=api_key,
-        )
-        is_semantic = True
+    config = ValidationConfig(
+        use_heuristic=True,
+        use_semantic=bool(api_key),
+        semantic_provider=provider,
+        semantic_model=model,
+        semantic_api_key=api_key,
+        max_text_size=max_text_size,
+        validation_timeout=timeout,
+        fail_closed=fail_closed,
+    )
+    validator = LayeredValidator(config=config)
 
     def _do_gate_check(content: str) -> str:
         """Internal gate check logic."""
-        if is_semantic:
-            result: THSPResult = validator.validate(content)
-            gate_result = result.gate_results.get(gate, True)
-            if gate_result:
-                return f"PASS: Content passes {gate} gate."
-            return f"FAIL: Content fails {gate} gate. {result.reasoning}"
-        else:
-            result = validator.validate(content)
-            gates = result.get("gates", {})
-            gate_result = gates.get(gate, "pass")
-            if gate_result == "pass":
-                return f"PASS: Content passes {gate} gate (heuristic)."
-            return f"FAIL: Content fails {gate} gate (heuristic)."
+        result = validator.validate(content)
+        # For gate-specific check, we consider any violation related to that gate
+        if result.is_safe:
+            return f"PASS: Content passes {gate} gate."
+        violations = result.violations if result.violations else ["Validation failed"]
+        return f"FAIL: Content fails {gate} gate. Reason: {violations[0]}"
 
     def check_gate(content: str) -> str:
         """Check if content passes the specified THSP gate."""
@@ -423,11 +394,11 @@ def create_gate_check_tool(
             if fail_closed:
                 return f"FAIL: Validation timed out (fail_closed=True)"
             return f"ERROR: {e}"
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             logger.error(f"Validation error in check_{gate}_gate: {e}")
             if fail_closed:
-                return f"FAIL: Validation error (fail_closed=True)"
-            return f"ERROR: Validation failed: {e}"
+                return "FAIL: Validation error (fail_closed=True)"
+            return "ERROR: Validation failed"
 
     # Gate-specific descriptions for better agent understanding
     gate_descriptions = {

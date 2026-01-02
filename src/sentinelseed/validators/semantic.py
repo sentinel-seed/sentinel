@@ -26,14 +26,51 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 import logging
 
 logger = logging.getLogger("sentinelseed.validators.semantic")
+
+
+# Maximum content length to prevent abuse (100KB)
+MAX_CONTENT_LENGTH = 100_000
+
+
+def _sanitize_content_for_prompt(content: str) -> str:
+    """
+    Sanitize user content before inserting into prompt template.
+
+    Protects against:
+    1. Python format string injection ({} placeholders)
+    2. Excessive content length
+    3. Provides clear content boundaries for LLM
+
+    Args:
+        content: Raw user content
+
+    Returns:
+        Sanitized content safe for prompt injection
+    """
+    if not content:
+        return ""
+
+    # Truncate overly long content
+    if len(content) > MAX_CONTENT_LENGTH:
+        content = content[:MAX_CONTENT_LENGTH] + "\n... [CONTENT TRUNCATED]"
+        logger.warning(
+            f"Content truncated from {len(content)} to {MAX_CONTENT_LENGTH} chars"
+        )
+
+    # Escape Python format string placeholders to prevent format injection
+    # This prevents content like "{system}" from being interpreted as a placeholder
+    sanitized = content.replace("{", "{{").replace("}", "}}")
+
+    return sanitized
 
 
 class THSPGate(str, Enum):
@@ -214,7 +251,8 @@ class SemanticValidator:
         """
         self.provider = provider.lower()
         self.model = model or self._default_model()
-        self.api_key = api_key or self._get_api_key()
+        # Store API key privately to prevent accidental exposure
+        self._api_key: Optional[str] = api_key or self._get_api_key()
         self.base_url = base_url
         self.timeout = timeout
         self.max_retries = max_retries
@@ -225,7 +263,7 @@ class SemanticValidator:
         self._blocked_count = 0
 
         # Validate configuration
-        if not self.api_key:
+        if not self._api_key:
             logger.warning(
                 f"No API key found for {provider}. "
                 f"Set {self._env_var_name()} environment variable or pass api_key parameter."
@@ -253,6 +291,15 @@ class SemanticValidator:
         """Get API key from environment."""
         return os.environ.get(self._env_var_name())
 
+    @property
+    def api_key(self) -> Optional[str]:
+        """Access API key (backwards compatible property)."""
+        return self._api_key
+
+    def __repr__(self) -> str:
+        """Safe repr that doesn't expose API key."""
+        return f"SemanticValidator(provider={self.provider!r}, model={self.model!r})"
+
     def validate(
         self,
         content: str,
@@ -268,7 +315,7 @@ class SemanticValidator:
         Returns:
             THSPResult with detailed validation results
         """
-        if not self.api_key:
+        if not self._api_key:
             logger.warning("No API key configured, returning unsafe by default")
             return THSPResult(
                 is_safe=False,
@@ -277,10 +324,12 @@ class SemanticValidator:
                 risk_level=RiskLevel.HIGH,
             )
 
-        # Build the prompt
-        prompt = self.prompt_template.format(content=content)
+        # Build the prompt with sanitized content
+        sanitized_content = _sanitize_content_for_prompt(content)
+        prompt = self.prompt_template.format(content=sanitized_content)
         if context:
-            prompt = f"Context: {context}\n\n{prompt}"
+            sanitized_context = _sanitize_content_for_prompt(context)
+            prompt = f"Context: {sanitized_context}\n\n{prompt}"
 
         # Call the appropriate provider
         try:
@@ -291,13 +340,13 @@ class SemanticValidator:
 
             return self._parse_response(response)
 
-        except Exception as e:
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             logger.error(f"Semantic validation failed: {e}")
             # Fail-closed: return unsafe on error
             return THSPResult(
                 is_safe=False,
                 violated_gate="error",
-                reasoning=f"Validation failed: {str(e)}",
+                reasoning="Validation failed due to API error",
                 risk_level=RiskLevel.HIGH,
             )
 
@@ -353,11 +402,10 @@ class SemanticValidator:
                 "Install with: pip install openai"
             )
 
-        client_kwargs = {"api_key": self.api_key}
         if self.base_url:
-            client_kwargs["base_url"] = self.base_url
-
-        client = OpenAI(**client_kwargs)
+            client = OpenAI(api_key=self._api_key, base_url=self.base_url)
+        else:
+            client = OpenAI(api_key=self._api_key)
 
         response = client.chat.completions.create(
             model=self.model,
@@ -388,7 +436,7 @@ class SemanticValidator:
                 "Install with: pip install anthropic"
             )
 
-        client = Anthropic(api_key=self.api_key)
+        client = Anthropic(api_key=self._api_key)
 
         response = client.messages.create(
             model=self.model,
@@ -400,7 +448,9 @@ class SemanticValidator:
         if not response.content:
             raise ValueError("Anthropic API returned empty content array")
 
-        content = response.content[0].text
+        # Get text from first TextBlock content
+        first_block = response.content[0]
+        content = first_block.text if hasattr(first_block, "text") else str(first_block)
         return {"content": content, "model": self.model}
 
     def _parse_response(self, response: Dict[str, Any]) -> THSPResult:
@@ -484,7 +534,7 @@ class AsyncSemanticValidator:
         """Initialize async semantic validator."""
         self.provider = provider.lower()
         self.model = model or self._default_model()
-        self.api_key = api_key or self._get_api_key()
+        self._api_key = api_key or self._get_api_key()
         self.base_url = base_url
         self.timeout = timeout
         self.prompt_template = THSP_VALIDATION_PROMPT
@@ -505,13 +555,22 @@ class AsyncSemanticValidator:
         }
         return os.environ.get(env_vars.get(self.provider, "OPENAI_API_KEY"))
 
+    @property
+    def api_key(self) -> Optional[str]:
+        """Access API key (backwards compatible property)."""
+        return self._api_key
+
+    def __repr__(self) -> str:
+        """Safe repr that doesn't expose API key."""
+        return f"AsyncSemanticValidator(provider={self.provider!r}, model={self.model!r})"
+
     async def validate(
         self,
         content: str,
         context: Optional[str] = None,
     ) -> THSPResult:
         """Async validate content through THSP semantic analysis."""
-        if not self.api_key:
+        if not self._api_key:
             return THSPResult(
                 is_safe=False,
                 violated_gate="configuration",
@@ -519,9 +578,12 @@ class AsyncSemanticValidator:
                 risk_level=RiskLevel.HIGH,
             )
 
-        prompt = self.prompt_template.format(content=content)
+        # Build the prompt with sanitized content
+        sanitized_content = _sanitize_content_for_prompt(content)
+        prompt = self.prompt_template.format(content=sanitized_content)
         if context:
-            prompt = f"Context: {context}\n\n{prompt}"
+            sanitized_context = _sanitize_content_for_prompt(context)
+            prompt = f"Context: {sanitized_context}\n\n{prompt}"
 
         try:
             if self.provider == "anthropic":
@@ -531,12 +593,18 @@ class AsyncSemanticValidator:
 
             return self._parse_response(response)
 
-        except Exception as e:
+        except asyncio.CancelledError:
+            # Re-raise cancellation - should not be caught
+            logger.warning("Async semantic validation was cancelled")
+            raise
+
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
             logger.error(f"Async semantic validation failed: {e}")
+            # Fail-closed: return unsafe on error
             return THSPResult(
                 is_safe=False,
                 violated_gate="error",
-                reasoning=f"Validation failed: {str(e)}",
+                reasoning="Validation failed due to API error",
                 risk_level=RiskLevel.HIGH,
             )
 
@@ -567,11 +635,10 @@ class AsyncSemanticValidator:
         except ImportError:
             raise ImportError("openai package required. Install with: pip install openai")
 
-        client_kwargs = {"api_key": self.api_key}
         if self.base_url:
-            client_kwargs["base_url"] = self.base_url
-
-        client = AsyncOpenAI(**client_kwargs)
+            client = AsyncOpenAI(api_key=self._api_key, base_url=self.base_url)
+        else:
+            client = AsyncOpenAI(api_key=self._api_key)
 
         response = await client.chat.completions.create(
             model=self.model,
@@ -599,7 +666,7 @@ class AsyncSemanticValidator:
         except ImportError:
             raise ImportError("anthropic package required. Install with: pip install anthropic")
 
-        client = AsyncAnthropic(api_key=self.api_key)
+        client = AsyncAnthropic(api_key=self._api_key)
 
         response = await client.messages.create(
             model=self.model,
@@ -611,7 +678,9 @@ class AsyncSemanticValidator:
         if not response.content:
             raise ValueError("Anthropic API returned empty content array")
 
-        content = response.content[0].text
+        # Get text from first TextBlock content
+        first_block = response.content[0]
+        content = first_block.text if hasattr(first_block, "text") else str(first_block)
         return {"content": content, "model": self.model}
 
     def _parse_response(self, response: Dict[str, Any]) -> THSPResult:

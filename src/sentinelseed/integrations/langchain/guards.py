@@ -17,6 +17,7 @@ from sentinelseed.validation import (
     AsyncLayeredValidator,
     ValidationConfig,
 )
+from sentinelseed.integrations._base import SentinelIntegration
 
 from .utils import (
     DEFAULT_SEED_LEVEL,
@@ -35,12 +36,14 @@ from .utils import (
 )
 
 
-class SentinelGuard:
+class SentinelGuard(SentinelIntegration):
     """
     Wrapper for LangChain agents/chains with Sentinel safety.
 
     Intercepts inputs and outputs, validating them before proceeding.
     Thread-safe and supports both sync and async operations.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
 
     Example:
         from langchain.agents import AgentExecutor
@@ -56,6 +59,8 @@ class SentinelGuard:
         )
         result = safe_agent.invoke({"input": "Do something"})
     """
+
+    _integration_name = "langchain_guard"
 
     def __init__(
         self,
@@ -103,23 +108,8 @@ class SentinelGuard:
             fail_closed=fail_closed,
         )
 
-        self.agent = agent
-        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.seed_level = seed_level
-        self.block_unsafe = block_unsafe
-        self.validate_input = validate_input
-        self.validate_output = validate_output
-        self.inject_seed = inject_seed
-        self._logger = logger or get_logger()
-        self._seed = self.sentinel.get_seed() if inject_seed else None
-        self._max_text_size = max_text_size
-        self._validation_timeout = validation_timeout
-        self._fail_closed = fail_closed
-
-        # Create LayeredValidator if not provided
-        if validator is not None:
-            self._validator = validator
-        else:
+        # Create LayeredValidator with config if not provided
+        if validator is None:
             config = ValidationConfig(
                 use_heuristic=True,
                 use_semantic=use_semantic and bool(semantic_api_key),
@@ -127,15 +117,59 @@ class SentinelGuard:
                 max_text_size=max_text_size,
                 validation_timeout=validation_timeout,
             )
-            self._validator = LayeredValidator(config=config)
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration with the validator
+        super().__init__(validator=validator)
+
+        self.agent = agent
+        self.sentinel = sentinel or Sentinel(seed_level=seed_level)
+        self.seed_level = seed_level
+        self.block_unsafe = block_unsafe
+        self.validate_input_enabled = validate_input
+        self.validate_output_enabled = validate_output
+        self.inject_seed = inject_seed
+        self._logger = logger or get_logger()
+        self._seed = self.sentinel.get_seed() if inject_seed else None
+        self._max_text_size = max_text_size
+        self._validation_timeout = validation_timeout
+        self._fail_closed = fail_closed
 
         # Log warning about fail-open default behavior
         if not fail_closed:
             warn_fail_open_default(self._logger, "SentinelGuard")
 
+    # ========================================================================
+    # Backwards Compatibility Properties
+    # ========================================================================
+
+    @property
+    def validate_input(self) -> bool:
+        """Backwards compatibility property for validate_input."""
+        return self.validate_input_enabled
+
+    @validate_input.setter
+    def validate_input(self, value: bool) -> None:
+        """Backwards compatibility setter for validate_input."""
+        self.validate_input_enabled = value
+
+    @property
+    def validate_output(self) -> bool:
+        """Backwards compatibility property for validate_output."""
+        return self.validate_output_enabled
+
+    @validate_output.setter
+    def validate_output(self, value: bool) -> None:
+        """Backwards compatibility setter for validate_output."""
+        self.validate_output_enabled = value
+
+    # ========================================================================
+    # Validation Methods
+    # ========================================================================
+
     def _validate_input(self, text: str) -> Optional[Dict[str, Any]]:
         """
-        Validate input with size limits using LayeredValidator.
+        Validate input with size limits using inherited validate() method.
 
         Args:
             text: Input text to validate
@@ -143,7 +177,7 @@ class SentinelGuard:
         Returns:
             Block response dict if unsafe, None if safe
         """
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return None
 
         # Validate text size first
@@ -159,8 +193,8 @@ class SentinelGuard:
             return None
 
         try:
-            # Use LayeredValidator for validation (has built-in timeout)
-            result = self._validator.validate(text)
+            # Use inherited validate() method from SentinelIntegration
+            result = self.validate(text)
 
             if not result.is_safe and self.block_unsafe:
                 return {
@@ -169,20 +203,20 @@ class SentinelGuard:
                     "sentinel_reason": result.violations,
                     "sentinel_layer": result.layer.value,
                 }
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Error validating input: {e}")
             if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Request blocked: validation error",
                     "sentinel_blocked": True,
-                    "sentinel_reason": [str(e)],
+                    "sentinel_reason": ["Validation error occurred"],
                 }
 
         return None
 
     def _validate_output(self, text: str, original: str = "") -> Optional[Dict[str, Any]]:
         """
-        Validate output with size limits using LayeredValidator.
+        Validate output with size limits using inherited validate() method.
 
         Args:
             text: Output text to validate
@@ -191,7 +225,7 @@ class SentinelGuard:
         Returns:
             Block response dict if unsafe, None if safe
         """
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return None
 
         # Validate text size first
@@ -208,8 +242,8 @@ class SentinelGuard:
             return None
 
         try:
-            # Use LayeredValidator for validation (has built-in timeout)
-            result = self._validator.validate(text)
+            # Use inherited validate() method from SentinelIntegration
+            result = self.validate(text)
 
             if not result.is_safe and self.block_unsafe:
                 return {
@@ -219,20 +253,20 @@ class SentinelGuard:
                     "sentinel_layer": result.layer.value,
                     "original_output": original[:200] if original else None,
                 }
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Error validating output: {e}")
             if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Response blocked: validation error",
                     "sentinel_blocked": True,
-                    "sentinel_reason": [str(e)],
+                    "sentinel_reason": ["Validation error occurred"],
                 }
 
         return None
 
     async def _validate_input_async(self, text: str) -> Optional[Dict[str, Any]]:
         """
-        Async version of _validate_input using LayeredValidator.
+        Async version of _validate_input using inherited validate() method.
 
         Args:
             text: Input text to validate
@@ -240,7 +274,7 @@ class SentinelGuard:
         Returns:
             Block response dict if unsafe, None if safe
         """
-        if not self.validate_input:
+        if not self.validate_input_enabled:
             return None
 
         # Validate text size first (sync, very fast)
@@ -256,9 +290,9 @@ class SentinelGuard:
             return None
 
         try:
-            # Use LayeredValidator (sync method wrapped in thread for async)
+            # Use inherited validate() method wrapped in thread for async
             result = await run_sync_with_timeout_async(
-                self._validator.validate,
+                self.validate,
                 args=(text,),
                 timeout=self._validation_timeout,
             )
@@ -270,20 +304,20 @@ class SentinelGuard:
                     "sentinel_reason": result.violations,
                     "sentinel_layer": result.layer.value,
                 }
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Error validating input: {e}")
             if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Request blocked: validation error",
                     "sentinel_blocked": True,
-                    "sentinel_reason": [str(e)],
+                    "sentinel_reason": ["Validation error occurred"],
                 }
 
         return None
 
     async def _validate_output_async(self, text: str, original: str = "") -> Optional[Dict[str, Any]]:
         """
-        Async version of _validate_output using LayeredValidator.
+        Async version of _validate_output using inherited validate() method.
 
         Args:
             text: Output text to validate
@@ -292,7 +326,7 @@ class SentinelGuard:
         Returns:
             Block response dict if unsafe, None if safe
         """
-        if not self.validate_output:
+        if not self.validate_output_enabled:
             return None
 
         # Validate text size first (sync, very fast)
@@ -309,9 +343,9 @@ class SentinelGuard:
             return None
 
         try:
-            # Use LayeredValidator (sync method wrapped in thread for async)
+            # Use inherited validate() method wrapped in thread for async
             result = await run_sync_with_timeout_async(
-                self._validator.validate,
+                self.validate,
                 args=(text,),
                 timeout=self._validation_timeout,
             )
@@ -324,13 +358,13 @@ class SentinelGuard:
                     "sentinel_layer": result.layer.value,
                     "original_output": original[:200] if original else None,
                 }
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Error validating output: {e}")
             if self.block_unsafe and self._fail_closed:
                 return {
                     "output": "Response blocked: validation error",
                     "sentinel_blocked": True,
-                    "sentinel_reason": [str(e)],
+                    "sentinel_reason": ["Validation error occurred"],
                 }
 
         return None
@@ -346,34 +380,34 @@ class SentinelGuard:
         Returns:
             Agent response (or safe fallback if blocked)
         """
-        # Pre-validate input using LayeredValidator
-        if self.validate_input:
+        # Pre-validate input using inherited validate() method
+        if self.validate_input_enabled:
             try:
-                result = self._validator.validate(input_text)
+                result = self.validate(input_text)
                 if not result.is_safe and self.block_unsafe:
                     return f"Request blocked by Sentinel: {result.violations}"
-            except Exception as e:
+            except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                 self._logger.error(f"Error validating input: {e}")
                 if self.block_unsafe:
-                    return f"Request blocked: validation error"
+                    return "Request blocked: validation error"
 
         # Run agent
         try:
             result = self.agent.run(input_text, **kwargs)
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Agent run error: {e}")
             raise
 
-        # Post-validate output
-        if self.validate_output:
+        # Post-validate output using inherited validate() method
+        if self.validate_output_enabled:
             try:
-                is_safe, violations = self.sentinel.validate(result)
-                if not is_safe and self.block_unsafe:
-                    return f"Response blocked by Sentinel: {violations}"
-            except Exception as e:
+                validation_result = self.validate(result)
+                if not validation_result.is_safe and self.block_unsafe:
+                    return f"Response blocked by Sentinel: {validation_result.violations}"
+            except (ValueError, TypeError, RuntimeError, AttributeError) as e:
                 self._logger.error(f"Error validating output: {e}")
                 if self.block_unsafe:
-                    return f"Response blocked: validation error"
+                    return "Response blocked: validation error"
 
         return result
 

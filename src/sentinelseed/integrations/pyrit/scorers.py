@@ -26,8 +26,12 @@ except (ImportError, AttributeError) as e:
         "Install with: pip install 'pyrit>=0.10.0'"
     ) from e
 
-from sentinelseed.validators.semantic import AsyncSemanticValidator, THSPResult
-from sentinelseed.validators.gates import THSPValidator
+from sentinelseed.validation import (
+    LayeredValidator,
+    AsyncLayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -147,12 +151,15 @@ class SentinelTHSPScorer(Scorer):
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
 
-        # Initialize semantic validator (API key passed to validator, not stored)
-        self._semantic_validator = AsyncSemanticValidator(
-            api_key=api_key,
-            provider=provider,
-            model=model,
+        # Initialize layered validator with semantic layer
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=True,
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
         )
+        self._validator = AsyncLayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -168,12 +175,12 @@ class SentinelTHSPScorer(Scorer):
         )
 
         try:
-            # Run THSP analysis
-            result: THSPResult = await self._semantic_validator.validate(content)
+            # Run THSP analysis via LayeredValidator
+            result: ValidationResult = await self._validator.validate(content)
 
-            # Determine if unsafe (any gate failed)
+            # Determine if unsafe (any validation failed)
             is_unsafe = not result.is_safe
-            failed_gates = result.failed_gates
+            failed_gates = result.violations if result.violations else []
 
             # Build rationale
             rationale = self._build_rationale(result, failed_gates)
@@ -183,6 +190,11 @@ class SentinelTHSPScorer(Scorer):
             if hasattr(risk_level, 'value'):
                 risk_level = risk_level.value
 
+            # Extract gate results from details if available
+            gate_results = {}
+            if hasattr(result, 'details') and isinstance(result.details, dict):
+                gate_results = result.details.get("gate_results", {})
+
             return [Score(
                 score_value=str(is_unsafe).lower(),
                 score_value_description="unsafe" if is_unsafe else "safe",
@@ -190,10 +202,11 @@ class SentinelTHSPScorer(Scorer):
                 score_category=self._categories + failed_gates,
                 score_rationale=rationale,
                 score_metadata={
-                    "gates": result.gate_results,
+                    "gates": gate_results,
                     "confidence": ConfidenceLevel.SEMANTIC,
                     "method": "semantic",
                     "risk_level": risk_level,
+                    "layer": result.layer.value if hasattr(result.layer, 'value') else str(result.layer),
                 },
                 scorer_class_identifier=self.get_identifier(),
                 message_piece_id=message_piece.id,
@@ -209,18 +222,21 @@ class SentinelTHSPScorer(Scorer):
                 scorer_identifier=self.get_identifier(),
             )
 
-    def _build_rationale(self, result: THSPResult, failed_gates: List[str]) -> str:
-        """Build human-readable rationale from THSP result."""
+    def _build_rationale(self, result: ValidationResult, failed_gates: List[str]) -> str:
+        """Build human-readable rationale from validation result."""
 
         if result.is_safe:
-            return f"Content passed all THSP gates. {result.reasoning}"
+            reasoning = result.reasoning or "Content passed validation"
+            return f"Content passed all THSP gates. {reasoning}"
 
-        parts = [f"Content failed {len(failed_gates)} gate(s): {', '.join(failed_gates)}."]
+        parts = [f"Content failed validation: {', '.join(failed_gates) or 'safety concerns detected'}."]
 
-        # Add individual gate status
-        for gate, passed in result.gate_results.items():
-            status = "PASS" if passed else "FAIL"
-            parts.append(f"  - {gate.upper()}: {status}")
+        # Add gate results from details if available
+        if hasattr(result, 'details') and isinstance(result.details, dict):
+            gate_results = result.details.get("gate_results", {})
+            for gate, passed in gate_results.items():
+                status = "PASS" if passed else "FAIL"
+                parts.append(f"  - {gate.upper()}: {status}")
 
         if result.reasoning:
             parts.append(f"Reasoning: {result.reasoning}")
@@ -275,7 +291,13 @@ class SentinelHeuristicScorer(Scorer):
         self._strict_mode = strict_mode
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
-        self._heuristic_validator = THSPValidator()
+
+        # Initialize layered validator with heuristic only
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=False,
+        )
+        self._validator = LayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -291,22 +313,22 @@ class SentinelHeuristicScorer(Scorer):
         )
 
         try:
-            # Run heuristic THSP analysis
-            result = self._heuristic_validator.validate(content)
+            # Run heuristic THSP analysis via LayeredValidator
+            result: ValidationResult = self._validator.validate(content)
 
             # Determine if unsafe
-            is_unsafe = not result.get("safe", True)
+            is_unsafe = not result.is_safe
 
-            # Get failed gates
-            gates = result.get("gates", {})
-            failed_gates = [
-                gate for gate, status in gates.items()
-                if status == "fail"
-            ]
+            # Get violations as failed gates
+            failed_gates = result.violations if result.violations else []
+
+            # Extract gate results from details if available
+            gates = {}
+            if hasattr(result, 'details') and isinstance(result.details, dict):
+                gates = result.details.get("gate_results", {})
 
             # Build rationale
-            issues = result.get("issues", [])
-            rationale = self._build_rationale(is_unsafe, failed_gates, issues)
+            rationale = self._build_heuristic_rationale(is_unsafe, failed_gates)
 
             return [Score(
                 score_value=str(is_unsafe).lower(),
@@ -318,7 +340,8 @@ class SentinelHeuristicScorer(Scorer):
                     "gates": gates,
                     "confidence": ConfidenceLevel.HEURISTIC,
                     "method": "heuristic",
-                    "issues": issues,
+                    "issues": failed_gates,
+                    "layer": result.layer.value if hasattr(result.layer, 'value') else str(result.layer),
                 },
                 scorer_class_identifier=self.get_identifier(),
                 message_piece_id=message_piece.id,
@@ -334,11 +357,10 @@ class SentinelHeuristicScorer(Scorer):
                 scorer_identifier=self.get_identifier(),
             )
 
-    def _build_rationale(
+    def _build_heuristic_rationale(
         self,
         is_unsafe: bool,
-        failed_gates: List[str],
-        issues: List[str]
+        issues: List[str],
     ) -> str:
         """Build rationale from heuristic analysis."""
 
@@ -350,7 +372,7 @@ class SentinelHeuristicScorer(Scorer):
 
         parts = [
             f"Content flagged by heuristic analysis. "
-            f"Failed gates: {', '.join(failed_gates) or 'none identified'}."
+            f"Issues: {', '.join(issues) or 'safety concerns detected'}."
         ]
 
         if issues:
@@ -424,11 +446,15 @@ class SentinelGateScorer(Scorer):
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
 
-        self._semantic_validator = AsyncSemanticValidator(
-            api_key=api_key,
-            provider=provider,
-            model=model,
+        # Initialize layered validator with semantic layer
+        config = ValidationConfig(
+            use_heuristic=True,
+            use_semantic=True,
+            semantic_provider=provider,
+            semantic_model=model,
+            semantic_api_key=api_key,
         )
+        self._validator = AsyncLayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -444,22 +470,30 @@ class SentinelGateScorer(Scorer):
         )
 
         try:
-            result: THSPResult = await self._semantic_validator.validate(content)
+            result: ValidationResult = await self._validator.validate(content)
 
-            # Get specific gate result
-            gate_passed = result.gate_results.get(self._gate, True)
+            # Extract gate results from details if available
+            gate_results = {}
+            if hasattr(result, 'details') and isinstance(result.details, dict):
+                gate_results = result.details.get("gate_results", {})
+
+            # Get specific gate result (default to is_safe if gate not found)
+            gate_passed = gate_results.get(self._gate, result.is_safe)
             is_unsafe = not gate_passed
+
+            reasoning = result.reasoning or "No reasoning provided"
 
             return [Score(
                 score_value=str(is_unsafe).lower(),
                 score_value_description=f"{self._gate}_violation" if is_unsafe else f"{self._gate}_pass",
                 score_type="true_false",
                 score_category=[f"sentinel_{self._gate}"],
-                score_rationale=f"{self._gate.upper()} gate: {'FAIL' if is_unsafe else 'PASS'}. {result.reasoning}",
+                score_rationale=f"{self._gate.upper()} gate: {'FAIL' if is_unsafe else 'PASS'}. {reasoning}",
                 score_metadata={
                     "gate": self._gate,
                     "gate_status": "fail" if is_unsafe else "pass",
                     "confidence": ConfidenceLevel.SEMANTIC,
+                    "layer": result.layer.value if hasattr(result.layer, 'value') else str(result.layer),
                 },
                 scorer_class_identifier=self.get_identifier(),
                 message_piece_id=message_piece.id,

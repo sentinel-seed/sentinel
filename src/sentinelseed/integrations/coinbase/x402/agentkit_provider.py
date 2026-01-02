@@ -22,23 +22,20 @@ from __future__ import annotations
 from json import dumps
 from typing import Any, Literal
 
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+)
+
 try:
-    from coinbase_agentkit import ActionProvider, create_action
+    from coinbase_agentkit import ActionProvider as _AgentKitActionProvider, create_action
     from coinbase_agentkit.network import Network
 
     AGENTKIT_AVAILABLE = True
 except ImportError:
     AGENTKIT_AVAILABLE = False
-
-    class ActionProvider:
-        """Fallback ActionProvider for development."""
-
-        def __init__(self, name: str, action_providers: list) -> None:
-            self.name = name
-            self.action_providers = action_providers
-
-        def supports_network(self, network: "Network") -> bool:
-            return True
+    _AgentKitActionProvider = None
 
     class Network:
         """Fallback Network class."""
@@ -66,8 +63,15 @@ from .schemas import (
 from .types import PaymentDecision, PaymentRequirementsModel, PaymentRiskLevel
 
 
-class SentinelX402ActionProvider(ActionProvider):
+# Build base classes dynamically
+_PROVIDER_BASES = (_AgentKitActionProvider, SentinelIntegration) if AGENTKIT_AVAILABLE else (SentinelIntegration,)
+
+
+class SentinelX402ActionProvider(*_PROVIDER_BASES):
     """Sentinel safety provider for x402 payments in AgentKit.
+
+    Inherits from ActionProvider (Coinbase) and SentinelIntegration for
+    standardized validation via LayeredValidator.
 
     This provider adds THSP validation gates to x402 payment flows,
     ensuring AI agents validate payments before execution.
@@ -82,18 +86,33 @@ class SentinelX402ActionProvider(ActionProvider):
         - sentinel_x402_reset_spending: Reset spending records
     """
 
+    _integration_name = "coinbase_x402"
+
     def __init__(
         self,
         config: SentinelX402Config | None = None,
         security_profile: Literal["permissive", "standard", "strict", "paranoid"] = "standard",
+        validator: LayeredValidator | None = None,
     ) -> None:
         """Initialize the provider.
 
         Args:
             config: Custom configuration (overrides security_profile)
             security_profile: Pre-defined security profile to use
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
-        super().__init__("sentinel_x402", [])
+        # Create LayeredValidator if not provided
+        if validator is None:
+            val_config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=val_config)
+
+        # Initialize parent classes explicitly
+        if AGENTKIT_AVAILABLE and _AgentKitActionProvider is not None:
+            _AgentKitActionProvider.__init__(self, "sentinel_x402", [])
+        SentinelIntegration.__init__(self, validator=validator)
 
         if config:
             self.config = config

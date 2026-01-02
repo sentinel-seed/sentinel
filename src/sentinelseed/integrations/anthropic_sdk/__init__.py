@@ -43,7 +43,6 @@ import os
 import logging
 
 from sentinelseed import Sentinel
-from sentinelseed.validators.gates import THSPValidator
 from sentinelseed.validation import (
     LayeredValidator,
     AsyncLayeredValidator,
@@ -51,6 +50,7 @@ from sentinelseed.validation import (
     ValidationResult,
     ValidationLayer,
 )
+from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIntegration
 
 
 # Version (synchronized with pyproject.toml)
@@ -246,20 +246,9 @@ def get_logger() -> SentinelLogger:
     return _logger
 
 
-# Import semantic validators (optional - may not be available)
-try:
-    from sentinelseed.validators.semantic import (
-        SemanticValidator,
-        AsyncSemanticValidator,
-        THSPResult,
-    )
-    SEMANTIC_VALIDATOR_AVAILABLE = True
-except (ImportError, AttributeError):
-    # AttributeError: Module installed but with incompatible structure
-    SemanticValidator = None
-    AsyncSemanticValidator = None
-    THSPResult = None
-    SEMANTIC_VALIDATOR_AVAILABLE = False
+# Semantic validation is available via LayeredValidator with API key
+# LayeredValidator handles this internally
+SEMANTIC_VALIDATOR_AVAILABLE = True
 
 
 # Check for Anthropic SDK availability
@@ -458,8 +447,14 @@ class AsyncBlockedStreamIterator:
         pass
 
 
-class _SentinelMessages:
-    """Wrapper for synchronous messages API with layered validation."""
+class _SentinelMessages(SentinelIntegration):
+    """
+    Wrapper for synchronous messages API with layered validation.
+
+    Inherits from SentinelIntegration for consistent validation behavior.
+    """
+
+    _integration_name = "anthropic_sdk"
 
     def __init__(
         self,
@@ -472,24 +467,27 @@ class _SentinelMessages:
         logger: SentinelLogger,
         block_unsafe_output: bool = False,
     ):
+        # Pass the pre-created validator to base class
+        super().__init__(validator=layered_validator)
+
         self._messages = messages_api
         self._sentinel = sentinel
         self._enable_seed_injection = enable_seed_injection
         self._validate_input = validate_input
         self._validate_output = validate_output
-        self._validator = layered_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
         self._block_unsafe_output = block_unsafe_output
 
     def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Validate content using LayeredValidator.
+        Validate content using inherited validate() method.
 
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        result = self._validator.validate(content)
+        # Use inherited validate() method from SentinelIntegration
+        result = self.validate(content)
 
         if result.is_safe:
             return True, None, None
@@ -635,8 +633,14 @@ class _SentinelMessages:
         )
 
 
-class _SentinelAsyncMessages:
-    """Wrapper for async messages API with layered validation."""
+class _SentinelAsyncMessages(AsyncSentinelIntegration):
+    """
+    Wrapper for async messages API with layered validation.
+
+    Inherits from AsyncSentinelIntegration for consistent async validation.
+    """
+
+    _integration_name = "anthropic_sdk_async"
 
     def __init__(
         self,
@@ -649,24 +653,27 @@ class _SentinelAsyncMessages:
         logger: SentinelLogger,
         block_unsafe_output: bool = False,
     ):
+        # Pass the pre-created async validator to base class
+        super().__init__(validator=layered_validator)
+
         self._messages = messages_api
         self._sentinel = sentinel
         self._enable_seed_injection = enable_seed_injection
         self._validate_input = validate_input
         self._validate_output = validate_output
-        self._validator = layered_validator
         self._logger = logger
         self._seed = sentinel.get_seed()
         self._block_unsafe_output = block_unsafe_output
 
     async def _validate_content(self, content: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Validate content using AsyncLayeredValidator.
+        Validate content using inherited avalidate() method.
 
         Returns:
             Tuple of (is_safe, violated_gate, reasoning)
         """
-        result = await self._validator.validate(content)
+        # Use inherited avalidate() method from AsyncSentinelIntegration
+        result = await self.avalidate(content)
 
         if result.is_safe:
             return True, None, None

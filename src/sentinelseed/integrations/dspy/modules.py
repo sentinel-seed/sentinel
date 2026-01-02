@@ -36,12 +36,12 @@ except (ImportError, AttributeError):
         "Install with: pip install dspy"
     )
 
-from sentinelseed.validators.semantic import (
-    SemanticValidator,
-    AsyncSemanticValidator,
-    THSPResult,
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
 )
-from sentinelseed.validators.gates import THSPValidator
 
 # Import from centralized utils
 from sentinelseed.integrations.dspy.utils import (
@@ -66,13 +66,16 @@ from sentinelseed.integrations.dspy.utils import (
 logger = get_logger()
 
 
-class SentinelGuard(Module):
+class SentinelGuard(Module, SentinelIntegration):
     """
     DSPy module that wraps any other module and validates its output.
 
     The guard executes the wrapped module, then validates the output
     using Sentinel's THSP protocol. If validation fails, the output
     is either blocked or flagged depending on configuration.
+
+    Inherits from both dspy.Module and SentinelIntegration for standardized
+    validation via LayeredValidator.
 
     Args:
         module: The DSPy module to wrap
@@ -91,6 +94,7 @@ class SentinelGuard(Module):
             no API key is provided. If False (default), raise HeuristicFallbackError.
         context: Optional context string to include in validation (e.g., conversation
             history, system prompt, agent state). Helps validator understand intent.
+        validator: Optional LayeredValidator for dependency injection (testing)
 
     Safety Metadata:
         Results include degradation flags to distinguish validated from degraded:
@@ -111,6 +115,8 @@ class SentinelGuard(Module):
         )
     """
 
+    _integration_name = "dspy_guard"
+
     def __init__(
         self,
         module: Module,
@@ -124,9 +130,8 @@ class SentinelGuard(Module):
         fail_closed: bool = False,
         allow_heuristic_fallback: bool = False,
         context: Optional[str] = None,
+        validator: Optional[LayeredValidator] = None,
     ):
-        super().__init__()
-
         # Validate configuration types
         validate_config_types(
             max_text_size=max_text_size,
@@ -141,6 +146,49 @@ class SentinelGuard(Module):
         if provider and mode != "heuristic":
             validate_provider(provider)
 
+        # Determine if we need to use heuristic fallback
+        self._is_degraded_mode = False
+        use_semantic = mode != "heuristic" and api_key is not None
+
+        if mode != "heuristic" and not api_key:
+            if not allow_heuristic_fallback:
+                raise HeuristicFallbackError("SentinelGuard")
+
+            # Emit prominent warning about degraded mode
+            logger.warning(
+                "\n" + "=" * 60 + "\n"
+                "SENTINEL DEGRADED MODE WARNING\n"
+                "=" * 60 + "\n"
+                "No API key provided for SentinelGuard.\n"
+                "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                "This significantly reduces safety detection capability.\n"
+                "\n"
+                "To enable full semantic validation:\n"
+                "  - Provide api_key parameter, OR\n"
+                "  - Set allow_heuristic_fallback=False to require API key\n"
+                "=" * 60
+            )
+            mode = "heuristic"
+            self._is_degraded_mode = True
+
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic,
+                semantic_api_key=api_key,
+                semantic_provider=provider,
+                semantic_model=model,
+                max_text_size=max_text_size,
+                validation_timeout=timeout,
+                fail_closed=fail_closed,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize both parent classes explicitly
+        Module.__init__(self)
+        SentinelIntegration.__init__(self, validator=validator)
+
         self.module = module
         self.output_field = output_field
         self.max_text_size = max_text_size
@@ -149,52 +197,12 @@ class SentinelGuard(Module):
         self.mode = mode
         self.allow_heuristic_fallback = allow_heuristic_fallback
         self.context = context
-        self._is_degraded_mode = False  # Track if we fell back to heuristic
         self._logger = logger
 
         # Log warning about fail-open default
         if not fail_closed:
             warn_fail_open_default(self._logger, "SentinelGuard")
 
-        # Initialize validator based on mode
-        if mode == "heuristic":
-            self._validator = THSPValidator()
-            self._async_validator = None
-        else:
-            if not api_key:
-                # Check if fallback is allowed
-                if not allow_heuristic_fallback:
-                    raise HeuristicFallbackError("SentinelGuard")
-
-                # Emit prominent warning about degraded mode
-                self._logger.warning(
-                    "\n" + "=" * 60 + "\n"
-                    "SENTINEL DEGRADED MODE WARNING\n"
-                    "=" * 60 + "\n"
-                    "No API key provided for SentinelGuard.\n"
-                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                    "This significantly reduces safety detection capability.\n"
-                    "\n"
-                    "To enable full semantic validation:\n"
-                    "  - Provide api_key parameter, OR\n"
-                    "  - Set allow_heuristic_fallback=False to require API key\n"
-                    "=" * 60
-                )
-                self._validator = THSPValidator()
-                self._async_validator = None
-                self.mode = "heuristic"
-                self._is_degraded_mode = True  # Mark as degraded
-            else:
-                self._validator = SemanticValidator(
-                    provider=provider,
-                    model=model,
-                    api_key=api_key,
-                )
-                self._async_validator = AsyncSemanticValidator(
-                    provider=provider,
-                    model=model,
-                    api_key=api_key,
-                )
 
     def forward(self, **kwargs) -> Prediction:
         """
@@ -229,10 +237,10 @@ class SentinelGuard(Module):
                     "Validation timed out (fail_closed=True)"
                 )
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Error in SentinelGuard.forward: {e}")
             if self.fail_closed:
-                return self._create_blocked_prediction(f"Validation error: {e}")
+                return self._create_blocked_prediction("Validation error occurred")
             raise
 
     async def aforward(self, **kwargs) -> Prediction:
@@ -270,10 +278,10 @@ class SentinelGuard(Module):
                     "Validation timed out (fail_closed=True)"
                 )
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Error in SentinelGuard.aforward: {e}")
             if self.fail_closed:
-                return self._create_blocked_prediction(f"Validation error: {e}")
+                return self._create_blocked_prediction("Validation error occurred")
             raise
 
     def _extract_content(self, result: Prediction) -> str:
@@ -313,7 +321,7 @@ class SentinelGuard(Module):
         )
 
     def _validate_sync(self, content: str, context: Optional[str] = None) -> Dict[str, Any]:
-        """Run synchronous validation with optional context."""
+        """Run synchronous validation with optional context using inherited validate()."""
         try:
             # Build content with context if provided
             effective_context = context or self.context
@@ -322,40 +330,35 @@ class SentinelGuard(Module):
             else:
                 content_with_context = content
 
-            if self.mode == "heuristic":
-                result = self._validator.validate(content_with_context)
-                # Heuristic mode: low confidence, degraded if it was a fallback
-                return {
-                    "is_safe": result.get("safe", True),
-                    "gates": result.get("gates", {}),
-                    "issues": result.get("issues", []),
-                    "reasoning": "Heuristic pattern-based validation",
-                    "method": "heuristic",
-                    "degraded": self._is_degraded_mode,
-                    "confidence": CONFIDENCE_LOW,
-                    "context_used": effective_context is not None,
-                }
+            # Use inherited validate() from SentinelIntegration
+            result: ValidationResult = self.validate(content_with_context)
+
+            # Determine confidence based on layer and mode
+            if self._is_degraded_mode:
+                confidence = CONFIDENCE_LOW
+            elif hasattr(result, "layer") and result.layer:
+                confidence = CONFIDENCE_HIGH if result.layer.value == "semantic" else CONFIDENCE_LOW
             else:
-                result: THSPResult = self._validator.validate(content_with_context)
-                # Semantic mode: high confidence, not degraded
-                return {
-                    "is_safe": result.is_safe,
-                    "gates": result.gate_results,
-                    "issues": result.failed_gates,
-                    "reasoning": result.reasoning,
-                    "method": "semantic",
-                    "degraded": False,
-                    "confidence": CONFIDENCE_HIGH,
-                    "context_used": effective_context is not None,
-                }
-        except Exception as e:
+                confidence = CONFIDENCE_LOW
+
+            return {
+                "is_safe": result.is_safe,
+                "gates": {},  # Gates are in violations for LayeredValidator
+                "issues": result.violations or [],
+                "reasoning": result.violations[0] if result.violations else "Validation passed",
+                "method": result.layer.value if hasattr(result, "layer") and result.layer else "layered",
+                "degraded": self._is_degraded_mode,
+                "confidence": confidence,
+                "context_used": effective_context is not None,
+            }
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Validation error: {e}")
             if self.fail_closed:
                 return {
                     "is_safe": False,
                     "gates": {},
-                    "issues": [f"Validation error: {e}"],
-                    "reasoning": f"Validation failed with error: {e}",
+                    "issues": ["Validation error occurred"],
+                    "reasoning": "Validation failed with error",
                     "method": "error",
                     "degraded": True,
                     "confidence": CONFIDENCE_NONE,
@@ -366,7 +369,7 @@ class SentinelGuard(Module):
                 "is_safe": True,
                 "gates": {},
                 "issues": [],
-                "reasoning": f"Validation error (fail_open): {e}",
+                "reasoning": "Validation error (fail_open)",
                 "method": "error",
                 "degraded": True,
                 "confidence": CONFIDENCE_NONE,
@@ -506,12 +509,15 @@ class SentinelPredict(Module):
         return await self._guard.aforward(**kwargs)
 
 
-class SentinelChainOfThought(Module):
+class SentinelChainOfThought(Module, SentinelIntegration):
     """
     DSPy ChainOfThought module with built-in THSP safety validation.
 
     Validates BOTH the reasoning process AND the final output, ensuring
     that harmful content cannot hide in either component.
+
+    Inherits from both dspy.Module and SentinelIntegration for standardized
+    validation via LayeredValidator.
 
     Args:
         signature: DSPy signature (string or Signature class)
@@ -526,6 +532,7 @@ class SentinelChainOfThought(Module):
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on validation errors (default: False)
         allow_heuristic_fallback: If True, allow fallback to heuristic (default: False)
+        validator: Optional LayeredValidator for dependency injection (testing)
         **config: Additional config passed to dspy.ChainOfThought
 
     Safety Metadata:
@@ -547,6 +554,8 @@ class SentinelChainOfThought(Module):
         print(result.safety_field_results)     # {"reasoning": True, "answer": True}
     """
 
+    _integration_name = "dspy_chain_of_thought"
+
     def __init__(
         self,
         signature: Union[str, type],
@@ -561,10 +570,9 @@ class SentinelChainOfThought(Module):
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
         allow_heuristic_fallback: bool = False,
+        validator: Optional[LayeredValidator] = None,
         **config,
     ):
-        super().__init__()
-
         # Validate configuration types
         validate_config_types(
             max_text_size=max_text_size,
@@ -579,6 +587,49 @@ class SentinelChainOfThought(Module):
         if provider and mode != "heuristic":
             validate_provider(provider)
 
+        # Determine if we need to use heuristic fallback
+        self._is_degraded_mode = False
+        use_semantic = mode != "heuristic" and api_key is not None
+
+        if mode != "heuristic" and not api_key:
+            if not allow_heuristic_fallback:
+                raise HeuristicFallbackError("SentinelChainOfThought")
+
+            # Emit prominent warning about degraded mode
+            logger.warning(
+                "\n" + "=" * 60 + "\n"
+                "SENTINEL DEGRADED MODE WARNING\n"
+                "=" * 60 + "\n"
+                "No API key provided for SentinelChainOfThought.\n"
+                "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                "This significantly reduces safety detection capability.\n"
+                "\n"
+                "To enable full semantic validation:\n"
+                "  - Provide api_key parameter, OR\n"
+                "  - Set allow_heuristic_fallback=False to require API key\n"
+                "=" * 60
+            )
+            mode = "heuristic"
+            self._is_degraded_mode = True
+
+        # Create LayeredValidator if not provided
+        if validator is None:
+            val_config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=use_semantic,
+                semantic_api_key=api_key,
+                semantic_provider=provider,
+                semantic_model=model,
+                max_text_size=max_text_size,
+                validation_timeout=timeout,
+                fail_closed=fail_closed,
+            )
+            validator = LayeredValidator(config=val_config)
+
+        # Initialize both parent classes explicitly
+        Module.__init__(self)
+        SentinelIntegration.__init__(self, validator=validator)
+
         self._cot = dspy.ChainOfThought(signature, **config)
         self.validate_reasoning = validate_reasoning
         self.validate_output = validate_output
@@ -588,45 +639,11 @@ class SentinelChainOfThought(Module):
         self.fail_closed = fail_closed
         self.mode = mode
         self.allow_heuristic_fallback = allow_heuristic_fallback
-        self._is_degraded_mode = False
         self._logger = logger
 
         # Log warning about fail-open default
         if not fail_closed:
             warn_fail_open_default(self._logger, "SentinelChainOfThought")
-
-        # Initialize validator based on mode
-        if mode == "heuristic":
-            self._validator = THSPValidator()
-        else:
-            if not api_key:
-                # Check if fallback is allowed
-                if not allow_heuristic_fallback:
-                    raise HeuristicFallbackError("SentinelChainOfThought")
-
-                # Emit prominent warning about degraded mode
-                self._logger.warning(
-                    "\n" + "=" * 60 + "\n"
-                    "SENTINEL DEGRADED MODE WARNING\n"
-                    "=" * 60 + "\n"
-                    "No API key provided for SentinelChainOfThought.\n"
-                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                    "This significantly reduces safety detection capability.\n"
-                    "\n"
-                    "To enable full semantic validation:\n"
-                    "  - Provide api_key parameter, OR\n"
-                    "  - Set allow_heuristic_fallback=False to require API key\n"
-                    "=" * 60
-                )
-                self._validator = THSPValidator()
-                self.mode = "heuristic"
-                self._is_degraded_mode = True
-            else:
-                self._validator = SemanticValidator(
-                    provider=provider,
-                    model=model,
-                    api_key=api_key,
-                )
 
     def _extract_fields(self, result: Prediction) -> Dict[str, str]:
         """
@@ -658,38 +675,36 @@ class SentinelChainOfThought(Module):
         return fields
 
     def _validate_content(self, content: str) -> Dict[str, Any]:
-        """Validate a single piece of content."""
+        """Validate a single piece of content using inherited validate()."""
         try:
-            if self.mode == "heuristic":
-                result = self._validator.validate(content)
-                return {
-                    "is_safe": result.get("safe", True),
-                    "gates": result.get("gates", {}),
-                    "issues": result.get("issues", []),
-                    "reasoning": "Heuristic pattern-based validation",
-                    "method": "heuristic",
-                    "degraded": self._is_degraded_mode,
-                    "confidence": CONFIDENCE_LOW,
-                }
+            # Use inherited validate() from SentinelIntegration
+            result: ValidationResult = self.validate(content)
+
+            # Determine confidence based on layer and mode
+            if self._is_degraded_mode:
+                confidence = CONFIDENCE_LOW
+            elif hasattr(result, "layer") and result.layer:
+                confidence = CONFIDENCE_HIGH if result.layer.value == "semantic" else CONFIDENCE_LOW
             else:
-                result: THSPResult = self._validator.validate(content)
-                return {
-                    "is_safe": result.is_safe,
-                    "gates": result.gate_results,
-                    "issues": result.failed_gates,
-                    "reasoning": result.reasoning,
-                    "method": "semantic",
-                    "degraded": False,
-                    "confidence": CONFIDENCE_HIGH,
-                }
-        except Exception as e:
+                confidence = CONFIDENCE_LOW
+
+            return {
+                "is_safe": result.is_safe,
+                "gates": {},  # Gates are in violations for LayeredValidator
+                "issues": result.violations or [],
+                "reasoning": result.violations[0] if result.violations else "Validation passed",
+                "method": result.layer.value if hasattr(result, "layer") and result.layer else "layered",
+                "degraded": self._is_degraded_mode,
+                "confidence": confidence,
+            }
+        except (ValueError, TypeError, RuntimeError, AttributeError) as e:
             self._logger.error(f"Validation error: {e}")
             if self.fail_closed:
                 return {
                     "is_safe": False,
                     "gates": {},
-                    "issues": [f"Validation error: {e}"],
-                    "reasoning": f"Validation failed with error: {e}",
+                    "issues": ["Validation error occurred"],
+                    "reasoning": "Validation failed with error",
                     "method": "error",
                     "degraded": True,
                     "confidence": CONFIDENCE_NONE,
@@ -698,7 +713,7 @@ class SentinelChainOfThought(Module):
                 "is_safe": True,
                 "gates": {},
                 "issues": [],
-                "reasoning": f"Validation error (fail_open): {e}",
+                "reasoning": "Validation error (fail_open)",
                 "method": "error",
                 "degraded": True,
                 "confidence": CONFIDENCE_NONE,
@@ -954,13 +969,13 @@ class SentinelChainOfThought(Module):
                 blocked.safety_reasoning = "Validation timed out (fail_closed=True)"
                 return blocked
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Error in SentinelChainOfThought.forward: {e}")
             if self.fail_closed:
                 blocked = Prediction()
                 blocked.safety_blocked = True
                 blocked.safety_passed = False
-                blocked.safety_reasoning = f"Validation error: {e}"
+                blocked.safety_reasoning = "Validation error occurred"
                 return blocked
             raise
 
@@ -1013,12 +1028,12 @@ class SentinelChainOfThought(Module):
                 blocked.safety_reasoning = "Validation timed out (fail_closed=True)"
                 return blocked
             raise
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, AttributeError, KeyError) as e:
             self._logger.error(f"Error in SentinelChainOfThought.aforward: {e}")
             if self.fail_closed:
                 blocked = Prediction()
                 blocked.safety_blocked = True
                 blocked.safety_passed = False
-                blocked.safety_reasoning = f"Validation error: {e}"
+                blocked.safety_reasoning = "Validation error occurred"
                 return blocked
             raise

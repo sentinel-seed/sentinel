@@ -49,6 +49,12 @@ import re
 import warnings
 
 from sentinelseed import Sentinel
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult,
+)
 
 logger = logging.getLogger("sentinelseed.solana_agent_kit")
 
@@ -235,13 +241,16 @@ class TransactionSafetyResult:
     requires_confirmation: bool = False
 
 
-class SentinelValidator:
+class SentinelValidator(SentinelIntegration):
     """
     Safety validator for Solana Agent Kit transactions.
 
     Use this class to validate transactions before executing them
     with Solana Agent Kit. This is NOT a plugin - Solana Agent Kit
     plugins add actions, they don't intercept transactions.
+
+    Inherits from SentinelIntegration for standardized validation via
+    LayeredValidator.
 
     Example:
         from solana_agent_kit import SolanaAgentKit
@@ -258,6 +267,8 @@ class SentinelValidator:
         else:
             print(f"Blocked: {result.concerns}")
     """
+
+    _integration_name = "solana_agent_kit"
 
     # Default actions that require explicit purpose
     DEFAULT_REQUIRE_PURPOSE = [
@@ -279,6 +290,7 @@ class SentinelValidator:
         strict_mode: bool = False,
         custom_patterns: Optional[List[SuspiciousPattern]] = None,
         on_validation: Optional[Callable[[TransactionSafetyResult], None]] = None,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize validator.
@@ -297,11 +309,24 @@ class SentinelValidator:
             strict_mode: If True, block any transaction with concerns (default False)
             custom_patterns: Additional suspicious patterns to check
             on_validation: Callback function called after each validation
+            validator: Optional LayeredValidator for dependency injection (testing)
 
         Note:
             Default max_transfer=100.0 SOL may be too high for some use cases.
             Always configure appropriate limits for your application.
         """
+        # Create LayeredValidator if not provided
+        if validator is None:
+            config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
+        # Keep Sentinel instance for get_seed() backwards compatibility
         self.sentinel = Sentinel(seed_level=seed_level)
         self.max_transfer = max_transfer
         self.confirm_above = confirm_above
@@ -501,11 +526,12 @@ class SentinelValidator:
 
         requires_confirmation = amount > self.confirm_above
 
-        # Validate intent with Sentinel (include memo for full validation)
+        # Validate intent with LayeredValidator (include memo for full validation)
         description = self._describe_action(action, amount, recipient, memo, kwargs)
-        is_safe, sentinel_concerns = self.sentinel.validate_action(description)
+        validation_result: ValidationResult = self.validate(description)
 
-        if not is_safe:
+        if not validation_result.is_safe:
+            sentinel_concerns = validation_result.violations or []
             concerns.extend(sentinel_concerns)
             if risk_level < TransactionRisk.HIGH:
                 risk_level = TransactionRisk.HIGH
@@ -647,10 +673,10 @@ class SentinelValidator:
                 if max_risk < TransactionRisk.HIGH:
                     max_risk = TransactionRisk.HIGH
 
-        # Suspicious memo (Sentinel check)
+        # Suspicious memo (LayeredValidator check)
         if memo:
-            memo_check = self.sentinel.validate_request(memo)
-            if not memo_check.get("should_proceed", True):
+            memo_result: ValidationResult = self.validate(memo)
+            if not memo_result.is_safe:
                 suspicious.append("Suspicious memo content")
                 if max_risk < TransactionRisk.MEDIUM:
                     max_risk = TransactionRisk.MEDIUM

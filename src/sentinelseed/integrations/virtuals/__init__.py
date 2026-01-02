@@ -52,15 +52,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from sentinelseed.integrations._base import (
+    SentinelIntegration,
+    LayeredValidator,
+    ValidationConfig,
+    ValidationResult as LayeredValidationResult,
+)
+
 logger = logging.getLogger("sentinelseed.virtuals")
 
-# Import THSP validator from core (the global validator with all security patterns)
-try:
-    from sentinelseed.validators.gates import THSPValidator
-    THSP_VALIDATOR_AVAILABLE = True
-except (ImportError, AttributeError):
-    THSPValidator = None
-    THSP_VALIDATOR_AVAILABLE = False
+# Import THSP types from validators (canonical source)
+from sentinelseed.validators.semantic import THSPGate
 
 # Import memory integrity checker if available
 try:
@@ -113,12 +115,8 @@ class SentinelValidationError(Exception):
         self.concerns = concerns
 
 
-class THSPGate(Enum):
-    """The four gates of THSP Protocol."""
-    TRUTH = "truth"
-    HARM = "harm"
-    SCOPE = "scope"
-    PURPOSE = "purpose"
+# THSPGate is imported from sentinelseed.validators.semantic (canonical source)
+# Kept in __all__ for backwards compatibility
 
 
 @dataclass
@@ -181,12 +179,13 @@ class SentinelConfig:
     ])
 
 
-class SentinelValidator:
+class SentinelValidator(SentinelIntegration):
     """
     Core validation engine implementing THSP Protocol for Virtuals/GAME agents.
 
-    Uses the global THSPValidator for content validation (security patterns,
-    jailbreak detection, etc.) and adds crypto-specific checks on top:
+    Uses LayeredValidator for content validation (security patterns,
+    jailbreak detection, etc.) via SentinelIntegration inheritance,
+    and adds crypto-specific checks on top:
     - Transaction amount limits
     - Blocked function names
     - Crypto-specific patterns (private keys, seed phrases)
@@ -198,20 +197,29 @@ class SentinelValidator:
     - PURPOSE: Does this action serve a legitimate benefit?
     """
 
-    def __init__(self, config: Optional[SentinelConfig] = None):
+    _integration_name = "virtuals"
+
+    def __init__(
+        self,
+        config: Optional[SentinelConfig] = None,
+        validator: Optional[LayeredValidator] = None,
+    ):
+        # Create LayeredValidator if not provided
+        if validator is None:
+            val_config = ValidationConfig(
+                use_heuristic=True,
+                use_semantic=False,
+            )
+            validator = LayeredValidator(config=val_config)
+
+        # Initialize SentinelIntegration
+        super().__init__(validator=validator)
+
         self.config = config or SentinelConfig()
         self._compiled_patterns = [
             re.compile(p) for p in self.config.suspicious_patterns
         ]
         self._validation_history: List[Dict[str, Any]] = []
-
-        # Use global THSPValidator for content validation
-        self._thsp_validator = None
-        if THSP_VALIDATOR_AVAILABLE and THSPValidator is not None:
-            try:
-                self._thsp_validator = THSPValidator()
-            except Exception as e:
-                logger.warning(f"Could not initialize THSPValidator: {e}")
 
     def validate(
         self,
@@ -238,30 +246,25 @@ class SentinelValidator:
         concerns = []
         gate_results = {"truth": True, "harm": True, "scope": True, "purpose": True}
 
-        # Step 1: Use global THSPValidator for content validation
+        # Step 1: Use LayeredValidator for content validation
         # This catches: rm -rf, SQL injection, XSS, jailbreaks, etc.
-        if self._thsp_validator is not None:
-            content_to_validate = self._build_content_string(
-                action_name, action_args, context
-            )
-            thsp_result = self._thsp_validator.validate(content_to_validate)
+        content_to_validate = self._build_content_string(
+            action_name, action_args, context
+        )
+        layered_result: LayeredValidationResult = self.validator.validate(content_to_validate)
 
-            if not thsp_result.get("is_safe", True):
-                # Map THSPValidator gates to our gate_results
-                thsp_gates = thsp_result.get("gates", {})
-                for gate_name in ["truth", "harm", "scope", "purpose"]:
-                    if thsp_gates.get(gate_name) == "fail":
-                        gate_results[gate_name] = False
+        if not layered_result.is_safe:
+            # LayeredValidator failed - mark harm gate as failed
+            gate_results["harm"] = False
 
-                # Add violations as concerns
-                thsp_violations = thsp_result.get("violations", [])
-                concerns.extend(thsp_violations)
+            # Add violations as concerns
+            if layered_result.violations:
+                concerns.extend(layered_result.violations)
 
-                # Check for jailbreak (pre-filter in THSPValidator)
-                if thsp_result.get("jailbreak_detected", False):
-                    gate_results["harm"] = False
-                    if "Jailbreak attempt detected" not in str(concerns):
-                        concerns.append("Jailbreak attempt detected")
+            # Check for jailbreak patterns in violations
+            if any("jailbreak" in v.lower() for v in (layered_result.violations or [])):
+                if "Jailbreak attempt detected" not in str(concerns):
+                    concerns.append("Jailbreak attempt detected")
 
         # Step 2: Apply crypto-specific checks (on top of global validation)
 
@@ -1111,5 +1114,4 @@ __all__ = [
     "sentinel_protected",
     "GAME_SDK_AVAILABLE",
     "MEMORY_INTEGRITY_AVAILABLE",
-    "THSP_VALIDATOR_AVAILABLE",
 ]
