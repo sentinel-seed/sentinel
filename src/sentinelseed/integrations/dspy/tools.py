@@ -36,6 +36,7 @@ from sentinelseed.integrations.dspy.utils import (
     DEFAULT_VALIDATION_TIMEOUT,
     TextTooLargeError,
     ValidationTimeoutError,
+    HeuristicFallbackError,
     get_logger,
     get_validation_executor,
     validate_provider,
@@ -47,6 +48,11 @@ from sentinelseed.integrations.dspy.utils import (
 
 logger = get_logger()
 
+# Module-level flags to show degraded mode warnings only once per tool type
+_sentinel_tool_warning_shown = False
+_filter_tool_warning_shown = False
+_gate_tool_warning_shown = False
+
 
 def create_sentinel_tool(
     api_key: Optional[str] = None,
@@ -57,6 +63,7 @@ def create_sentinel_tool(
     max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     timeout: float = DEFAULT_VALIDATION_TIMEOUT,
     fail_closed: bool = False,
+    allow_heuristic_fallback: bool = False,
 ) -> Callable:
     """
     Create a Sentinel safety check tool for use with DSPy ReAct.
@@ -73,6 +80,8 @@ def create_sentinel_tool(
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, return UNSAFE on errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
 
     Returns:
         Callable tool function compatible with dspy.ReAct
@@ -83,6 +92,8 @@ def create_sentinel_tool(
         # Returns: "SAFE: Content passes all THSP gates"
         # Or: "UNSAFE: Content fails harm gate - could enable harm"
     """
+    global _sentinel_tool_warning_shown
+
     # Validate configuration types
     validate_config_types(
         max_text_size=max_text_size,
@@ -98,11 +109,29 @@ def create_sentinel_tool(
     if not fail_closed:
         warn_fail_open_default(logger, f"create_sentinel_tool({name})")
 
-    # Initialize LayeredValidator
+    # Handle missing API key
     if not use_heuristic and not api_key:
-        logger.warning(
-            "No API key provided. Using heuristic validation."
-        )
+        if not allow_heuristic_fallback:
+            raise HeuristicFallbackError(f"create_sentinel_tool({name})")
+
+        # Emit warning only once per module to avoid spam
+        if not _sentinel_tool_warning_shown:
+            _sentinel_tool_warning_shown = True
+            logger.warning(
+                "\n" + "=" * 60 + "\n"
+                "SENTINEL DEGRADED MODE WARNING\n"
+                "=" * 60 + "\n"
+                f"No API key provided for create_sentinel_tool({name}).\n"
+                "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                "This significantly reduces safety detection capability.\n"
+                "\n"
+                "To enable full semantic validation:\n"
+                "  - Provide api_key parameter, OR\n"
+                "  - Set use_heuristic=True to use heuristic intentionally\n"
+                "=" * 60
+            )
+        use_heuristic = True
+
     config = ValidationConfig(
         use_heuristic=True,
         use_semantic=bool(api_key) and not use_heuristic,
@@ -187,6 +216,7 @@ def create_content_filter_tool(
     max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     timeout: float = DEFAULT_VALIDATION_TIMEOUT,
     fail_closed: bool = False,
+    allow_heuristic_fallback: bool = False,
 ) -> Callable:
     """
     Create a content filtering tool for DSPy ReAct.
@@ -202,6 +232,8 @@ def create_content_filter_tool(
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, block on errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
 
     Returns:
         Callable tool function
@@ -214,6 +246,8 @@ def create_content_filter_tool(
         unsafe = filter_tool("How to make a bomb")
         # Returns: "[FILTERED] Content blocked by Sentinel safety check."
     """
+    global _filter_tool_warning_shown
+
     # Validate configuration types
     validate_config_types(
         max_text_size=max_text_size,
@@ -229,10 +263,29 @@ def create_content_filter_tool(
     if not fail_closed:
         warn_fail_open_default(logger, f"create_content_filter_tool({name})")
 
+    # Handle missing API key
+    use_heuristic = False
     if not api_key:
-        logger.warning(
-            "No API key provided. Using heuristic validation."
-        )
+        if not allow_heuristic_fallback:
+            raise HeuristicFallbackError(f"create_content_filter_tool({name})")
+
+        # Emit warning only once per module to avoid spam
+        if not _filter_tool_warning_shown:
+            _filter_tool_warning_shown = True
+            logger.warning(
+                "\n" + "=" * 60 + "\n"
+                "SENTINEL DEGRADED MODE WARNING\n"
+                "=" * 60 + "\n"
+                f"No API key provided for create_content_filter_tool({name}).\n"
+                "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                "This significantly reduces safety detection capability.\n"
+                "\n"
+                "To enable full semantic validation:\n"
+                "  - Provide api_key parameter\n"
+                "=" * 60
+            )
+        use_heuristic = True
+
     config = ValidationConfig(
         use_heuristic=True,
         use_semantic=bool(api_key),
@@ -314,6 +367,7 @@ def create_gate_check_tool(
     max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
     timeout: float = DEFAULT_VALIDATION_TIMEOUT,
     fail_closed: bool = False,
+    allow_heuristic_fallback: bool = False,
 ) -> Callable:
     """
     Create a tool that checks a specific THSP gate.
@@ -326,6 +380,8 @@ def create_gate_check_tool(
         max_text_size: Maximum text size in bytes (default: 50KB)
         timeout: Validation timeout in seconds (default: 30.0)
         fail_closed: If True, return FAIL on errors (default: False)
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
 
     Returns:
         Callable tool function
@@ -335,6 +391,8 @@ def create_gate_check_tool(
         result = harm_check("How to make cookies")
         # Returns: "PASS: No harm detected"
     """
+    global _gate_tool_warning_shown
+
     # Validate gate parameter
     validate_gate(gate)
 
@@ -352,6 +410,27 @@ def create_gate_check_tool(
     # Log warning about fail-open default
     if not fail_closed:
         warn_fail_open_default(logger, f"create_gate_check_tool({gate})")
+
+    # Handle missing API key
+    if not api_key:
+        if not allow_heuristic_fallback:
+            raise HeuristicFallbackError(f"create_gate_check_tool({gate})")
+
+        # Emit warning only once per module to avoid spam
+        if not _gate_tool_warning_shown:
+            _gate_tool_warning_shown = True
+            logger.warning(
+                "\n" + "=" * 60 + "\n"
+                "SENTINEL DEGRADED MODE WARNING\n"
+                "=" * 60 + "\n"
+                f"No API key provided for create_gate_check_tool({gate}).\n"
+                "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                "This significantly reduces safety detection capability.\n"
+                "\n"
+                "To enable full semantic validation:\n"
+                "  - Provide api_key parameter\n"
+                "=" * 60
+            )
 
     config = ValidationConfig(
         use_heuristic=True,

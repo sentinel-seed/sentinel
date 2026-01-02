@@ -116,6 +116,7 @@ class SentinelGuard(Module, SentinelIntegration):
     """
 
     _integration_name = "dspy_guard"
+    _degraded_warning_shown = False  # Class-level flag to show warning only once
 
     def __init__(
         self,
@@ -154,20 +155,22 @@ class SentinelGuard(Module, SentinelIntegration):
             if not allow_heuristic_fallback:
                 raise HeuristicFallbackError("SentinelGuard")
 
-            # Emit prominent warning about degraded mode
-            logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "SENTINEL DEGRADED MODE WARNING\n"
-                "=" * 60 + "\n"
-                "No API key provided for SentinelGuard.\n"
-                "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                "This significantly reduces safety detection capability.\n"
-                "\n"
-                "To enable full semantic validation:\n"
-                "  - Provide api_key parameter, OR\n"
-                "  - Set allow_heuristic_fallback=False to require API key\n"
-                "=" * 60
-            )
+            # Emit warning only once per class to avoid spam
+            if not SentinelGuard._degraded_warning_shown:
+                SentinelGuard._degraded_warning_shown = True
+                logger.warning(
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
+                )
             mode = "heuristic"
             self._is_degraded_mode = True
 
@@ -555,6 +558,7 @@ class SentinelChainOfThought(Module, SentinelIntegration):
     """
 
     _integration_name = "dspy_chain_of_thought"
+    _degraded_warning_shown = False  # Class-level flag to show warning only once
 
     def __init__(
         self,
@@ -595,20 +599,22 @@ class SentinelChainOfThought(Module, SentinelIntegration):
             if not allow_heuristic_fallback:
                 raise HeuristicFallbackError("SentinelChainOfThought")
 
-            # Emit prominent warning about degraded mode
-            logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "SENTINEL DEGRADED MODE WARNING\n"
-                "=" * 60 + "\n"
-                "No API key provided for SentinelChainOfThought.\n"
-                "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                "This significantly reduces safety detection capability.\n"
-                "\n"
-                "To enable full semantic validation:\n"
-                "  - Provide api_key parameter, OR\n"
-                "  - Set allow_heuristic_fallback=False to require API key\n"
-                "=" * 60
-            )
+            # Emit warning only once per class to avoid spam
+            if not SentinelChainOfThought._degraded_warning_shown:
+                SentinelChainOfThought._degraded_warning_shown = True
+                logger.warning(
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelChainOfThought.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
+                )
             mode = "heuristic"
             self._is_degraded_mode = True
 

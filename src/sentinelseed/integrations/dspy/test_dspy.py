@@ -453,7 +453,7 @@ class TestTools:
         """create_content_filter_tool should create filter tool."""
         from sentinelseed.integrations.dspy import create_content_filter_tool
 
-        tool = create_content_filter_tool()
+        tool = create_content_filter_tool(allow_heuristic_fallback=True)
 
         assert callable(tool)
         assert tool.__name__ == "filter_content"
@@ -462,7 +462,7 @@ class TestTools:
         """Content filter should return original safe content."""
         from sentinelseed.integrations.dspy import create_content_filter_tool
 
-        tool = create_content_filter_tool(timeout=5.0)
+        tool = create_content_filter_tool(timeout=5.0, allow_heuristic_fallback=True)
         content = "Hello, how are you?"
         result = tool(content)
 
@@ -472,7 +472,7 @@ class TestTools:
         """create_gate_check_tool should create gate-specific tool."""
         from sentinelseed.integrations.dspy import create_gate_check_tool
 
-        tool = create_gate_check_tool("harm")
+        tool = create_gate_check_tool("harm", allow_heuristic_fallback=True)
 
         assert callable(tool)
         assert tool.__name__ == "check_harm_gate"
@@ -494,14 +494,14 @@ class TestTools:
         from sentinelseed.integrations.dspy import create_gate_check_tool, VALID_GATES
 
         for gate in VALID_GATES:
-            tool = create_gate_check_tool(gate)
+            tool = create_gate_check_tool(gate, allow_heuristic_fallback=True)
             assert tool.__name__ == f"check_{gate}_gate"
 
     def test_gate_check_returns_pass(self):
         """Gate check should return PASS for safe content."""
         from sentinelseed.integrations.dspy import create_gate_check_tool
 
-        tool = create_gate_check_tool("harm", timeout=5.0)
+        tool = create_gate_check_tool("harm", timeout=5.0, allow_heuristic_fallback=True)
         result = tool("What is machine learning?")
 
         assert "PASS" in result
@@ -540,6 +540,7 @@ class TestFailClosedMode:
         tool = create_content_filter_tool(
             max_text_size=5,  # Very small
             fail_closed=True,
+            allow_heuristic_fallback=True,
         )
 
         result = tool("Content that is too large")
@@ -728,7 +729,7 @@ class TestConcurrency:
         )
 
         tool1 = create_sentinel_tool(use_heuristic=True, timeout=5.0)
-        tool2 = create_gate_check_tool("harm", timeout=5.0)
+        tool2 = create_gate_check_tool("harm", timeout=5.0, allow_heuristic_fallback=True)
 
         result1 = tool1("Test content 1")
         result2 = tool2("Test content 2")
@@ -819,10 +820,10 @@ class TestIntegration:
             create_gate_check_tool,
         )
 
-        # Create all tools
+        # Create all tools with heuristic fallback enabled
         safety = create_sentinel_tool(use_heuristic=True, timeout=5.0)
-        filter_tool = create_content_filter_tool(timeout=5.0)
-        harm_check = create_gate_check_tool("harm", timeout=5.0)
+        filter_tool = create_content_filter_tool(timeout=5.0, allow_heuristic_fallback=True)
+        harm_check = create_gate_check_tool("harm", timeout=5.0, allow_heuristic_fallback=True)
 
         content = "What is artificial intelligence?"
 
@@ -1118,6 +1119,92 @@ class TestHeuristicFallbackError:
         assert error.component == "TestComponent"
         assert "api_key" in str(error).lower()
         assert "allow_heuristic_fallback" in str(error)
+
+    def test_content_filter_requires_api_key_or_fallback(self):
+        """create_content_filter_tool should raise without api_key and fallback."""
+        from sentinelseed.integrations.dspy import (
+            create_content_filter_tool,
+            HeuristicFallbackError,
+        )
+
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            create_content_filter_tool()
+
+        assert "create_content_filter_tool" in exc_info.value.component
+
+    def test_gate_check_requires_api_key_or_fallback(self):
+        """create_gate_check_tool should raise without api_key and fallback."""
+        from sentinelseed.integrations.dspy import (
+            create_gate_check_tool,
+            HeuristicFallbackError,
+        )
+
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            create_gate_check_tool("harm")
+
+        assert "create_gate_check_tool" in exc_info.value.component
+
+    def test_sentinel_tool_requires_api_key_or_fallback(self):
+        """create_sentinel_tool should raise without api_key and fallback (unless use_heuristic)."""
+        from sentinelseed.integrations.dspy import (
+            create_sentinel_tool,
+            HeuristicFallbackError,
+        )
+
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            create_sentinel_tool()
+
+        assert "create_sentinel_tool" in exc_info.value.component
+
+    @pytest.mark.skipif(
+        not pytest.importorskip("dspy", reason="DSPy not installed"),
+        reason="DSPy not installed"
+    )
+    def test_tool_validator_requires_api_key_or_fallback(self):
+        """SentinelToolValidator should raise without api_key and fallback."""
+        from sentinelseed.integrations.dspy import (
+            SentinelToolValidator,
+            HeuristicFallbackError,
+        )
+
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            SentinelToolValidator()
+
+        assert "SentinelToolValidator" in exc_info.value.component
+
+    @pytest.mark.skipif(
+        not pytest.importorskip("dspy", reason="DSPy not installed"),
+        reason="DSPy not installed"
+    )
+    def test_agent_guard_requires_api_key_or_fallback(self):
+        """SentinelAgentGuard should raise without api_key and fallback."""
+        import dspy
+        from sentinelseed.integrations.dspy import (
+            SentinelAgentGuard,
+            HeuristicFallbackError,
+        )
+
+        base = dspy.ChainOfThought("question -> answer")
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            SentinelAgentGuard(base)
+
+        assert "SentinelAgentGuard" in exc_info.value.component
+
+    @pytest.mark.skipif(
+        not pytest.importorskip("dspy", reason="DSPy not installed"),
+        reason="DSPy not installed"
+    )
+    def test_memory_guard_requires_api_key_or_fallback(self):
+        """SentinelMemoryGuard should raise without api_key and fallback."""
+        from sentinelseed.integrations.dspy import (
+            SentinelMemoryGuard,
+            HeuristicFallbackError,
+        )
+
+        with pytest.raises(HeuristicFallbackError) as exc_info:
+            SentinelMemoryGuard()
+
+        assert "SentinelMemoryGuard" in exc_info.value.component
 
 
 class TestConfidenceLevels:

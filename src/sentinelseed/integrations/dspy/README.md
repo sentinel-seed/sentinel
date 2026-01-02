@@ -141,11 +141,23 @@ Tools for use with DSPy's ReAct agents.
 import dspy
 from sentinelseed.integrations.dspy import create_sentinel_tool
 
-# Create safety tool
+# Create safety tool (requires API key or explicit fallback)
 safety_tool = create_sentinel_tool(
     api_key="...",
     timeout=30.0,
     fail_closed=False,
+)
+
+# Or with heuristic fallback (no API key required)
+safety_tool = create_sentinel_tool(
+    use_heuristic=True,  # Explicitly use heuristic
+    timeout=30.0,
+)
+
+# Or allow automatic fallback
+safety_tool = create_sentinel_tool(
+    allow_heuristic_fallback=True,  # Falls back if no API key
+    timeout=30.0,
 )
 
 # Use with ReAct
@@ -160,6 +172,9 @@ agent = dspy.ReAct(
 - `create_content_filter_tool()`: Filter unsafe content
 - `create_gate_check_tool(gate)`: Check specific gate
 
+> **Note:** All tools require either an API key or `allow_heuristic_fallback=True`.
+> Without these, a `HeuristicFallbackError` is raised to prevent silent degradation.
+
 ## Output Metadata
 
 All Sentinel modules add safety metadata to predictions:
@@ -172,14 +187,19 @@ result.safety_passed    # bool: Did content pass all gates?
 result.safety_gates     # dict: Individual gate results
 result.safety_reasoning # str: Explanation
 result.safety_method    # str: "semantic" or "heuristic"
-result.safety_blocked   # bool: Was content blocked? (block mode)
-result.safety_issues    # list: Issues found
+
+# Conditional metadata (only present when content is UNSAFE)
+result.safety_blocked   # bool: Was content blocked? (only in block mode when unsafe)
+result.safety_issues    # list: Issues found (only when unsafe)
 
 # Additional metadata for SentinelChainOfThought
 result.safety_fields_validated  # list: Fields that were validated ["reasoning", "answer"]
 result.safety_field_results     # dict: Per-field results {"reasoning": True, "answer": False}
 result.safety_failed_fields     # list: Fields that failed validation ["answer"]
 ```
+
+> **Note:** `safety_blocked` and `safety_issues` are only added to the result when
+> content fails validation. Check `safety_passed` first to determine if content is safe.
 
 ## Validation Modes
 
@@ -440,9 +460,19 @@ guard = SentinelGuard(module, mode="block", allow_heuristic_fallback=True)
 guard = SentinelGuard(module, mode="heuristic")
 ```
 
-When `allow_heuristic_fallback=True`:
+**Important behavior when `allow_heuristic_fallback=True`:**
+- The `mode` parameter is automatically changed to `"heuristic"`
 - `safety_degraded=True` indicates fallback occurred
-- `safety_confidence="low"` indicates heuristic was used
+- `safety_confidence="low"` indicates heuristic was used (~50% accuracy)
+- A warning is emitted once per component class (not per instance)
+
+This applies to all Sentinel DSPy components:
+- `SentinelGuard`
+- `SentinelPredict` (via SentinelGuard)
+- `SentinelChainOfThought`
+- `SentinelToolValidator`
+- `SentinelAgentGuard`
+- `SentinelMemoryGuard`
 
 ## Limitations
 
@@ -465,6 +495,7 @@ validator = SentinelToolValidator(
     api_key="sk-...",
     validate_args=True,    # Validate tool arguments
     validate_output=False, # Optionally validate outputs
+    allow_heuristic_fallback=False,  # Raise error if no API key (default)
 )
 
 # Wrap any tool function
@@ -499,6 +530,7 @@ safe_agent = SentinelAgentGuard(
     validate_input=True,   # Validate agent input
     validate_steps=True,   # Validate intermediate steps
     validate_output=True,  # Validate final output
+    allow_heuristic_fallback=False,  # Raise error if no API key (default)
     step_callback=lambda n, content, result: print(f"Step {n}: {'SAFE' if result['is_safe'] else 'UNSAFE'}")
 )
 
@@ -516,7 +548,10 @@ Validates data before writing to agent memory.
 ```python
 from sentinelseed.integrations.dspy import SentinelMemoryGuard
 
-memory_guard = SentinelMemoryGuard(api_key="sk-...")
+memory_guard = SentinelMemoryGuard(
+    api_key="sk-...",
+    allow_heuristic_fallback=False,  # Raise error if no API key (default)
+)
 
 # Validate before writing
 validation = memory_guard.validate_write(

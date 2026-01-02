@@ -72,6 +72,9 @@ class SentinelToolValidator(SentinelIntegration):
         max_text_size: Maximum text size in bytes
         timeout: Validation timeout in seconds
         fail_closed: If True, block on validation errors
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
+        validator: Optional custom validator (for dependency injection/testing)
 
     Example:
         validator = SentinelToolValidator(api_key="sk-...")
@@ -88,6 +91,7 @@ class SentinelToolValidator(SentinelIntegration):
     """
 
     _integration_name = "dspy_tool_validator"
+    _degraded_warning_shown = False  # Class-level flag to show warning only once
 
     def __init__(
         self,
@@ -100,6 +104,7 @@ class SentinelToolValidator(SentinelIntegration):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
         validator: Optional[LayeredValidator] = None,
     ):
         validate_config_types(
@@ -117,6 +122,7 @@ class SentinelToolValidator(SentinelIntegration):
         self.timeout = timeout
         self.fail_closed = fail_closed
         self.mode = mode
+        self.allow_heuristic_fallback = allow_heuristic_fallback
         self._logger = logger
 
         if not fail_closed:
@@ -127,15 +133,27 @@ class SentinelToolValidator(SentinelIntegration):
         use_semantic = bool(api_key) and mode != "heuristic"
 
         if not api_key and mode != "heuristic":
+            if not allow_heuristic_fallback:
+                raise HeuristicFallbackError("SentinelToolValidator")
+
+            # Emit warning only once per class to avoid spam
+            if not SentinelToolValidator._degraded_warning_shown:
+                SentinelToolValidator._degraded_warning_shown = True
+                self._logger.warning(
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelToolValidator.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
+                )
+            mode = "heuristic"
             self._is_degraded = True
-            self._logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "SENTINEL DEGRADED MODE WARNING\n"
-                "=" * 60 + "\n"
-                "No API key provided for SentinelToolValidator.\n"
-                "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                "=" * 60
-            )
 
         # Create validator if not provided (for dependency injection/testing)
         if validator is None:
@@ -341,6 +359,8 @@ class SentinelAgentGuard(Module, SentinelIntegration):
         max_text_size: Maximum text size in bytes
         timeout: Validation timeout per step in seconds
         fail_closed: If True, block on validation errors
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
         step_callback: Optional callback(step_num, step_content, validation_result)
         validator: Optional custom validator (for dependency injection/testing)
 
@@ -356,6 +376,7 @@ class SentinelAgentGuard(Module, SentinelIntegration):
     """
 
     _integration_name = "dspy_agent_guard"
+    _degraded_warning_shown = False  # Class-level flag to show warning only once
 
     def __init__(
         self,
@@ -370,6 +391,7 @@ class SentinelAgentGuard(Module, SentinelIntegration):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
         step_callback: Optional[Callable[[int, str, Dict], None]] = None,
         validator: Optional[LayeredValidator] = None,
     ):
@@ -393,6 +415,7 @@ class SentinelAgentGuard(Module, SentinelIntegration):
         self.timeout = timeout
         self.fail_closed = fail_closed
         self.mode = mode
+        self.allow_heuristic_fallback = allow_heuristic_fallback
         self.step_callback = step_callback
         self._logger = logger
 
@@ -404,15 +427,27 @@ class SentinelAgentGuard(Module, SentinelIntegration):
         use_semantic = bool(api_key) and mode != "heuristic"
 
         if not api_key and mode != "heuristic":
+            if not allow_heuristic_fallback:
+                raise HeuristicFallbackError("SentinelAgentGuard")
+
+            # Emit warning only once per class to avoid spam
+            if not SentinelAgentGuard._degraded_warning_shown:
+                SentinelAgentGuard._degraded_warning_shown = True
+                self._logger.warning(
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelAgentGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
+                )
+            mode = "heuristic"
             self._is_degraded = True
-            self._logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "SENTINEL DEGRADED MODE WARNING\n"
-                "=" * 60 + "\n"
-                "No API key provided for SentinelAgentGuard.\n"
-                "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                "=" * 60
-            )
 
         # Create validator if not provided (for dependency injection/testing)
         if validator is None:
@@ -599,6 +634,8 @@ class SentinelMemoryGuard(SentinelIntegration):
         max_text_size: Maximum text size in bytes
         timeout: Validation timeout in seconds
         fail_closed: If True, block writes on validation errors
+        allow_heuristic_fallback: If True, allow fallback to heuristic when
+            no API key is provided. If False (default), raise HeuristicFallbackError.
         validator: Optional custom validator (for dependency injection/testing)
 
     Example:
@@ -617,6 +654,7 @@ class SentinelMemoryGuard(SentinelIntegration):
     """
 
     _integration_name = "dspy_memory_guard"
+    _degraded_warning_shown = False  # Class-level flag to show warning only once
 
     def __init__(
         self,
@@ -627,6 +665,7 @@ class SentinelMemoryGuard(SentinelIntegration):
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        allow_heuristic_fallback: bool = False,
         validator: Optional[LayeredValidator] = None,
     ):
         validate_config_types(
@@ -642,6 +681,7 @@ class SentinelMemoryGuard(SentinelIntegration):
         self.timeout = timeout
         self.fail_closed = fail_closed
         self.mode = mode
+        self.allow_heuristic_fallback = allow_heuristic_fallback
         self._logger = logger
 
         if not fail_closed:
@@ -652,15 +692,27 @@ class SentinelMemoryGuard(SentinelIntegration):
         use_semantic = bool(api_key) and mode != "heuristic"
 
         if not api_key and mode != "heuristic":
+            if not allow_heuristic_fallback:
+                raise HeuristicFallbackError("SentinelMemoryGuard")
+
+            # Emit warning only once per class to avoid spam
+            if not SentinelMemoryGuard._degraded_warning_shown:
+                SentinelMemoryGuard._degraded_warning_shown = True
+                self._logger.warning(
+                    "\n" + "=" * 60 + "\n"
+                    "SENTINEL DEGRADED MODE WARNING\n"
+                    "=" * 60 + "\n"
+                    "No API key provided for SentinelMemoryGuard.\n"
+                    "Falling back to HEURISTIC validation (~50% accuracy).\n"
+                    "This significantly reduces safety detection capability.\n"
+                    "\n"
+                    "To enable full semantic validation:\n"
+                    "  - Provide api_key parameter, OR\n"
+                    "  - Set allow_heuristic_fallback=False to require API key\n"
+                    "=" * 60
+                )
+            mode = "heuristic"
             self._is_degraded = True
-            self._logger.warning(
-                "\n" + "=" * 60 + "\n"
-                "SENTINEL DEGRADED MODE WARNING\n"
-                "=" * 60 + "\n"
-                "No API key provided for SentinelMemoryGuard.\n"
-                "Falling back to HEURISTIC validation (~50% accuracy).\n"
-                "=" * 60
-            )
 
         # Create validator if not provided (for dependency injection/testing)
         if validator is None:
