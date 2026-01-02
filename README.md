@@ -442,6 +442,38 @@ if not result.compliant:
 
 Sentinel provides native integrations for 23+ frameworks. Install optional dependencies as needed:
 
+> **Full Documentation:** Each integration has comprehensive documentation in its README file.
+> See [`src/sentinelseed/integrations/`](src/sentinelseed/integrations/) for detailed guides, configuration options, and advanced usage.
+
+<details>
+<summary><strong>Integration Documentation Index</strong> (click to expand)</summary>
+
+| Integration | Documentation | Lines |
+|-------------|---------------|-------|
+| LangChain | [`integrations/langchain/README.md`](src/sentinelseed/integrations/langchain/README.md) | 544 |
+| LangGraph | [`integrations/langgraph/README.md`](src/sentinelseed/integrations/langgraph/README.md) | 371 |
+| CrewAI | [`integrations/crewai/README.md`](src/sentinelseed/integrations/crewai/README.md) | 280 |
+| DSPy | [`integrations/dspy/README.md`](src/sentinelseed/integrations/dspy/README.md) | 577 |
+| Anthropic SDK | [`integrations/anthropic_sdk/README.md`](src/sentinelseed/integrations/anthropic_sdk/README.md) | 413 |
+| OpenAI Agents | [`integrations/openai_agents/README.md`](src/sentinelseed/integrations/openai_agents/README.md) | 384 |
+| LlamaIndex | [`integrations/llamaindex/README.md`](src/sentinelseed/integrations/llamaindex/README.md) | 302 |
+| Coinbase AgentKit | [`integrations/coinbase/README.md`](src/sentinelseed/integrations/coinbase/README.md) | 557 |
+| Google ADK | [`integrations/google_adk/README.md`](src/sentinelseed/integrations/google_adk/README.md) | 329 |
+| Virtuals Protocol | [`integrations/virtuals/README.md`](src/sentinelseed/integrations/virtuals/README.md) | 261 |
+| Solana Agent Kit | [`integrations/solana_agent_kit/README.md`](src/sentinelseed/integrations/solana_agent_kit/README.md) | 341 |
+| MCP Server | [`integrations/mcp_server/README.md`](src/sentinelseed/integrations/mcp_server/README.md) | 397 |
+| ROS2 | [`integrations/ros2/README.md`](src/sentinelseed/integrations/ros2/README.md) | 456 |
+| Isaac Lab | [`integrations/isaac_lab/README.md`](src/sentinelseed/integrations/isaac_lab/README.md) | 321 |
+| AutoGPT Block | [`integrations/autogpt_block/README.md`](src/sentinelseed/integrations/autogpt_block/README.md) | 438 |
+| Letta (MemGPT) | [`integrations/letta/README.md`](src/sentinelseed/integrations/letta/README.md) | 271 |
+| Garak | [`integrations/garak/README.md`](src/sentinelseed/integrations/garak/README.md) | 185 |
+| PyRIT | [`integrations/pyrit/README.md`](src/sentinelseed/integrations/pyrit/README.md) | 228 |
+| OpenGuardrails | [`integrations/openguardrails/README.md`](src/sentinelseed/integrations/openguardrails/README.md) | 261 |
+
+**Total:** 8,100+ lines of integration documentation
+
+</details>
+
 ```bash
 pip install sentinelseed[langchain]   # LangChain + LangGraph
 pip install sentinelseed[crewai]      # CrewAI
@@ -1129,6 +1161,8 @@ sentinel/
 │   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
 │   └── vscode/               # VS Code/Cursor/Windsurf extension
 ├── docs/                      # Documentation
+│   ├── ARCHITECTURE.md       # System architecture and integration patterns
+│   ├── MIGRATION.md          # Migration guide for users upgrading
 │   ├── EU_AI_ACT_MAPPING.md  # EU AI Act compliance mapping
 │   ├── OWASP_LLM_TOP_10_MAPPING.md
 │   ├── OWASP_AGENTIC_COVERAGE.md  # OWASP Top 10 for Agentic AI
