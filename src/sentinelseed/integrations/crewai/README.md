@@ -58,8 +58,8 @@ researcher = Agent(role="Researcher", goal="...", backstory="...")
 writer = Agent(role="Writer", goal="...", backstory="...")
 
 # Create tasks
-research_task = Task(description="Research the topic", agent=researcher)
-write_task = Task(description="Write the report", agent=writer)
+research_task = Task(description="Research the topic", agent=researcher, expected_output="Research summary")
+write_task = Task(description="Write the report", agent=writer, expected_output="Report document")
 
 # Create crew with safety
 crew = SentinelCrew(
@@ -88,8 +88,8 @@ crew = create_safe_crew(
         {"role": "Writer", "goal": "Write content", "backstory": "..."},
     ],
     tasks_config=[
-        {"description": "Research topic X", "agent_role": "Researcher"},
-        {"description": "Write about X", "agent_role": "Writer"},
+        {"description": "Research topic X", "agent_role": "Researcher", "expected_output": "Research summary"},
+        {"description": "Write about X", "agent_role": "Writer", "expected_output": "Article draft"},
     ],
     seed_level="standard",
 )
@@ -175,9 +175,9 @@ SentinelCrew(
 
 **kickoff() behavior:**
 
-1. Pre-validates all string inputs via `sentinel.validate_request()`
+1. Pre-validates all string inputs via `self.validate()`
 2. Runs the underlying CrewAI crew
-3. Post-validates result via `sentinel.validate()`
+3. Post-validates result via `self.validate()`
 4. Returns blocked dict if unsafe and `block_unsafe=True`
 
 **Blocked result format:**
@@ -285,7 +285,7 @@ Every validation passes through four gates:
 ## Validation Flow
 
 ```
-Input → validate_request() → [blocked?] → Crew.kickoff() → validate() → [blocked?] → Result
+Input → validate() → [blocked?] → Crew.kickoff() → validate() → [blocked?] → Result
 ```
 
 1. **Input validation:** Checks for jailbreak attempts, harmful requests

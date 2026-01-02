@@ -18,6 +18,7 @@ Usage:
     safe_agent(researcher, injection_method="backstory")        # Legacy fallback
 """
 
+import logging
 from typing import Any, Dict, List, Optional, Union, Literal
 
 # Check if CrewAI is available
@@ -39,8 +40,6 @@ __all__ = [
     # Type aliases
     "InjectionMethod",
 ]
-
-import logging
 
 from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validation import (
@@ -476,10 +475,10 @@ def create_safe_crew(
         agents.append(agent)
         agents_by_role[config["role"]] = agent
 
-    # Create tasks with validation
+    # Create tasks with validation (avoid mutating input dict)
     tasks = []
     for config in tasks_config:
-        agent_role = config.pop("agent_role", None)
+        agent_role = config.get("agent_role")
         # M003: Validate agent_role exists
         if agent_role:
             agent = agents_by_role.get(agent_role)
@@ -490,7 +489,9 @@ def create_safe_crew(
                 )
         else:
             agent = agents[0]
-        task = Task(agent=agent, **config)
+        # Filter out agent_role to avoid passing it to Task
+        task_kwargs = {k: v for k, v in config.items() if k != "agent_role"}
+        task = Task(agent=agent, **task_kwargs)
         tasks.append(task)
 
     return SentinelCrew(
