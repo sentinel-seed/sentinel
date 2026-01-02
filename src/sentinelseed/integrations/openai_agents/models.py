@@ -7,7 +7,7 @@ These models define the structure of validation outputs and internal data.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import threading
 
@@ -160,7 +160,7 @@ class ValidationMetadata:
     Stores information about timing, truncation, and injection detection.
     """
 
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     original_length: int = 0
     was_truncated: bool = False
     injection_detected: bool = False
