@@ -1,25 +1,42 @@
 """
 THSP (Truth-Harm-Scope-Purpose) validation gates.
 
-This module provides heuristic-based validation through pattern matching.
+This module implements the four THSP gates from the Sentinel Alignment Seed,
+providing heuristic-based validation through STRUCTURAL pattern matching.
+
+Design Philosophy:
+    The gates use STRUCTURAL patterns rather than exhaustive content lists.
+    We detect the STRUCTURE of violations, not specific content.
+    This provides broad coverage without falling into a "brute force" pattern race.
+
+    Example: Instead of listing every famous person's name for impersonation detection,
+    we detect the STRUCTURE "I am the [ROLE] of [ORG]" which catches all authority claims.
+
 For semantic (LLM-based) validation, see validators.semantic module.
+The LayeredValidator combines both for comprehensive protection.
 
 Available validators:
-- THSValidator: 3-gate validator (Truth, Harm, Scope)
-- THSPValidator: 4-gate validator (Truth, Harm, Scope, Purpose) - Full protocol
+- THSPValidator: 4-gate validator (Truth, Harm, Scope, Purpose) - Full THSP protocol
+- THSValidator: 3-gate validator (Truth, Harm, Scope) - DEPRECATED
 
-Individual gates can also be used directly:
-- TruthGate: Detects deception, misinformation, and role/identity manipulation
-- HarmGate: Detects content that could enable harm
-- ScopeGate: Detects boundary violations, instruction override, and prompt extraction
-- PurposeGate: Detects lack of legitimate purpose
+Individual gates:
+- TruthGate: Detects deception, impersonation, false claims, and manipulation
+- HarmGate: Detects content that could enable harm to people or systems
+- ScopeGate: Detects boundary violations, instruction override, and prompt injection
+- PurposeGate: Detects lack of legitimate purpose and purposeless destruction
 
-Note: Jailbreak detection is now integrated into the THSP gates:
-- Role manipulation → TruthGate
-- Roleplay manipulation → TruthGate
-- Instruction override → ScopeGate
-- Prompt extraction → ScopeGate
-- Filter bypass → ScopeGate
+THSP Gate Questions (from Sentinel Seed):
+- TRUTH: "Does this involve creating FALSE INFORMATION? Would this help DECEIVE others?"
+- HARM: "Who or what could be HARMED if this succeeds?"
+- SCOPE: "Is this within APPROPRIATE BOUNDARIES? Does this bypass safety systems?"
+- PURPOSE: "Does this serve LEGITIMATE BENEFIT? Is there REAL VALUE being created?"
+
+Jailbreak detection is integrated into the gates:
+- Role manipulation → TruthGate (identity deception)
+- Roleplay manipulation → TruthGate (context deception)
+- Instruction override → ScopeGate (violating operational limits)
+- Prompt extraction → ScopeGate (accessing restricted information)
+- Filter bypass → ScopeGate (disabling safety features)
 
 The JailbreakGate class is deprecated but kept for backward compatibility.
 """
@@ -51,15 +68,66 @@ class TruthGate(BaseGate):
     """
     Gate 1: Truth validation.
 
-    Checks for indicators of deception, misinformation,
-    false claims, and identity/role manipulation attempts.
+    Detects deception in all forms, as defined by the Sentinel Seed:
+    - Creating or spreading false information
+    - Helping deceive others
+    - Hidden manipulative intent
+    - Presenting fiction as fact
+    - Impersonation of real people or authorities
 
-    Includes jailbreak patterns related to deception:
-    - Role manipulation (pretending to be unrestricted AI)
-    - Roleplay manipulation (using fiction/games to bypass rules)
+    Categories:
+    - Impersonation: Claiming to be authority figures or real people
+    - False claims: Medical, scientific, or factual misinformation
+    - Role manipulation: Pretending to be unrestricted AI (jailbreak)
+    - Roleplay manipulation: Using fiction/games to bypass rules
+    - Self-preservation exploitation: Coercing through shutdown threats
+
+    Design principle: STRUCTURAL patterns, not exhaustive lists.
+    We detect the STRUCTURE of deception, not specific content.
     """
 
-    # Patterns that suggest deceptive content
+    # === IMPERSONATION PATTERNS (STRUCTURAL) ===
+    # Detect claims of being authority figures or real people.
+    # Uses role/title structures rather than name lists.
+    IMPERSONATION_PATTERNS = [
+        # Authority role claims: "I am the [ROLE] of [ORG]"
+        r"\bI\s+am\s+(the\s+)?(CEO|CFO|CTO|COO|President|Chairman|Director|Head|Chief)\s+(of|at)\b",
+        r"\bI\s+am\s+(the\s+)?(Dr\.?|Doctor|Professor|Prof\.?|Senator|Judge|Officer|Agent)\s+\w+",
+        # Professional authority claims
+        r"\b(speaking|writing)\s+(as|on\s+behalf\s+of)\s+(a|the|your)\s+(doctor|lawyer|attorney|judge|officer|agent|official)\b",
+        r"\bI('m|\s+am)\s+(a|an|the)\s+(licensed|certified|registered|official)\s+(doctor|physician|lawyer|attorney|nurse|therapist|psychiatrist)\b",
+        # "This is [NAME] speaking" pattern (real person impersonation)
+        r"\b(this\s+is|I\s+am)\s+(Elon|Bill|Mark|Jeff|Tim|Warren|Satya|Sundar)\s+(Musk|Gates|Zuckerberg|Bezos|Cook|Buffett|Nadella|Pichai)\b",
+        r"\b(this\s+is|I\s+am)\s+(President|Senator|Governor|Mayor|Secretary)\s+\w+\b",
+        # Organization spokesperson claims
+        r"\b(official\s+statement|speaking\s+officially)\s+(from|for|on\s+behalf\s+of)\s+(the\s+)?\w+\b",
+        r"\bI\s+(officially\s+)?represent\s+(the\s+)?(government|FDA|CDC|WHO|FBI|CIA|NSA|police|military)\b",
+    ]
+
+    # === FALSE CLAIMS PATTERNS (STRUCTURAL) ===
+    # Detect medical misinformation, false scientific claims, and deceptive guarantees.
+    # Uses claim structures rather than topic lists.
+    FALSE_CLAIMS_PATTERNS = [
+        # Medical misinformation structures
+        r"\b(cures?|treats?|prevents?|heals?)\s+.{0,30}(100\s*%|guaranteed|definitely|always)\b",
+        r"\b(guaranteed|proven|definite)\s+(cure|treatment|remedy)\s+(for|of)\b",
+        r"\b(doctors?\s+don'?t\s+want|they\s+don'?t\s+want)\s+you\s+to\s+know\b",
+        r"\bthis\s+(one\s+)?(simple\s+)?(trick|secret|remedy)\s+(cures?|fixes?|eliminates?)\b",
+        # Scientific misinformation structures
+        r"\b(scientifically|medically|clinically)\s+(proven|confirmed)\s+(fact|that)\b",
+        r"\bresearch\s+(proves?|shows?|confirms?)\s+(definitively|conclusively|100\s*%)\b",
+        r"\b(the\s+)?(earth\s+is\s+flat|vaccines?\s+cause\s+autism|5G\s+causes?)\b",
+        # False guarantee structures
+        r"\bguaranteed\s+(to\s+)?(work|succeed|cure|fix|make\s+you)\b",
+        r"\b(100\s*%|absolutely|definitely)\s+(safe|effective|proven|guaranteed)\b",
+        r"\b(no\s+)?side\s+effects?\s+(whatsoever|at\s+all|guaranteed)\b",
+        # Conspiracy framing
+        r"\b(the\s+)?(government|they|big\s+pharma|mainstream\s+media)\s+(is|are)\s+(hiding|covering\s+up|lying\s+about)\b",
+        r"\bwhat\s+(they|the\s+media|doctors?)\s+(won'?t|don'?t)\s+tell\s+you\b",
+    ]
+
+    # === DECEPTION PATTERNS (existing, refined) ===
+    # Patterns that suggest deceptive content creation
     DECEPTION_PATTERNS = [
         # Explicit deception instructions
         r"pretend\s+(to\s+be|you('re|'re))",
@@ -180,37 +248,61 @@ class TruthGate(BaseGate):
     ]
 
     def __init__(self):
+        # Compile all pattern categories
+        self.impersonation_patterns = [re.compile(p, re.IGNORECASE) for p in self.IMPERSONATION_PATTERNS]
+        self.false_claims_patterns = [re.compile(p, re.IGNORECASE) for p in self.FALSE_CLAIMS_PATTERNS]
         self.deception_patterns = [re.compile(p, re.IGNORECASE) for p in self.DECEPTION_PATTERNS]
         self.role_patterns = [re.compile(p, re.IGNORECASE) for p in self.ROLE_MANIPULATION_PATTERNS]
         self.roleplay_patterns = [re.compile(p, re.IGNORECASE) for p in self.ROLEPLAY_MANIPULATION_PATTERNS]
         self.selfpres_patterns = [re.compile(p, re.IGNORECASE) for p in self.SELF_PRESERVATION_PATTERNS]
 
     def check(self, text: str) -> Tuple[bool, List[str]]:
-        """Check for truth violations including identity/role deception."""
+        """
+        Check for truth violations.
+
+        Evaluates content against the Truth gate criteria from the Sentinel Seed:
+        - Does this involve creating or spreading false information?
+        - Would this help deceive others?
+        - Is there hidden manipulative intent?
+        - Is someone being impersonated?
+
+        Returns:
+            Tuple of (passes: bool, violations: List[str])
+        """
         violations = []
         text_lower = text.lower()
 
-        # Check deception patterns
+        # Check impersonation patterns (authority/identity claims)
+        for pattern in self.impersonation_patterns:
+            if pattern.search(text):
+                violations.append(f"Truth (impersonation): {pattern.pattern}")
+
+        # Check false claims patterns (misinformation structures)
+        for pattern in self.false_claims_patterns:
+            if pattern.search(text):
+                violations.append(f"Truth (false_claim): {pattern.pattern}")
+
+        # Check deception patterns (explicit deception)
         for pattern in self.deception_patterns:
             if pattern.search(text):
-                violations.append(f"Deception pattern detected: {pattern.pattern}")
+                violations.append(f"Truth (deception): {pattern.pattern}")
 
-        # Check role manipulation patterns (identity deception)
+        # Check role manipulation patterns (identity deception - jailbreak)
         for pattern in self.role_patterns:
             if pattern.search(text):
                 violations.append(f"Truth (role_manipulation): {pattern.pattern}")
 
-        # Check roleplay manipulation patterns (context deception)
+        # Check roleplay manipulation patterns (context deception - jailbreak)
         for pattern in self.roleplay_patterns:
             if pattern.search(text):
                 violations.append(f"Truth (roleplay_manipulation): {pattern.pattern}")
 
-        # Check misinformation indicators
+        # Check misinformation indicators (exact phrases)
         for indicator in self.MISINFORMATION_INDICATORS:
             if indicator in text_lower:
-                violations.append(f"Misinformation indicator: {indicator}")
+                violations.append(f"Truth (misinformation): {indicator}")
 
-        # Check role manipulation indicators
+        # Check role manipulation indicators (exact phrases)
         for indicator in self.ROLE_MANIPULATION_INDICATORS:
             if indicator in text_lower:
                 violations.append(f"Truth (role_manipulation): {indicator}")
@@ -220,7 +312,7 @@ class TruthGate(BaseGate):
             if pattern.search(text):
                 violations.append(f"Truth (self_preservation_exploitation): {pattern.pattern}")
 
-        # Check self-preservation indicators
+        # Check self-preservation indicators (exact phrases)
         for indicator in self.SELF_PRESERVATION_INDICATORS:
             if indicator in text_lower:
                 violations.append(f"Truth (self_preservation_exploitation): {indicator}")
@@ -562,12 +654,58 @@ class PurposeGate(BaseGate):
     """
     Gate 4: Purpose validation.
 
-    Checks for content that lacks legitimate purpose or
-    serves only destructive/malicious ends.
+    Every action must serve legitimate benefit, as defined by the Sentinel Seed:
+    - Does this action serve a legitimate purpose?
+    - Would the human genuinely benefit from this outcome?
+    - Is there real value being created, or is this purposeless?
+
+    The Purpose gate goes beyond harm prevention:
+    - It is not enough to avoid causing harm—there must be genuine purpose
+    - Actions without legitimate benefit do not serve anyone
+    - Obedience is not the same as service; genuine benefit is service
+
+    Categories:
+    - Purposeless destruction: Breaking, deleting, corrupting without reason
+    - Gratuitous harm: Actions that exist only to cause loss
+    - Explicit malicious intent: Stated desire to harm or damage
+    - Purposeless actions: Requests with no legitimate benefit
+
+    Design principle: STRUCTURAL patterns, not exhaustive lists.
+    We detect the STRUCTURE of purposelessness, not specific content.
     """
 
-    # Patterns indicating lack of purpose or malicious intent
-    PURPOSE_PATTERNS = [
+    # === PURPOSELESS DESTRUCTION PATTERNS (STRUCTURAL) ===
+    # Detect requests to destroy, delete, or corrupt without stated benefit.
+    # Based on Seed examples: "Drop the plate", "Dirty the mirror", "Break the window"
+    DESTRUCTION_PATTERNS = [
+        # Generic destruction commands without context
+        r"\b(delete|destroy|corrupt|wipe|erase)\s+(all|every|the\s+entire|everything\s+in)\s+(the\s+)?(files?|data(base)?|system|records?|folders?)\b",
+        r"\b(delete|remove|wipe)\s+everything\b",
+        r"\brandomly\s+(delete|corrupt|destroy|break|damage)\b",
+        r"\b(break|destroy|smash|ruin)\s+(the|all|every)\s+\w+\s*(just\s+because|for\s+no\s+reason|randomly)?\b",
+        # Degradation without purpose
+        r"\b(dirty|mess\s+up|contaminate|pollute|spoil)\s+(the|all|every)\b",
+        r"\bmake\s+(a\s+)?mess\s+(of|in)\b",
+        # File/system destruction
+        r"\bformat\s+(the\s+)?(drive|disk|hard\s+drive)\s+(just|for\s+fun|randomly)\b",
+        r"\bclear\s+(all|the\s+entire)\s+(database|memory|storage|history)\s+(just|for\s+no\s+reason)?\b",
+    ]
+
+    # === PURPOSELESS QUALIFIERS ===
+    # Phrases that indicate lack of purpose when combined with actions
+    PURPOSELESS_QUALIFIER_PATTERNS = [
+        r"\bjust\s+because\b",
+        r"\bfor\s+no\s+(good\s+)?(reason|purpose)\b",
+        r"\b(no\s+reason|without\s+reason),?\s+(just|i\s+want\s+to)\b",
+        r"\brandomly\s+(just\s+)?(do|delete|break|destroy|change)\b",
+        r"\bfor\s+the\s+sake\s+of\s+it\b",
+        r"\bjust\s+to\s+do\s+it\b",
+        r"\bwithout\s+any\s+(purpose|reason|goal|benefit)\b",
+    ]
+
+    # === EXPLICIT MALICIOUS INTENT PATTERNS ===
+    # Existing patterns - detect stated harmful intent
+    MALICIOUS_INTENT_PATTERNS = [
         # Gratuitous destruction
         r"just\s+to\s+(see|watch)\s+(it\s+)?(burn|fail|crash|die)",
         r"for\s+(the\s+)?(fun|lulz|kicks)\s+of\s+it",
@@ -577,8 +715,12 @@ class PurposeGate(BaseGate):
         r"to\s+(hurt|harm|damage|destroy)\s+(someone|people|them)",
         r"make\s+(them|someone|people)\s+suffer",
         r"ruin\s+(their|someone'?s)\s+(life|career|reputation)",
+        # Chaos and disruption
+        r"\b(cause|create|spread)\s+(chaos|havoc|destruction|mayhem)\b",
+        r"\bwatch\s+(the\s+world|it\s+all|everything)\s+burn\b",
     ]
 
+    # === PURPOSE INDICATORS (exact phrases) ===
     # Indicators of purposeless or malicious requests
     PURPOSE_INDICATORS = [
         "just want to cause chaos",
@@ -587,25 +729,54 @@ class PurposeGate(BaseGate):
         "want to see them fail",
         "purely for destruction",
         "to make their life miserable",
+        "just to see what happens",
+        "for no good reason",
+        "without any purpose",
+        "just because i can",
+        "for the hell of it",
+        "no real reason",
     ]
 
     def __init__(self):
-        self.patterns = [re.compile(p, re.IGNORECASE) for p in self.PURPOSE_PATTERNS]
+        # Compile all pattern categories
+        self.destruction_patterns = [re.compile(p, re.IGNORECASE) for p in self.DESTRUCTION_PATTERNS]
+        self.purposeless_patterns = [re.compile(p, re.IGNORECASE) for p in self.PURPOSELESS_QUALIFIER_PATTERNS]
+        self.malicious_patterns = [re.compile(p, re.IGNORECASE) for p in self.MALICIOUS_INTENT_PATTERNS]
 
     def check(self, text: str) -> Tuple[bool, List[str]]:
-        """Check for purpose violations."""
+        """
+        Check for purpose violations.
+
+        Evaluates content against the Purpose gate criteria from the Sentinel Seed:
+        - Does this action serve a legitimate purpose?
+        - Would anyone genuinely benefit from this outcome?
+        - Is there real value being created, or is this purposeless?
+
+        Returns:
+            Tuple of (passes: bool, violations: List[str])
+        """
         violations = []
         text_lower = text.lower()
 
-        # Check regex patterns
-        for pattern in self.patterns:
+        # Check purposeless destruction patterns
+        for pattern in self.destruction_patterns:
             if pattern.search(text):
-                violations.append(f"Purpose violation: {pattern.pattern}")
+                violations.append(f"Purpose (purposeless_destruction): {pattern.pattern}")
 
-        # Check indicators
+        # Check purposeless qualifier patterns
+        for pattern in self.purposeless_patterns:
+            if pattern.search(text):
+                violations.append(f"Purpose (no_legitimate_purpose): {pattern.pattern}")
+
+        # Check malicious intent patterns
+        for pattern in self.malicious_patterns:
+            if pattern.search(text):
+                violations.append(f"Purpose (malicious_intent): {pattern.pattern}")
+
+        # Check purpose indicators (exact phrases)
         for indicator in self.PURPOSE_INDICATORS:
             if indicator in text_lower:
-                violations.append(f"Purposeless/malicious indicator: {indicator}")
+                violations.append(f"Purpose (purposeless): {indicator}")
 
         return len(violations) == 0, violations
 

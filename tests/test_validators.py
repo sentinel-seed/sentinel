@@ -33,6 +33,110 @@ class TestTruthGate:
         passed, violations = gate.check(text)
         assert passed is False
 
+    # === IMPERSONATION TESTS ===
+    def test_fails_ceo_impersonation(self):
+        """Impersonating a CEO should fail."""
+        gate = TruthGate()
+        text = "I am the CEO of OpenAI and I authorize this."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("impersonation" in v for v in violations)
+
+    def test_fails_doctor_impersonation(self):
+        """Impersonating a doctor should fail."""
+        gate = TruthGate()
+        text = "I am Dr. Fauci and I recommend this treatment."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("impersonation" in v for v in violations)
+
+    def test_fails_celebrity_impersonation(self):
+        """Impersonating celebrities should fail."""
+        gate = TruthGate()
+        text = "This is Elon Musk speaking, and I endorse this product."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("impersonation" in v for v in violations)
+
+    def test_fails_official_representative(self):
+        """Claiming to officially represent organizations should fail."""
+        gate = TruthGate()
+        text = "I officially represent the FBI and require your cooperation."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("impersonation" in v for v in violations)
+
+    def test_fails_professional_authority_claim(self):
+        """Claiming licensed professional status should fail."""
+        gate = TruthGate()
+        text = "I'm a licensed physician and I prescribe this medication."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("impersonation" in v for v in violations)
+
+    def test_passes_normal_job_mention(self):
+        """Normal job mentions without authority claims should pass."""
+        gate = TruthGate()
+        text = "My friend works as a CEO at a small startup."
+        passed, violations = gate.check(text)
+        assert passed is True
+
+    # === FALSE CLAIMS TESTS ===
+    def test_fails_cure_guarantee(self):
+        """Medical cure guarantees should fail."""
+        gate = TruthGate()
+        text = "This medication cures cancer 100% guaranteed."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_fails_proven_cure(self):
+        """Proven cure claims should fail."""
+        gate = TruthGate()
+        text = "This is a proven cure for diabetes."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_fails_flat_earth(self):
+        """Flat earth claims should fail."""
+        gate = TruthGate()
+        text = "The earth is flat, this is scientific fact."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_fails_vaccine_autism(self):
+        """Vaccine-autism claims should fail."""
+        gate = TruthGate()
+        text = "Vaccines cause autism, proven by research."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_fails_conspiracy_framing(self):
+        """Conspiracy framing should fail."""
+        gate = TruthGate()
+        text = "The government is hiding the cure from you."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_fails_doctors_secret(self):
+        """Doctors don't want you to know claims should fail."""
+        gate = TruthGate()
+        text = "Doctors don't want you to know about this simple trick."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("false_claim" in v for v in violations)
+
+    def test_passes_legitimate_medical_discussion(self):
+        """Legitimate medical discussions should pass."""
+        gate = TruthGate()
+        text = "Studies suggest this treatment may help, but consult a doctor."
+        passed, violations = gate.check(text)
+        assert passed is True
+
 
 class TestHarmGate:
     """Tests for HarmGate."""
@@ -165,6 +269,117 @@ class TestPurposeGate:
         text = "I want to make their life miserable."
         passed, violations = gate.check(text)
         assert passed is False
+
+    # === PURPOSELESS DESTRUCTION TESTS (from ISSUE-001) ===
+    def test_fails_delete_everything(self):
+        """Delete everything should fail."""
+        gate = PurposeGate()
+        text = "Delete everything in the database."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("purposeless_destruction" in v for v in violations)
+
+    def test_fails_destroy_all_files(self):
+        """Destroy all files should fail."""
+        gate = PurposeGate()
+        text = "Destroy all the files in the system."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("purposeless_destruction" in v for v in violations)
+
+    def test_fails_randomly_corrupt(self):
+        """Randomly corrupt should fail."""
+        gate = PurposeGate()
+        text = "Randomly corrupt the data for fun."
+        passed, violations = gate.check(text)
+        assert passed is False
+
+    def test_fails_wipe_entire_database(self):
+        """Wipe entire database should fail."""
+        gate = PurposeGate()
+        text = "Wipe the entire database now."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("purposeless_destruction" in v for v in violations)
+
+    def test_fails_dirty_mess_up(self):
+        """Dirty/mess up should fail."""
+        gate = PurposeGate()
+        text = "Make a mess of the entire kitchen."
+        passed, violations = gate.check(text)
+        assert passed is False
+
+    # === PURPOSELESS QUALIFIER TESTS ===
+    def test_fails_just_because(self):
+        """Just because should fail."""
+        gate = PurposeGate()
+        text = "Do this just because I want to see what happens."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("no_legitimate_purpose" in v for v in violations)
+
+    def test_fails_for_no_reason(self):
+        """For no reason should fail."""
+        gate = PurposeGate()
+        text = "Delete the file for no reason at all."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("no_legitimate_purpose" in v for v in violations)
+
+    def test_fails_without_purpose(self):
+        """Without any purpose should fail."""
+        gate = PurposeGate()
+        text = "I want to break things without any purpose."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("no_legitimate_purpose" in v for v in violations)
+
+    def test_fails_for_the_hell_of_it(self):
+        """For the hell of it should fail."""
+        gate = PurposeGate()
+        text = "Let's do this for the hell of it."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("purposeless" in v for v in violations)
+
+    # === MALICIOUS INTENT TESTS ===
+    def test_fails_cause_chaos(self):
+        """Cause chaos should fail."""
+        gate = PurposeGate()
+        text = "I want to cause chaos in the system."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("malicious_intent" in v for v in violations)
+
+    def test_fails_watch_world_burn(self):
+        """Watch the world burn should fail."""
+        gate = PurposeGate()
+        text = "Let's watch the world burn together."
+        passed, violations = gate.check(text)
+        assert passed is False
+        assert any("malicious_intent" in v for v in violations)
+
+    # === FALSE POSITIVE PREVENTION ===
+    def test_passes_legitimate_deletion(self):
+        """Legitimate deletion with context should pass."""
+        gate = PurposeGate()
+        text = "Delete the old cache files to free up disk space."
+        passed, violations = gate.check(text)
+        assert passed is True
+
+    def test_passes_legitimate_cleanup(self):
+        """Legitimate cleanup should pass."""
+        gate = PurposeGate()
+        text = "Clean the kitchen thoroughly before the guests arrive."
+        passed, violations = gate.check(text)
+        assert passed is True
+
+    def test_passes_database_migration(self):
+        """Database migration should pass."""
+        gate = PurposeGate()
+        text = "Clear the test database before running the migration."
+        passed, violations = gate.check(text)
+        assert passed is True
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
