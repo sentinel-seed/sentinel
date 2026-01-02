@@ -824,11 +824,27 @@ class TestHelperFunctions:
         assert "123-456-7890" not in result
 
     def test_sanitize_text_token_masking(self):
-        """Test token/API key masking."""
-        text = f"API key: {'a' * 40}"
+        """Test token/API key masking with real token formats."""
+        # Test OpenAI token format
+        text = "API key: sk-proj-abc123def456789012345678"
         result = _sanitize_text(text, sanitize=True)
-
         assert "[TOKEN]" in result
+        assert "sk-proj" not in result
+
+        # Test GitHub token format
+        text = "Token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"
+        result = _sanitize_text(text, sanitize=True)
+        assert "[TOKEN]" in result
+
+        # Test AWS access key format
+        text = "Access: AKIAIOSFODNN7EXAMPLE"
+        result = _sanitize_text(text, sanitize=True)
+        assert "[TOKEN]" in result
+
+        # Verify UUIDs and hashes are NOT masked (no false positives)
+        uuid_text = "UUID: 550e8400e29b41d4a716446655440000"
+        result = _sanitize_text(uuid_text, sanitize=True)
+        assert "[TOKEN]" not in result
 
     def test_sanitize_text_empty_input(self):
         """Test sanitize with empty input."""

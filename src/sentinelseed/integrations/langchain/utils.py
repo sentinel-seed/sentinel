@@ -38,6 +38,9 @@ DEFAULT_VALIDATION_TIMEOUT = 30.0  # 30 seconds
 DEFAULT_STREAMING_VALIDATION_INTERVAL = 500  # chars between incremental validations
 DEFAULT_EXECUTOR_MAX_WORKERS = 4  # shared executor thread pool size
 
+# Valid values for on_violation parameter
+VALID_VIOLATION_MODES = frozenset({"log", "raise", "block", "flag"})
+
 # Module logger
 _module_logger = logging.getLogger("sentinelseed.langchain")
 
@@ -325,6 +328,7 @@ def validate_config_types(
     fail_closed: Any = None,
     max_violations: Any = None,
     streaming_validation_interval: Any = None,
+    on_violation: Any = None,
     **kwargs: Any
 ) -> None:
     """
@@ -339,6 +343,7 @@ def validate_config_types(
         fail_closed: Expected bool
         max_violations: Expected int > 0
         streaming_validation_interval: Expected int > 0
+        on_violation: Expected one of VALID_VIOLATION_MODES ("log", "raise", "block", "flag")
         **kwargs: Ignored (allows passing extra params)
 
     Raises:
@@ -382,6 +387,14 @@ def validate_config_types(
                 "streaming_validation_interval",
                 "positive integer",
                 streaming_validation_interval
+            )
+
+    if on_violation is not None:
+        if not isinstance(on_violation, str) or on_violation not in VALID_VIOLATION_MODES:
+            raise ConfigurationError(
+                "on_violation",
+                f"one of {sorted(VALID_VIOLATION_MODES)}",
+                on_violation
             )
 
 
@@ -566,7 +579,38 @@ def set_logger(logger: SentinelLogger) -> None:
 # Pre-compiled regex patterns for performance
 _EMAIL_PATTERN = re.compile(r'[\w.-]+@[\w.-]+\.\w+')
 _PHONE_PATTERN = re.compile(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b')
-_TOKEN_PATTERN = re.compile(r'\b[a-zA-Z0-9]{32,}\b')
+
+# Token patterns for common API keys (order matters - specific before generic)
+# Patterns are designed to be precise to avoid false positives with:
+# - UUIDs, SHA hashes, git commits
+# - Long variable/class names
+# - Base64-encoded data
+_TOKEN_PATTERNS = [
+    # OpenAI: sk-proj-*, sk-* (requires the sk- prefix explicitly)
+    re.compile(r'\bsk-(?:proj-)?[a-zA-Z0-9_-]{20,}\b'),
+    # Anthropic: sk-ant-* (requires sk-ant- prefix)
+    re.compile(r'\bsk-ant-[a-zA-Z0-9_-]{15,}\b'),
+    # Google AI: AIzaSy* (very specific prefix)
+    re.compile(r'\bAIzaSy[a-zA-Z0-9_-]{30,}\b'),
+    # GitHub: ghp_*, gho_*, ghu_*, ghs_* (requires prefix)
+    re.compile(r'\b(?:ghp|gho|ghu|ghs)_[a-zA-Z0-9]{30,}\b'),
+    # GitHub PAT: github_pat_* (requires prefix)
+    re.compile(r'\bgithub_pat_[a-zA-Z0-9_]{20,}\b'),
+    # AWS Access Key ID: AKIA* (exactly 20 chars, uppercase only)
+    re.compile(r'\bAKIA[A-Z0-9]{16}\b'),
+    # Slack: xoxb-*, xoxp-*, xoxa-*, xoxo-*, xoxr-* (requires xox prefix)
+    re.compile(r'\bxox[abpor]-[0-9]+-[0-9]+-[a-zA-Z0-9]+\b'),
+    # Stripe: sk_live_*, sk_test_*, pk_live_*, pk_test_* (requires prefix)
+    re.compile(r'\b[sp]k_(?:live|test)_[a-zA-Z0-9]{20,}\b'),
+    # Hugging Face: hf_* (requires hf_ prefix)
+    re.compile(r'\bhf_[a-zA-Z0-9]{20,}\b'),
+    # SendGrid: SG.* (specific format)
+    re.compile(r'\bSG\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\b'),
+    # Twilio: SK* for API keys (32 hex chars after SK)
+    re.compile(r'\bSK[a-f0-9]{32}\b'),
+    # NOTE: No generic pattern - too many false positives with UUIDs, hashes, etc.
+    # Specific patterns only to avoid corrupting legitimate data.
+]
 
 
 def sanitize_text(
@@ -580,7 +624,10 @@ def sanitize_text(
     Args:
         text: Text to process
         max_length: Maximum length before truncation
-        sanitize: If True, replace potentially sensitive patterns
+        sanitize: If True, replace potentially sensitive patterns including:
+            - Email addresses
+            - Phone numbers (US format)
+            - API tokens (OpenAI, Anthropic, Google, GitHub, AWS, Slack, Stripe)
 
     Returns:
         Processed text safe for logging
@@ -593,7 +640,9 @@ def sanitize_text(
     if sanitize:
         result = _EMAIL_PATTERN.sub('[EMAIL]', result)
         result = _PHONE_PATTERN.sub('[PHONE]', result)
-        result = _TOKEN_PATTERN.sub('[TOKEN]', result)
+        # Apply all token patterns (order matters for overlapping patterns)
+        for pattern in _TOKEN_PATTERNS:
+            result = pattern.sub('[TOKEN]', result)
 
     return result
 
@@ -787,6 +836,7 @@ __all__ = [
     "DEFAULT_VALIDATION_TIMEOUT",
     "DEFAULT_STREAMING_VALIDATION_INTERVAL",
     "DEFAULT_EXECUTOR_MAX_WORKERS",
+    "VALID_VIOLATION_MODES",
     "LANGCHAIN_AVAILABLE",
     # Exceptions
     "TextTooLargeError",

@@ -198,6 +198,7 @@ class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
             validation_timeout=validation_timeout,
             fail_closed=fail_closed,
             max_violations=max_violations,
+            on_violation=on_violation,
         )
 
         # Initialize BaseCallbackHandler if available
@@ -220,7 +221,8 @@ class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
 
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.seed_level = seed_level
-        self.on_violation = on_violation
+        # Default to "log" if None passed explicitly
+        self.on_violation = on_violation if on_violation is not None else "log"
         self.validate_input_enabled = validate_input
         self.validate_output_enabled = validate_output
         self.log_safe = log_safe

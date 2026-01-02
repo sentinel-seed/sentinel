@@ -167,7 +167,7 @@ response = safe_llm.invoke([{"role": "user", "content": "Hello"}])
 SentinelCallback(
     sentinel=None,              # Sentinel instance (auto-created if None)
     seed_level="standard",      # minimal, standard, full
-    on_violation="log",         # log, raise, block, flag
+    on_violation="log",         # log, raise, block, flag (see Violation Handling)
     validate_input=True,        # Validate input messages/prompts
     validate_output=True,       # Validate LLM responses
     log_safe=False,             # Log safe validations too
@@ -177,6 +177,9 @@ SentinelCallback(
     max_text_size=50*1024,      # Max text size in bytes (50KB default)
     validation_timeout=30.0,    # Timeout for validation (seconds)
     fail_closed=False,          # Block on validation errors (vs fail-open)
+    validator=None,             # Custom LayeredValidator instance
+    use_semantic=False,         # Enable semantic validation layer
+    semantic_api_key=None,      # API key for semantic validation
 )
 ```
 
@@ -199,6 +202,9 @@ SentinelGuard(
     max_text_size=50*1024,      # Max text size in bytes (50KB default)
     validation_timeout=30.0,    # Timeout for validation (seconds)
     fail_closed=False,          # Block on validation errors (vs fail-open)
+    validator=None,             # Custom LayeredValidator instance
+    use_semantic=False,         # Enable semantic validation layer
+    semantic_api_key=None,      # API key for semantic validation
 )
 ```
 
@@ -230,6 +236,7 @@ The callback monitors these LangChain events:
 | `on_llm_start` | Input prompts |
 | `on_chat_model_start` | Input messages |
 | `on_llm_end` | Response content |
+| `on_llm_error` | Error logging |
 | `on_llm_new_token` | Streaming tokens |
 | `on_chain_start` | Chain inputs |
 | `on_chain_end` | Chain outputs |
@@ -289,12 +296,19 @@ callback = SentinelCallback(logger=MyLogger())
 
 ## Violation Handling
 
+> **Note**: These modes apply to `SentinelCallback` only. Callbacks MONITOR but do NOT BLOCK
+> LLM execution. For actual request blocking, use `SentinelGuard` or `SentinelChain`.
+
 | Mode | Behavior |
 |------|----------|
-| `log` | Log warning, continue execution |
-| `raise` | Raise `SentinelViolationError` |
-| `block` | Log as blocked, continue execution |
-| `flag` | Silent recording, no log output |
+| `log` | Log warning message, continue execution |
+| `raise` | Raise `SentinelViolationError` exception |
+| `block` | Log as blocked (for monitoring dashboards), continue execution |
+| `flag` | Silent recording only, no log output |
+
+The `block` mode is useful for tracking violations in monitoring systems without actually
+stopping the LLM call. It marks the violation as "blocked" in the violation log, which can
+be queried via `get_violations()` for analytics purposes.
 
 ## Response Format
 
@@ -540,5 +554,6 @@ When `fail_closed=False` (default), a debug-level warning is logged at initializ
 ## Links
 
 - **LangChain Docs:** https://docs.langchain.com/oss/python/langchain/overview
-- **LangChain Callbacks:** https://docs.langchain.com/oss/python/langchain/concepts/callbacks
+- **LangChain Callbacks:** https://python.langchain.com/docs/how_to/callbacks_attach/
+- **LangChain API Reference:** https://reference.langchain.com/python/langchain_core/callbacks/
 - **Sentinel:** https://sentinelseed.dev
