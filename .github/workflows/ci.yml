@@ -25,12 +25,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          pip install pytest
+          pip install -e ".[dev]"
 
-      - name: Run tests
-        run: pytest tests/ -v
-        continue-on-error: true
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=src/sentinelseed --cov-fail-under=70
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
 
   test-sdk:
     name: SDK Tests
@@ -72,7 +78,56 @@ jobs:
 
       - name: Run ruff
         run: ruff check . --ignore E501
-        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install bandit pip-audit
+
+      - name: Run bandit security scan
+        run: bandit -c pyproject.toml -r src/sentinelseed --skip B101 -x tests/
+
+      - name: Check dependencies for vulnerabilities
+        run: pip-audit --strict
+        continue-on-error: true  # New deps may have CVEs not yet fixed
+
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run mypy on core modules
+        run: |
+          mypy src/sentinelseed/sentinel_core.py \
+               src/sentinelseed/__init__.py \
+               src/sentinelseed/validators/gates.py \
+               src/sentinelseed/validation/*.py \
+               src/sentinelseed/integrations/_base.py \
+               src/sentinelseed/core/*.py \
+               --ignore-missing-imports
 
   validate-seeds:
     name: Validate Seeds

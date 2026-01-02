@@ -374,7 +374,7 @@ class TestMemoryGuardTool:
         """Test run with None label returns error."""
         from sentinelseed.integrations.letta import MemoryGuardTool
         tool = MemoryGuardTool()
-        tool._secret = "test-secret"
+        tool.initialize("test-secret")
         result = tool.run(None)
         assert "ERROR" in result
 
@@ -382,26 +382,28 @@ class TestMemoryGuardTool:
         """Test run with empty label returns error."""
         from sentinelseed.integrations.letta import MemoryGuardTool
         tool = MemoryGuardTool()
-        tool._secret = "test-secret"
+        tool.initialize("test-secret")
         result = tool.run("")
         assert "ERROR" in result
 
     def test_run_no_secret(self):
-        """Test run without secret returns error."""
+        """Test run without initialization returns error."""
         from sentinelseed.integrations.letta import MemoryGuardTool
         tool = MemoryGuardTool()
         result = tool.run("human")
         assert "ERROR" in result
-        assert "No secret" in result
+        assert "not initialized" in result
 
     def test_run_with_secret(self):
-        """Test run with secret returns placeholder."""
+        """Test run with initialization returns HMAC hash."""
         from sentinelseed.integrations.letta import MemoryGuardTool
         tool = MemoryGuardTool()
-        tool._secret = "test-secret"
-        result = tool.run("human")
-        assert "HASH" in result
-        assert "placeholder" in result
+        tool.initialize("test-secret")
+        result = tool.run("human", content="test content")
+        assert "HASH:" in result
+        # Hash should be 64-char SHA256 hex
+        hash_value = result.split(": ")[1] if ": " in result else ""
+        assert len(hash_value) == 64
 
 
 # ============================================================================
