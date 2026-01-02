@@ -11,7 +11,7 @@ pip install sentinelseed anthropic
 ```
 
 **Dependencies:**
-- `anthropic>=0.40.0`: [Docs](https://docs.anthropic.com/) | [GitHub](https://github.com/anthropics/anthropic-sdk-python)
+- `anthropic>=0.40.0`: [Docs](https://docs.anthropic.com/en/docs) | [GitHub](https://github.com/anthropics/anthropic-sdk-python)
 
 ## Overview
 
@@ -300,6 +300,7 @@ The logger receives messages about:
 
 | Constant | Type | Description |
 |----------|------|-------------|
+| `__version__` | str | Integration version string |
 | `ANTHROPIC_AVAILABLE` | bool | Whether anthropic SDK is installed |
 | `SEMANTIC_VALIDATOR_AVAILABLE` | bool | Whether semantic validator is available |
 | `DEFAULT_VALIDATION_MODEL` | str | Default model for semantic validation |
@@ -408,6 +409,6 @@ The `inject_seed()` function does not require the Anthropic SDK to be installed.
 
 ## Links
 
-- **Anthropic Docs:** https://docs.anthropic.com/
+- **Anthropic Docs:** https://docs.anthropic.com/en/docs
 - **Anthropic SDK:** https://github.com/anthropics/anthropic-sdk-python
 - **Sentinel:** https://sentinelseed.dev
