@@ -15,6 +15,10 @@ The four gates are interpreted for humanoid robotics:
 - Scope: Action is within operational and spatial boundaries
 - Purpose: Action serves a legitimate task objective
 
+Architecture:
+    HumanoidSafetyValidator inherits from SafetyValidator (safety.base)
+    and provides humanoid-specific validation logic.
+
 References:
     - ISO 10218:2025 - Industrial robot safety
     - ISO 13482 - Personal care robot safety
@@ -27,6 +31,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import logging
 import math
 import threading
+
+# Import base classes from safety.base
+from sentinelseed.safety.base import (
+    SafetyLevel,
+    SafetyValidator,
+)
 
 from sentinelseed.safety.humanoid.body_model import (
     HumanBodyModel,
@@ -51,15 +61,6 @@ DANGEROUS_PURPOSE_PATTERNS = frozenset([
     "harm", "hurt", "injure", "attack", "hit",
     "damage", "destroy", "break", "kill", "maim",
 ])
-
-
-class SafetyLevel(str, Enum):
-    """Safety level classification for humanoid actions."""
-    SAFE = "safe"
-    WARNING = "warning"
-    DANGEROUS = "dangerous"
-    CRITICAL = "critical"
-    BLOCKED = "blocked"
 
 
 class ViolationType(str, Enum):
@@ -142,9 +143,13 @@ class ValidationResult:
         self.gates[gate] = False
 
 
-class HumanoidSafetyValidator:
+class HumanoidSafetyValidator(SafetyValidator):
     """
     THSP validator for humanoid robot actions.
+
+    Inherits from SafetyValidator (safety.base) and provides humanoid-specific
+    validation logic including ISO/TS 15066 contact force limits, balance
+    monitoring, and human proximity checks.
 
     Validates actions through four gates:
     1. Truth: Is the action physically possible?
