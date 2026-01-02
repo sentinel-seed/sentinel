@@ -13,7 +13,7 @@ Components:
     - THSPPaymentValidator: THSP gate validators
 
 Quick Start:
-    >>> from sentinelseed.integrations.x402 import SentinelX402Middleware
+    >>> from sentinelseed.integrations.coinbase.x402 import SentinelX402Middleware
     >>>
     >>> middleware = SentinelX402Middleware()
     >>> result = middleware.validate_payment(
@@ -26,7 +26,7 @@ Quick Start:
 
 With AgentKit:
     >>> from coinbase_agentkit import AgentKit
-    >>> from sentinelseed.integrations.x402 import sentinel_x402_action_provider
+    >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_action_provider
     >>>
     >>> agent = AgentKit(
     ...     action_providers=[
@@ -37,7 +37,7 @@ With AgentKit:
 With httpx hooks:
     >>> import httpx
     >>> from eth_account import Account
-    >>> from sentinelseed.integrations.x402 import sentinel_x402_hooks
+    >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_hooks
     >>>
     >>> account = Account.from_key("0x...")
     >>> client = httpx.AsyncClient()

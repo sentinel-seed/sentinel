@@ -21,7 +21,7 @@ def example_basic_validation() -> None:
     print("Example 1: Basic Payment Validation")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         PaymentRequirementsModel,
         SentinelX402Middleware,
         get_default_config,
@@ -74,7 +74,7 @@ def example_high_amount_payment() -> None:
     print("Example 2: High Amount Payment (Exceeds Limits)")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         PaymentRequirementsModel,
         SentinelX402Middleware,
         get_default_config,
@@ -120,7 +120,7 @@ def example_blocked_address() -> None:
     print("Example 3: Payment to Blocked Address")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         PaymentRequirementsModel,
         SentinelX402Config,
         SentinelX402Middleware,
@@ -157,7 +157,7 @@ def example_blocked_address() -> None:
     print(f"Risk Level: {result.risk_level.value}")
     print(f"Blocked Reason: {result.blocked_reason}")
 
-    from sentinelseed.integrations.x402 import THSPGate
+    from sentinelseed.integrations.coinbase.x402 import THSPGate
     harm_gate = result.gates.get(THSPGate.HARM)
     if harm_gate:
         print(f"\nHARM Gate: {'PASS' if harm_gate.passed else 'FAIL'}")
@@ -171,7 +171,7 @@ def example_spending_tracking() -> None:
     print("Example 4: Spending Tracking")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         PaymentRequirementsModel,
         SentinelX402Middleware,
         get_default_config,
@@ -238,7 +238,7 @@ def example_agentkit_provider() -> None:
     print("Example 5: AgentKit Action Provider")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         SentinelX402ActionProvider,
         sentinel_x402_action_provider,
     )
@@ -292,7 +292,7 @@ def example_security_profiles() -> None:
     print("Example 6: Security Profiles Comparison")
     print("=" * 60)
 
-    from sentinelseed.integrations.x402 import (
+    from sentinelseed.integrations.coinbase.x402 import (
         PaymentRequirementsModel,
         SentinelX402Middleware,
         get_default_config,

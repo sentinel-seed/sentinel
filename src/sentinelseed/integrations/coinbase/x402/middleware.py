@@ -9,7 +9,7 @@ The middleware can be used:
     3. With AgentKit as an action provider
 
 Example:
-    >>> from sentinelseed.integrations.x402 import SentinelX402Middleware
+    >>> from sentinelseed.integrations.coinbase.x402 import SentinelX402Middleware
     >>>
     >>> middleware = SentinelX402Middleware()
     >>> result = middleware.validate_payment(
@@ -63,7 +63,7 @@ class SentinelX402Middleware:
         >>> result = middleware.validate_payment(...)
         >>>
         >>> # With custom config
-        >>> from sentinelseed.integrations.x402.config import get_default_config
+        >>> from sentinelseed.integrations.coinbase.x402.config import get_default_config
         >>> config = get_default_config("strict")
         >>> middleware = SentinelX402Middleware(config=config)
         >>>

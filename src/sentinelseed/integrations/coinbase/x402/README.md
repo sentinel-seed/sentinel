@@ -54,7 +54,7 @@ else:
 ```python
 import httpx
 from eth_account import Account
-from sentinelseed.integrations.x402 import sentinel_x402_hooks
+from sentinelseed.integrations.coinbase.x402 import sentinel_x402_hooks
 
 account = Account.from_key("0x...")
 
@@ -67,7 +67,7 @@ async with httpx.AsyncClient() as client:
 
 ```python
 from coinbase_agentkit import AgentKit
-from sentinelseed.integrations.x402 import sentinel_x402_action_provider
+from sentinelseed.integrations.coinbase.x402 import sentinel_x402_action_provider
 
 agent = AgentKit(
     action_providers=[
@@ -94,7 +94,7 @@ All four gates must pass for a payment to be approved.
 Pre-configured security levels:
 
 ```python
-from sentinelseed.integrations.x402 import get_default_config
+from sentinelseed.integrations.coinbase.x402 import get_default_config
 
 # Available profiles
 config = get_default_config("permissive")  # Minimal restrictions
@@ -219,7 +219,7 @@ result = provider.get_audit_log({
 Integrate with x402 SDK lifecycle:
 
 ```python
-from sentinelseed.integrations.x402 import SentinelX402Middleware
+from sentinelseed.integrations.coinbase.x402 import SentinelX402Middleware
 
 middleware = SentinelX402Middleware()
 

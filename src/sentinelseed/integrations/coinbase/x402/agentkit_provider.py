@@ -8,7 +8,7 @@ any payment is executed, ensuring AI agents can't make unsafe payments.
 
 Example:
     >>> from coinbase_agentkit import AgentKit
-    >>> from sentinelseed.integrations.x402 import sentinel_x402_action_provider
+    >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_action_provider
     >>>
     >>> agent = AgentKit(
     ...     action_providers=[
@@ -113,6 +113,9 @@ class SentinelX402ActionProvider(*_PROVIDER_BASES):
         if AGENTKIT_AVAILABLE and _AgentKitActionProvider is not None:
             _AgentKitActionProvider.__init__(self, "sentinel_x402", [])
         SentinelIntegration.__init__(self, validator=validator)
+
+        # Ensure name is always defined (consistency with SentinelActionProvider)
+        self.name = "sentinel_x402"
 
         if config:
             self.config = config
@@ -473,7 +476,7 @@ def sentinel_x402_action_provider(
 
     Example:
         >>> from coinbase_agentkit import AgentKit
-        >>> from sentinelseed.integrations.x402 import sentinel_x402_action_provider
+        >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_action_provider
         >>>
         >>> # With default settings
         >>> provider = sentinel_x402_action_provider()

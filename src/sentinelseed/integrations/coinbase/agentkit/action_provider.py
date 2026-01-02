@@ -153,6 +153,9 @@ class SentinelActionProvider(*_PROVIDER_BASES):
             )
         SentinelIntegration.__init__(self, validator=validator)
 
+        # Ensure name is always defined (H003 fix: works without AgentKit)
+        self.name = "sentinel"
+
         self.config = config or get_default_config()
         self.wallet_address = wallet_address
 
@@ -654,5 +657,4 @@ __all__ = [
     "SentinelActionProvider",
     "sentinel_action_provider",
     "AGENTKIT_AVAILABLE",
-    "THSP_AVAILABLE",
 ]

@@ -4,7 +4,7 @@ This module provides hooks that integrate Sentinel validation
 with the x402 SDK's httpx and requests clients.
 
 Usage with httpx:
-    >>> from sentinelseed.integrations.x402 import sentinel_x402_hooks
+    >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_hooks
     >>> import httpx
     >>>
     >>> client = httpx.AsyncClient()
@@ -12,7 +12,7 @@ Usage with httpx:
     >>> response = await client.get("https://api.example.com/paid")
 
 Usage with requests:
-    >>> from sentinelseed.integrations.x402 import sentinel_x402_adapter
+    >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_adapter
     >>> import requests
     >>>
     >>> session = requests.Session()
@@ -280,7 +280,7 @@ def sentinel_x402_hooks(
     Example:
         >>> import httpx
         >>> from eth_account import Account
-        >>> from sentinelseed.integrations.x402 import sentinel_x402_hooks
+        >>> from sentinelseed.integrations.coinbase.x402 import sentinel_x402_hooks
         >>>
         >>> account = Account.from_key("0x...")
         >>> async with httpx.AsyncClient() as client:
@@ -319,7 +319,7 @@ def create_sentinel_x402_client(
         Configured httpx.AsyncClient
 
     Example:
-        >>> from sentinelseed.integrations.x402 import create_sentinel_x402_client
+        >>> from sentinelseed.integrations.coinbase.x402 import create_sentinel_x402_client
         >>>
         >>> async with create_sentinel_x402_client(account) as client:
         ...     response = await client.get("https://api.example.com/paid")
