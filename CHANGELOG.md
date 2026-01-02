@@ -28,11 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - API key handling and masking
   - Semantic auto-detection
   - `validate()`, `validate_action()`, `get_validation_result()`
+- **OpenAI Agents SDK**: Added layered validation (heuristic + semantic)
+  - New `use_heuristic` and `skip_semantic_if_heuristic_blocks` config options
+  - Heuristic layer runs first for fast, free validation (<10ms, 580+ patterns)
+  - Semantic layer (LLM-based) only called if heuristic passes or doesn't block
+  - Saves API costs by avoiding unnecessary LLM calls for obvious violations
 
 ### Changed
+- `SentinelChain` (langchain/chains.py) now inherits from `SentinelIntegration`
+  - Uses `self._validator` from base class instead of creating its own
+  - Maintains backwards compatibility for seed injection
 - Langchain integration (`chains.py`) now uses `LayeredValidator` directly instead of `Sentinel.validate()`
 - Consolidated `THSPGate` enum: now imported from `validators/semantic.py` in all integrations
 - Test suite now includes 1833+ tests (up from 1705)
+- **OpenAI Agents guardrails**: Now return `layer` field ("heuristic", "semantic", or "none") in output_info
 
 ### Deprecated
 - `THSValidator` class - Use `THSPValidator` (4 gates) or `LayeredValidator` instead
@@ -46,6 +55,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Removed duplicate `THSPGate` definitions in `virtuals/` and `coinbase/x402/` integrations
+
+### Verified (Integration Audit)
+- `mcp_server`: Uses `LayeredValidator` correctly (exception by design: MCP uses functions)
+- `coinbase/x402`: `THSPGate` imported from canonical source (`validators/semantic.py`)
+- `virtuals`: Inherits from `SentinelIntegration`, uses `LayeredValidator`
+- `solana_agent_kit`: Inherits from `SentinelIntegration`, uses `LayeredValidator`
+- `openguardrails`: `SentinelGuardrailsWrapper` inherits from `SentinelIntegration`
+- `autogpt_block`: Uses `LayeredValidator` via standalone functions (exception by design)
+
+### Documentation
+- New `docs/ARCHITECTURE.md`: System architecture, validation flow, integration patterns
+- New `docs/MIGRATION.md`: Migration guide for users upgrading from older versions
+- Updated README with architecture and migration documentation references
 
 ## [2.18.0] - 2025-12-28
 
