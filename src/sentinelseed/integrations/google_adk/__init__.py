@@ -15,6 +15,7 @@ Installation:
 Quick Start with Plugin:
     from google.adk.runners import Runner
     from google.adk.agents import LlmAgent
+    from google.adk.sessions import InMemorySessionService
     from sentinelseed.integrations.google_adk import SentinelPlugin
 
     # Create your agent
@@ -26,7 +27,13 @@ Quick Start with Plugin:
 
     # Create runner with Sentinel plugin
     plugin = SentinelPlugin(seed_level="standard", block_on_failure=True)
-    runner = Runner(agent=agent, plugins=[plugin])
+    session_service = InMemorySessionService()
+    runner = Runner(
+        app_name="my_app",
+        agent=agent,
+        plugins=[plugin],
+        session_service=session_service,
+    )
 
     # Run with automatic safety validation
     response = await runner.run("Hello, how can you help?")

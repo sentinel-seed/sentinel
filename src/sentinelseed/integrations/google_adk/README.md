@@ -27,6 +27,7 @@ export GOOGLE_API_KEY="your-api-key"
 ```python
 from google.adk.runners import Runner
 from google.adk.agents import LlmAgent
+from google.adk.sessions import InMemorySessionService
 from sentinelseed.integrations.google_adk import SentinelPlugin
 
 # Create your agent
@@ -43,7 +44,13 @@ plugin = SentinelPlugin(
 )
 
 # Create runner with plugin
-runner = Runner(agent=agent, plugins=[plugin])
+session_service = InMemorySessionService()
+runner = Runner(
+    app_name="my_app",
+    agent=agent,
+    plugins=[plugin],
+    session_service=session_service,
+)
 
 # Run with automatic safety validation
 response = await runner.run("Hello, how can you help?")
@@ -79,6 +86,8 @@ from sentinelseed.integrations.google_adk import SentinelPlugin
 plugin = SentinelPlugin(
     # Sentinel configuration
     seed_level="standard",        # "minimal", "standard", or "full"
+    sentinel=None,                # Optional: custom Sentinel instance
+    validator=None,               # Optional: custom LayeredValidator instance
 
     # Behavior
     block_on_failure=True,        # Block unsafe content
@@ -232,7 +241,9 @@ plugin.reset_stats()
 ### Shared Plugin
 
 ```python
+from google.adk.runners import Runner
 from google.adk.agents import LlmAgent, SequentialAgent
+from google.adk.sessions import InMemorySessionService
 
 # Plugin applies to all agents
 plugin = SentinelPlugin(seed_level="standard")
@@ -242,7 +253,13 @@ agent2 = LlmAgent(name="Agent2", model="gemini-2.0-flash")
 
 workflow = SequentialAgent(name="Workflow", sub_agents=[agent1, agent2])
 
-runner = Runner(agent=workflow, plugins=[plugin])
+session_service = InMemorySessionService()
+runner = Runner(
+    app_name="my_app",
+    agent=workflow,
+    plugins=[plugin],
+    session_service=session_service,
+)
 ```
 
 ### Different Levels Per Agent
@@ -318,10 +335,22 @@ from sentinelseed.integrations.google_adk import (
     DEFAULT_SEED_LEVEL,        # "standard"
     DEFAULT_MAX_TEXT_SIZE,     # 100,000 bytes
     DEFAULT_VALIDATION_TIMEOUT,# 5.0 seconds
+    DEFAULT_MAX_VIOLATIONS,    # 1,000 (max stored violations)
     VALID_SEED_LEVELS,         # ("minimal", "standard", "full")
     ADK_AVAILABLE,             # True if ADK is installed
 )
 ```
+
+### Additional Exports
+
+The module also exports utility functions and classes for advanced usage:
+
+- **Logging**: `SentinelLogger`, `DefaultLogger`, `get_logger`, `set_logger`
+- **Utilities**: `validate_configuration`, `validate_text_size`, `extract_text_from_llm_request`, `extract_text_from_llm_response`, `create_blocked_response`
+- **Classes**: `ThreadSafeDeque`, `ValidationExecutor`
+- **Factory**: `create_sentinel_plugin`
+
+See the source code for detailed documentation on these components.
 
 ## Resources
 

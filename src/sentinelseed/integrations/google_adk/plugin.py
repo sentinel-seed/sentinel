@@ -136,7 +136,13 @@ class SentinelPlugin(_BASE_CLASS, SentinelIntegration):
         )
 
         # Register with runner
-        runner = Runner(agent=my_agent, plugins=[plugin])
+        session_service = InMemorySessionService()
+        runner = Runner(
+            app_name="my_app",
+            agent=my_agent,
+            plugins=[plugin],
+            session_service=session_service,
+        )
 
         # Get validation stats
         stats = plugin.get_stats()
@@ -868,7 +874,13 @@ def create_sentinel_plugin(
 
     Example:
         plugin = create_sentinel_plugin(seed_level="full", fail_closed=True)
-        runner = Runner(agent=my_agent, plugins=[plugin])
+        session_service = InMemorySessionService()
+        runner = Runner(
+            app_name="my_app",
+            agent=my_agent,
+            plugins=[plugin],
+            session_service=session_service,
+        )
     """
     return SentinelPlugin(
         seed_level=seed_level,
