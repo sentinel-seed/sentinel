@@ -49,6 +49,8 @@ References:
     - Safe RL: https://arxiv.org/abs/2108.06266
 """
 
+__version__ = "1.0.0"
+
 # Constraints
 from sentinelseed.integrations.isaac_lab.constraints import (
     JointLimits,
@@ -88,6 +90,8 @@ from sentinelseed.integrations.isaac_lab.callbacks import (
 )
 
 __all__ = [
+    # Version
+    '__version__',
     # Constraints
     'JointLimits',
     'WorkspaceLimits',

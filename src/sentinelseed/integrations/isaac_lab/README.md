@@ -119,6 +119,16 @@ limits = JointLimits.allegro_hand()
 
 ## Training Integration
 
+> **Optional Dependencies:** The training callbacks require additional packages:
+> - `stable-baselines3`: For `SentinelSB3Callback` and `get_sb3_callback()`
+> - `wandb`: For `create_wandb_callback()`
+> - `tensorboard`: For `create_tensorboard_callback()`
+>
+> These are not installed by default. Install as needed:
+> ```bash
+> pip install stable-baselines3 wandb tensorboard
+> ```
+
 ### Stable-Baselines3
 
 ```python
@@ -143,6 +153,9 @@ model.learn(
     callback=callback.get_sb3_callback()
 )
 ```
+
+> **Note:** `get_sb3_callback()` returns `None` if stable-baselines3 is not installed.
+> Check for `None` before passing to `model.learn()` if SB3 is an optional dependency.
 
 ### Weights & Biases Logging
 
@@ -266,6 +279,7 @@ validator = THSPRobotValidator(
     action_type: ActionType = ActionType.NORMALIZED,
     strict_mode: bool = False,
     log_violations: bool = True,
+    validator: LayeredValidator = None,  # Optional text validator for commands
 )
 
 # Validate single action

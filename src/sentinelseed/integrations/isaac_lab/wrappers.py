@@ -364,8 +364,8 @@ class SentinelSafetyWrapper(Wrapper):
 
         if hasattr(unwrapped, 'scene'):
             scene = unwrapped.scene
-            # Get articulation if available
-            if hasattr(scene, 'articulations'):
+            # Get articulation if available (verify it's a dict to avoid TypeError with Mock)
+            if hasattr(scene, 'articulations') and isinstance(scene.articulations, dict):
                 for name, articulation in scene.articulations.items():
                     if hasattr(articulation, 'data'):
                         data = articulation.data
@@ -406,7 +406,8 @@ class SentinelSafetyWrapper(Wrapper):
         # Try to get per-environment state from Isaac Lab scene
         if hasattr(unwrapped, 'scene'):
             scene = unwrapped.scene
-            if hasattr(scene, 'articulations'):
+            # Verify articulations is a dict to avoid TypeError with Mock
+            if hasattr(scene, 'articulations') and isinstance(scene.articulations, dict):
                 for name, articulation in scene.articulations.items():
                     if hasattr(articulation, 'data'):
                         data = articulation.data
