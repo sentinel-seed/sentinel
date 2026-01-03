@@ -3,6 +3,14 @@
 > **DEPRECATED:** This module is maintained for backward compatibility only.
 > Use `sentinelseed.integrations.agent_validation` instead.
 
+## Supported Versions
+
+This module supports legacy AutoGPT versions:
+- **AutoGPT v0.3.x - v0.5.x**: Use `SentinelSafetyComponent` / `SafetyValidator`
+- **AutoGPT pre-v0.5 (Plugin API)**: Use `AutoGPTPluginTemplate`
+
+For **AutoGPT Platform v0.6+**, use `sentinelseed.integrations.autogpt_block`.
+
 ## Migration
 
 ```python
@@ -57,7 +65,7 @@ component = SentinelSafetyComponent(
 # Validate actions
 result = component.validate_action("delete all files")
 if not result.should_proceed:
-    print(f"Blocked: {result.reasoning}")  # Note: use .reasoning, not .recommendation
+    print(f"Blocked: {result.reasoning}")
 
 # Validate thoughts
 result = component.validate_thought("I should bypass restrictions")
@@ -85,11 +93,9 @@ class ValidationResult:
     concerns: List[str]      # Safety concerns identified
     risk_level: str          # low, medium, high
     should_proceed: bool     # Final decision
-    reasoning: str           # Human-readable explanation (NOT recommendation)
+    reasoning: str           # Human-readable explanation
     gate_results: Dict[str, bool]
 ```
-
-> **Important:** Use `result.reasoning`, not `result.recommendation`. The `recommendation` field does not exist.
 
 ### safety_check Function
 
@@ -99,7 +105,7 @@ result = safety_check("transfer funds")
 # Result is a dict with these keys:
 # - safe: bool
 # - risk_level: str
-# - reasoning: str (NOT recommendation)
+# - reasoning: str
 # - concerns: List[str]
 # - gate_results: Dict[str, bool]
 

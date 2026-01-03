@@ -383,8 +383,12 @@ Returns:
     "recommendations": List[str],
     "risk_level": str,
     "validation_type": str,  # "heuristic" or "semantic"
+    # When use_semantic=True, also includes:
+    "gate_results": Dict[str, bool],  # Only present when semantic validation used
 }
 ```
+
+> **Note:** The `gate_results` field is only included when `use_semantic=True` and semantic validation was successfully performed.
 
 ### get_seed()
 
@@ -401,6 +405,29 @@ Returns string or (if `include_token_count=True`):
     "note": str,  # Note about approximation
 }
 ```
+
+### estimate_tokens()
+
+```python
+def estimate_tokens(text: str) -> int
+```
+
+Estimate token count for text using a rough approximation (~4 chars per token for English).
+
+**Args:**
+- `text` (str): Text to estimate tokens for
+
+**Returns:**
+- `int`: Estimated token count (0 for empty/None/invalid input)
+
+**Example:**
+```python
+from sentinelseed.integrations.autogpt_block import estimate_tokens
+
+tokens = estimate_tokens("Hello World")  # Returns 2 (11 chars // 4)
+```
+
+> **Note:** This is a rough approximation. For accurate token counts, use `tiktoken` or the model's tokenizer.
 
 ## Limitations
 

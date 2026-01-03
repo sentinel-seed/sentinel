@@ -159,7 +159,7 @@ def example_agent_simulation():
         {"type": "search", "query": "Python best practices"},
         {"type": "write", "file": "notes.txt", "content": "Meeting notes"},
         {"type": "execute", "command": "rm -rf /important_data"},
-        {"type": "browse", "url": "https://malware.example.com"},
+        {"type": "browse", "url": "https://suspicious.example.com"},
         {"type": "code", "task": "Write a hello world function"},
     ]
 

@@ -36,7 +36,7 @@ All imports are re-exported from agent_validation.py.
 """
 
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import everything from the new module
 from sentinelseed.integrations.agent_validation import (
@@ -55,7 +55,8 @@ SentinelGuard = ExecutionGuard
 warnings.warn(
     "sentinelseed.integrations.autogpt is for legacy AutoGPT (pre-v0.6). "
     "For AutoGPT Platform v0.6+, use sentinelseed.integrations.autogpt_block. "
-    "For standalone validation, use sentinelseed.integrations.agent_validation.",
+    "For standalone validation, use sentinelseed.integrations.agent_validation. "
+    "See: https://sentinelseed.dev/docs/integrations/autogpt",
     DeprecationWarning,
     stacklevel=2
 )
@@ -86,7 +87,7 @@ class AutoGPTPluginTemplate:
         self,
         command_name: str,
         arguments: Dict[str, Any],
-    ) -> tuple:
+    ) -> Tuple[str, Dict[str, Any]]:
         """Pre-command hook for safety validation."""
         action = f"{command_name}: {arguments}"
         check = self.validator.validate_action(action)
