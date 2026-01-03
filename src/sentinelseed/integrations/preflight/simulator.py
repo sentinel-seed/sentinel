@@ -199,9 +199,10 @@ class TransactionSimulator:
     DEFAULT_MAINNET_RPC = "https://api.mainnet-beta.solana.com"
     DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com"
 
-    # Jupiter API endpoints
-    JUPITER_QUOTE_URL = "https://api.jup.ag/quote"
-    JUPITER_SWAP_URL = "https://api.jup.ag/swap/v1/swap"
+    # Jupiter API endpoints (public API - no auth required)
+    # Reference: https://dev.jup.ag/docs/swap-api
+    JUPITER_QUOTE_URL = "https://public.jupiterapi.com/quote"
+    JUPITER_SWAP_URL = "https://public.jupiterapi.com/swap"
 
     # GoPlus API endpoint
     GOPLUS_SOLANA_URL = "https://api.gopluslabs.io/api/v1/solana/token_security"
@@ -223,6 +224,7 @@ class TransactionSimulator:
         self,
         rpc_url: str = DEFAULT_MAINNET_RPC,
         goplus_api_key: Optional[str] = None,
+        jupiter_api_key: Optional[str] = None,
         http_client: Optional[Any] = None,
         max_slippage_bps: int = 500,  # 5% default max slippage
         cache_ttl_seconds: int = 300,  # 5 minute cache for token security
@@ -233,12 +235,14 @@ class TransactionSimulator:
         Args:
             rpc_url: Solana RPC endpoint URL
             goplus_api_key: Optional GoPlus API key (free tier available)
+            jupiter_api_key: Optional Jupiter API key (for api.jup.ag instead of public API)
             http_client: Optional custom HTTP client (httpx or aiohttp)
             max_slippage_bps: Maximum acceptable slippage in basis points
             cache_ttl_seconds: Cache TTL for token security results
         """
         self.rpc_url = rpc_url
         self.goplus_api_key = goplus_api_key
+        self.jupiter_api_key = jupiter_api_key
         self._http_client = http_client
         self.max_slippage_bps = max_slippage_bps
         self.cache_ttl = cache_ttl_seconds
@@ -458,13 +462,21 @@ class TransactionSimulator:
                 "restrictIntermediateTokens": "true",
             }
 
-            quote_url = f"{self.JUPITER_QUOTE_URL}?{'&'.join(f'{k}={v}' for k, v in quote_params.items())}"
+            # Use official API URL if we have an API key, otherwise use public API
+            if self.jupiter_api_key:
+                base_url = "https://api.jup.ag/swap/v1/quote"
+                headers = {"x-api-key": self.jupiter_api_key}
+            else:
+                base_url = self.JUPITER_QUOTE_URL
+                headers = {}
+
+            quote_url = f"{base_url}?{'&'.join(f'{k}={v}' for k, v in quote_params.items())}"
 
             if hasattr(client, "get"):
-                response = await client.get(quote_url)
+                response = await client.get(quote_url, headers=headers)
                 quote_data = response.json()
             else:
-                async with client.get(quote_url) as response:
+                async with client.get(quote_url, headers=headers) as response:
                     quote_data = await response.json()
 
             # Check for quote errors - Jupiter API returns "error" OR "code" field

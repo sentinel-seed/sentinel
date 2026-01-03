@@ -504,23 +504,27 @@ def create_preflight_tools(
             risks = [r.description for r in result.risks]
             return f"WARNING: {', '.join(risks)}"
 
+    def _run_async(coro):
+        """Run async coroutine from sync context (Python 3.10+ compatible)."""
+        try:
+            # Check if there's already a running loop
+            asyncio.get_running_loop()
+            # If we're here, there's a running loop - use nest_asyncio pattern
+            # or run in thread pool to avoid "event loop already running" error
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        except RuntimeError:
+            # No running loop - safe to use asyncio.run()
+            return asyncio.run(coro)
+
     def sync_check_swap(input_str: str) -> str:
         """Sync wrapper for async check."""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(check_swap_safety(input_str))
+        return _run_async(check_swap_safety(input_str))
 
     def sync_check_token(token_address: str) -> str:
         """Sync wrapper for async check."""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(check_token_security(token_address))
+        return _run_async(check_token_security(token_address))
 
     return [
         Tool(

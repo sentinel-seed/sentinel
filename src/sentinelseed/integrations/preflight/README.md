@@ -27,25 +27,22 @@ import asyncio
 from sentinelseed.integrations.preflight import TransactionSimulator
 
 async def main():
-    # Initialize simulator
-    simulator = TransactionSimulator(
+    # Using context manager (recommended)
+    async with TransactionSimulator(
         rpc_url="https://api.mainnet-beta.solana.com"
-    )
+    ) as simulator:
+        # Simulate SOL -> USDC swap
+        result = await simulator.simulate_swap(
+            input_mint="So11111111111111111111111111111111111111112",  # SOL
+            output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+            amount=1_000_000_000,  # 1 SOL in lamports
+        )
 
-    # Simulate SOL -> USDC swap
-    result = await simulator.simulate_swap(
-        input_mint="So11111111111111111111111111111111111111112",  # SOL
-        output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
-        amount=1_000_000_000,  # 1 SOL in lamports
-    )
-
-    if result.is_safe:
-        print(f"Expected output: {result.expected_output / 1e6:.2f} USDC")
-        print(f"Slippage: {result.slippage_bps / 100:.2f}%")
-    else:
-        print(f"Risks detected: {[r.description for r in result.risks]}")
-
-    await simulator.close()
+        if result.is_safe:
+            print(f"Expected output: {result.expected_output / 1e6:.2f} USDC")
+            print(f"Slippage: {result.slippage_bps / 100:.2f}%")
+        else:
+            print(f"Risks detected: {[r.description for r in result.risks]}")
 
 asyncio.run(main())
 ```
@@ -56,19 +53,16 @@ asyncio.run(main())
 from sentinelseed.integrations.preflight import TransactionSimulator
 
 async def check_token():
-    simulator = TransactionSimulator()
+    async with TransactionSimulator() as simulator:
+        result = await simulator.check_token_security("TokenMintAddress...")
 
-    result = await simulator.check_token_security("TokenMintAddress...")
+        print(f"Is Safe: {result.is_safe}")
+        print(f"Has Freeze Authority: {result.has_freeze_authority}")
+        print(f"Is Honeypot: {result.is_honeypot}")
 
-    print(f"Is Safe: {result.is_safe}")
-    print(f"Has Freeze Authority: {result.has_freeze_authority}")
-    print(f"Is Honeypot: {result.is_honeypot}")
-
-    if not result.is_safe:
-        for risk in result.risks:
-            print(f"  - {risk.description}")
-
-    await simulator.close()
+        if not result.is_safe:
+            for risk in result.risks:
+                print(f"  - {risk.description}")
 ```
 
 ### Pre-flight Validator (Combined)
@@ -78,28 +72,25 @@ from sentinelseed.integrations.preflight import PreflightValidator
 
 async def validate():
     # Combines THSP validation + transaction simulation
-    validator = PreflightValidator(
+    async with PreflightValidator(
         max_transfer=100.0,
         max_slippage_bps=500,  # 5%
         require_purpose=True,
-    )
+    ) as validator:
+        result = await validator.validate_swap(
+            input_mint="So11...",
+            output_mint="Token...",
+            amount=1_000_000_000,
+            purpose="Converting SOL to stable for savings",
+        )
 
-    result = await validator.validate_swap(
-        input_mint="So11...",
-        output_mint="Token...",
-        amount=1_000_000_000,
-        purpose="Converting SOL to stable for savings",
-    )
-
-    if result.should_proceed:
-        print("Transaction approved!")
-        print(f"Expected output: {result.expected_output}")
-    else:
-        print("Transaction blocked:")
-        print(f"  Validation: {result.validation_concerns}")
-        print(f"  Simulation: {result.simulation_risks}")
-
-    await validator.close()
+        if result.should_proceed:
+            print("Transaction approved!")
+            print(f"Expected output: {result.expected_output}")
+        else:
+            print("Transaction blocked:")
+            print(f"  Validation: {result.validation_concerns}")
+            print(f"  Simulation: {result.simulation_risks}")
 ```
 
 ## Components
@@ -178,6 +169,13 @@ simulator = TransactionSimulator(
 
     # GoPlus API key (optional, free tier available)
     goplus_api_key=None,
+
+    # Jupiter API key (optional, uses public API if not provided)
+    # When provided, uses api.jup.ag instead of public.jupiterapi.com
+    jupiter_api_key=None,
+
+    # Custom HTTP client (optional, uses httpx or aiohttp by default)
+    http_client=None,
 
     # Maximum acceptable slippage (basis points)
     max_slippage_bps=500,  # 5%

@@ -74,7 +74,8 @@ class JupiterAnalyzer:
         print(f"Expected output: {quote.output_amount}")
     """
 
-    QUOTE_URL = "https://api.jup.ag/quote"
+    # Use same URL as TransactionSimulator for consistency
+    QUOTE_URL = "https://public.jupiterapi.com/quote"
 
     # Slippage thresholds (basis points)
     SLIPPAGE_LOW = 50      # 0.5%

@@ -40,7 +40,7 @@ References:
 - GoPlus Security: https://docs.gopluslabs.io/reference/solanatokensecurityusingget
 """
 
-__version__ = "1.0.0"
+__version__ = "2.19.0"
 __author__ = "Sentinel Team"
 
 from .simulator import (
@@ -51,6 +51,7 @@ from .simulator import (
     SimulationError,
     RiskLevel,
     RiskFactor,
+    RiskAssessment,
 )
 
 from .analyzers import (
@@ -59,6 +60,8 @@ from .analyzers import (
     TokenRiskAnalyzer,
     SlippageAnalyzer,
     LiquidityAnalyzer,
+    QuoteResult,
+    LiquidityInfo,
 )
 
 from .wrapper import (
@@ -76,6 +79,7 @@ __all__ = [
     "SwapSimulationResult",
     "TokenSecurityResult",
     "SimulationError",
+    "RiskAssessment",
     # Enums
     "RiskLevel",
     "RiskFactor",
@@ -85,6 +89,8 @@ __all__ = [
     "TokenRiskAnalyzer",
     "SlippageAnalyzer",
     "LiquidityAnalyzer",
+    "QuoteResult",
+    "LiquidityInfo",
     # Wrapper
     "PreflightValidator",
     "PreflightResult",
