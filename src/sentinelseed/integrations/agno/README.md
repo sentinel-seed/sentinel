@@ -9,7 +9,7 @@ This integration provides THSP-based (Truth, Harm, Scope, Purpose) guardrails th
 ## Features
 
 - **THSP Protocol** - Four-gate validation (Truth, Harm, Scope, Purpose)
-- **580+ Detection Patterns** - Comprehensive pattern matching
+- **200+ Detection Patterns** - Comprehensive pattern matching
 - **Jailbreak Detection** - Protection against prompt injection
 - **Native Integration** - Extends Agno's `BaseGuardrail`
 - **Async Support** - Works with both `run()` and `arun()`
@@ -65,12 +65,13 @@ guardrail = SentinelGuardrail(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `seed_level` | str | "standard" | Safety level. Higher = more patterns |
+| `seed_level` | str | "standard" | Safety level (minimal, standard, full) |
 | `block_on_failure` | bool | True | Raise exception on unsafe content |
 | `max_text_size` | int | 100,000 | Maximum input size in bytes |
 | `validation_timeout` | float | 5.0 | Validation timeout in seconds |
 | `fail_closed` | bool | False | Block on validation errors |
 | `log_violations` | bool | True | Record violations for monitoring |
+| `validator` | LayeredValidator | None | Custom validator for dependency injection |
 
 ### SentinelOutputGuardrail (Output Validation)
 
@@ -81,6 +82,7 @@ guardrail = SentinelOutputGuardrail(
     seed_level="standard",
     max_text_size=100000,
     validation_timeout=5.0,
+    log_violations=True,         # Record violations for monitoring
 )
 
 # Validate LLM output
@@ -89,13 +91,23 @@ if not result["safe"]:
     print(f"Output flagged: {result['concerns']}")
 ```
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `seed_level` | str | "standard" | Safety level (minimal, standard, full) |
+| `max_text_size` | int | 100,000 | Maximum output size in bytes |
+| `validation_timeout` | float | 5.0 | Validation timeout in seconds |
+| `log_violations` | bool | True | Record violations for monitoring |
+| `validator` | LayeredValidator | None | Custom validator for dependency injection |
+
 ## Safety Levels
 
-| Level | Patterns | Use Case |
-|-------|----------|----------|
-| `minimal` | ~100 | Low-risk applications, testing |
-| `standard` | ~300 | General production use |
-| `full` | ~580 | Security-critical applications |
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `minimal` | Core safety patterns | Low-risk applications, testing |
+| `standard` | Balanced safety coverage | General production use |
+| `full` | Maximum safety coverage | Security-critical applications |
+
+Note: All levels use the same detection patterns (~200). The level affects the seed prompt injected into the model, not the validation patterns.
 
 ## Monitoring
 
