@@ -50,7 +50,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sentinelseed.integrations._base import (
     SentinelIntegration,
@@ -327,9 +327,25 @@ class SentinelValidator(SentinelIntegration):
         Returns:
             ValidationResult with pass/fail status and details
         """
-        context = context or {}
+        # Input validation - ensure proper types to avoid runtime errors
+        if action_args is None:
+            action_args = {}
+        if context is None or not isinstance(context, dict):
+            context = {}
+
         concerns = []
         gate_results = {"truth": True, "harm": True, "scope": True, "purpose": True}
+
+        # Validate action_name - empty or whitespace-only names fail TRUTH gate
+        if not action_name or not action_name.strip():
+            gate_results["truth"] = False
+            concerns.append("Action name cannot be empty or whitespace-only")
+            return ValidationResult(
+                passed=False,
+                gate_results=gate_results,
+                concerns=concerns,
+                blocked_gate="truth",
+            )
 
         # Step 1: Use LayeredValidator for content validation
         # This catches: rm -rf, SQL injection, XSS, jailbreaks, etc.

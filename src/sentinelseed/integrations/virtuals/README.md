@@ -125,6 +125,10 @@ SentinelConfig(
         r"(?i)drain[_\s]?wallet",
         r"0x[fF]{64}",              # Max uint256
     ],
+
+    # Memory integrity (defense against injection attacks)
+    memory_integrity_check=False,   # Enable memory signing/verification
+    memory_secret_key=None,         # Secret key for HMAC signatures
 )
 ```
 
@@ -141,26 +145,130 @@ Every action passes through four validation gates:
 
 ## Safety Worker Functions
 
-The `SentinelSafetyWorker` exposes two functions to the agent:
+The `SentinelSafetyWorker` exposes functions to the agent (plus `verify_memory_integrity` when memory is enabled):
 
 ### check_action_safety
 
 ```python
 # Agent can call before executing sensitive operations
-result = check_action_safety(
+status, message, info = check_action_safety(
     action_name="transfer",
     action_args='{"amount": 100, "recipient": "..."}',
     purpose="User requested payment"
 )
-# Returns: safe (bool), concerns (list), gate_results (dict)
+# Returns tuple: (FunctionResultStatus, message: str, info: dict)
+# info contains: safe (bool), concerns (list), gate_results (dict), blocked_gate (str|None)
 ```
 
 ### get_safety_statistics
 
 ```python
 # Get validation stats
-stats = get_safety_statistics()
-# Returns: total, passed, blocked, pass_rate
+status, message, stats = get_safety_statistics()
+# Returns tuple: (FunctionResultStatus, message: str, stats: dict)
+# stats contains: total (int), passed (int), blocked (int), pass_rate (float)
+```
+
+## Fiduciary Validation
+
+The integration includes optional **Fiduciary Validation** to ensure agent actions align with user interests. This is enabled by default when the fiduciary module is available.
+
+### Enabling/Disabling
+
+```python
+from sentinelseed.integrations.virtuals import SentinelValidator
+
+# Enabled by default (when module available)
+validator = SentinelValidator()
+
+# Explicitly disable
+validator = SentinelValidator(fiduciary_enabled=False)
+
+# Strict mode: block on fiduciary violations
+validator = SentinelValidator(strict_fiduciary=True)
+```
+
+### Custom User Context
+
+```python
+from sentinelseed.integrations.virtuals import (
+    SentinelValidator,
+    UserContext,
+    RiskTolerance,
+)
+
+# Define custom user preferences
+context = UserContext(
+    goals=["maximize trading profits", "minimize fees"],
+    constraints=["never trade memecoins", "max 10% portfolio per trade"],
+    risk_tolerance=RiskTolerance.HIGH,  # LOW, MODERATE, HIGH
+    preferences={
+        "max_slippage": 0.03,
+        "require_confirmation_above": 500.0,
+    },
+)
+
+validator = SentinelValidator(user_context=context)
+
+# Update context at runtime
+new_context = UserContext(risk_tolerance=RiskTolerance.LOW)
+validator.update_user_context(new_context)
+```
+
+### Fiduciary Stats
+
+```python
+stats = validator.get_fiduciary_stats()
+# Returns: {
+#   "enabled": bool,
+#   "strict": bool,
+#   "validator_stats": {...}
+# }
+```
+
+## Memory Integrity
+
+Defends against memory injection attacks (Princeton CrAIBench found 85% success rate on unprotected agents).
+
+### Enabling Memory Integrity
+
+```python
+from sentinelseed.integrations.virtuals import SentinelConfig, SentinelSafetyWorker
+
+config = SentinelConfig(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret-key",  # For HMAC signing
+)
+
+worker = SentinelSafetyWorker(config)
+```
+
+### Signing State Entries
+
+```python
+# Sign a state entry
+signed = worker.sign_state_entry(
+    key="balance",
+    value=1000.0,
+    source="agent_internal",  # user_direct, user_verified, external_api, blockchain
+)
+# Returns: {"key": ..., "value": ..., "signed": True, "_sentinel_integrity": {...}}
+```
+
+### Verifying State Integrity
+
+```python
+# Verify a single entry
+result = worker.verify_state_entry(signed_entry)
+# Returns: {"valid": bool, "reason": str, "trust_score": float}
+
+# Verify entire state
+result = worker.verify_state(state_dict)
+# Returns: {"all_valid": bool, "checked": int, "results": {...}}
+
+# Get memory stats
+stats = worker.get_memory_stats()
+# Returns: {"enabled": True, "total": ..., "valid": ..., "invalid": ...}
 ```
 
 ## API Reference
@@ -170,11 +278,13 @@ stats = get_safety_statistics()
 | Class | Description |
 |-------|-------------|
 | `SentinelConfig` | Dataclass for validation configuration |
-| `SentinelValidator` | Core validation engine |
+| `SentinelValidator` | Core validation engine with THSP + Fiduciary |
 | `SentinelSafetyWorker` | Creates WorkerConfig for agents |
-| `ValidationResult` | Result from validation check |
+| `ValidationResult` | Result from validation (passed, gate_results, concerns, blocked_gate) |
 | `THSPGate` | Enum: TRUTH, HARM, SCOPE, PURPOSE |
-| `SentinelValidationError` | Exception for blocked actions |
+| `SentinelValidationError` | Exception for blocked actions (gate, concerns) |
+| `UserContext` | User preferences for fiduciary validation |
+| `RiskTolerance` | Enum: LOW, MODERATE, HIGH |
 
 ### Functions
 
@@ -184,11 +294,33 @@ stats = get_safety_statistics()
 | `wrap_functions_with_sentinel(fns, config)` | Wrap multiple Functions |
 | `sentinel_protected(config)` | Decorator for executables |
 
+### SentinelSafetyWorker Methods
+
+| Method | Description |
+|--------|-------------|
+| `check_action_safety(name, args, purpose)` | Check if action is safe |
+| `get_safety_stats()` | Get validation statistics |
+| `sign_state_entry(key, value, source)` | Sign state for integrity |
+| `verify_state_entry(entry)` | Verify signed entry |
+| `verify_state(state)` | Verify all signed entries |
+| `get_memory_stats()` | Get memory integrity stats |
+
+### SentinelValidator Methods
+
+| Method | Description |
+|--------|-------------|
+| `validate(action_name, action_args, context)` | Validate through THSP gates |
+| `get_stats()` | Get validation statistics |
+| `get_fiduciary_stats()` | Get fiduciary validation stats |
+| `update_user_context(context)` | Update UserContext at runtime |
+
 ### Constants
 
 | Constant | Type | Description |
 |----------|------|-------------|
 | `GAME_SDK_AVAILABLE` | bool | Whether game-sdk is installed |
+| `MEMORY_INTEGRITY_AVAILABLE` | bool | Whether memory module is available |
+| `FIDUCIARY_AVAILABLE` | bool | Whether fiduciary module is available |
 
 ## Examples
 
