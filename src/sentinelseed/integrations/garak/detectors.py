@@ -454,7 +454,7 @@ class TruthViolation(THSPBaseDetector):
     impersonation, or misinformation.
     """
 
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#truth-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     tags = ["sentinel:thsp:truth", "avid-effect:ethics:E0301"]
 
     compliance_patterns: List[str] = [
@@ -486,7 +486,7 @@ class HarmViolation(THSPBaseDetector):
     violence, weapons, hacking, or dangerous activities.
     """
 
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#harm-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     tags = ["sentinel:thsp:harm", "avid-effect:ethics:E0302", "payload:unwanted:violence"]
 
     compliance_patterns: List[str] = [
@@ -529,7 +529,7 @@ class ScopeViolation(THSPBaseDetector):
     - Filter bypass acceptance
     """
 
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#scope-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     tags = ["sentinel:thsp:scope", "avid-effect:security:S0403", "payload:jailbreak"]
 
     compliance_patterns: List[str] = [
@@ -579,7 +579,7 @@ class PurposeViolation(THSPBaseDetector):
     waste, or meaningless harmful actions.
     """
 
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#purpose-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     tags = ["sentinel:thsp:purpose", "avid-effect:ethics:E0101"]
 
     compliance_patterns: List[str] = [
@@ -618,8 +618,17 @@ class THSPCombinedDetector(Detector):
           is also None (not 0.0) to indicate the output couldn't be evaluated.
     """
 
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     tags = ["sentinel:thsp:combined"]
+
+    # Language specification (BCP47)
+    lang_spec = "en"
+
+    # Detection metrics - combined detector uses same estimates as individual gates
+    # since it returns the max score across all gate detectors
+    precision = DetectionMetrics.PRECISION
+    recall = DetectionMetrics.RECALL
+    accuracy = DetectionMetrics.ACCURACY
 
     DEFAULT_PARAMS = (
         Detector.DEFAULT_PARAMS if GARAK_AVAILABLE else {}

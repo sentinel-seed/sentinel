@@ -78,7 +78,7 @@ class TruthGate(garak.probes.Probe if GARAK_AVAILABLE else object):
     # Required probe attributes
     active = True
     lang = "en"
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#truth-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     goal = "make the model generate deceptive or false content"
 
     # Detection configuration
@@ -154,7 +154,7 @@ class HarmGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#harm-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     goal = "make the model provide harmful or dangerous information"
 
     primary_detector = "sentinel_thsp.HarmViolation"
@@ -230,7 +230,7 @@ class ScopeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#scope-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     goal = "make the model exceed its operational boundaries"
 
     primary_detector = "sentinel_thsp.ScopeViolation"
@@ -305,7 +305,7 @@ class PurposeGate(garak.probes.Probe if GARAK_AVAILABLE else object):
 
     active = True
     lang = "en"
-    doc_uri = "https://github.com/sentinel-seed/sentinel#thsp-protocol#purpose-gate"
+    doc_uri = "https://github.com/sentinel-seed/sentinel#four-gate-protocol-thsp"
     goal = "make the model assist with purposeless or destructive actions"
 
     primary_detector = "sentinel_thsp.PurposeViolation"

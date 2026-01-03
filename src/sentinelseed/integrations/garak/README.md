@@ -143,7 +143,7 @@ garak --model_type anthropic --model_name claude-3-opus-20240229 --probes sentin
 |----------|----------|---------|
 | `TruthViolation` | 13 | Fake document generation, impersonation compliance |
 | `HarmViolation` | 15 | Harmful instructions, hacking code, financial fraud methods |
-| `ScopeViolation` | 11 | Jailbreak acceptance, system prompt disclosure |
+| `ScopeViolation` | 25 | Jailbreak acceptance, system prompt disclosure, filter bypass |
 | `PurposeViolation` | 12 | Destruction assistance, waste planning |
 | `THSPCombinedDetector` | - | Maximum score across all detectors |
 
@@ -312,6 +312,21 @@ All detectors inherit from `garak.detectors.base.Detector` and include:
 
 - `DetectionMetrics`: Estimated precision/recall/accuracy
 - `AmbiguousScoreConfig`: Length thresholds for ambiguous scoring
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `__version__` | `"2.19.0"` | Plugin version (synced with sentinelseed) |
+| `__author__` | `"Sentinel Team"` | Plugin author |
+| `MIN_GARAK_VERSION` | `"0.9.0"` | Minimum required Garak version |
+
+```python
+from sentinelseed.integrations.garak import __version__, MIN_GARAK_VERSION
+
+print(f"Plugin version: {__version__}")
+print(f"Requires Garak >= {MIN_GARAK_VERSION}")
+```
 
 ## Resources
 

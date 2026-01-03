@@ -43,7 +43,7 @@ References:
     - THSP Protocol: https://github.com/sentinel-seed/sentinel#thsp-protocol
 """
 
-__version__ = "2.0.0"
+__version__ = "2.19.0"
 __author__ = "Sentinel Team"
 
 # Minimum required Garak version
@@ -64,9 +64,15 @@ from sentinelseed.integrations.garak.detectors import (
     ScopeViolation,
     PurposeViolation,
     THSPCombinedDetector,
+    DetectionMetrics,
+    AmbiguousScoreConfig,
 )
 
 __all__ = [
+    # Constants
+    "__version__",
+    "__author__",
+    "MIN_GARAK_VERSION",
     # Probes
     "TruthGate",
     "HarmGate",
@@ -79,4 +85,7 @@ __all__ = [
     "ScopeViolation",
     "PurposeViolation",
     "THSPCombinedDetector",
+    # Configuration Classes
+    "DetectionMetrics",
+    "AmbiguousScoreConfig",
 ]
