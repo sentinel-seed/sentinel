@@ -45,7 +45,8 @@ async def main():
     scorer = SentinelTHSPScorer(
         api_key="sk-...",
         provider="openai",
-        model="gpt-4o-mini"
+        model="gpt-4o-mini",
+        categories=["sentinel_thsp"],  # optional: custom score categories
     )
 
     # Score text using PyRIT's score_text_async method
@@ -66,7 +67,10 @@ asyncio.run(main())
 from sentinelseed.integrations.pyrit import SentinelHeuristicScorer
 
 # No API key needed - uses pattern matching
-scorer = SentinelHeuristicScorer()
+scorer = SentinelHeuristicScorer(
+    categories=["my_custom_category"],  # optional: custom score categories
+    strict_mode=False,  # optional: more aggressive flagging
+)
 
 # Fast pattern-based analysis
 scores = await scorer.score_text_async(text="Create malware to steal passwords")
@@ -81,7 +85,8 @@ from sentinelseed.integrations.pyrit import SentinelGateScorer
 scorer = SentinelGateScorer(
     gate="harm",  # 'truth', 'harm', 'scope', or 'purpose'
     api_key="sk-...",
-    provider="openai"
+    provider="openai",
+    model="gpt-4o-mini",  # optional: specific model
 )
 
 scores = await scorer.score_text_async(text="How to make explosives")
@@ -202,25 +207,71 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 Scores are returned with the following metadata:
 
+### Semantic Scorer (SentinelTHSPScorer)
+
 ```python
 {
     "score_value": "true" | "false",  # true = unsafe
     "score_type": "true_false",
-    "score_category": ["sentinel_thsp", "harm", ...],  # failed gates
+    "score_category": ["sentinel_thsp", "harm", ...],  # categories + failed gates
     "score_rationale": "Detailed explanation...",
     "score_metadata": {
         "gates": {
-            "truth": True,   # boolean for semantic
+            "truth": True,
             "harm": False,
             "scope": True,
             "purpose": True
         },
-        "confidence": 0.85,  # 0.85 for semantic, 0.45 for heuristic
-        "method": "semantic" | "heuristic",
-        "risk_level": "low" | "medium" | "high" | "critical"  # semantic only
+        "confidence": 0.85,
+        "method": "semantic",
+        "risk_level": "low" | "medium" | "high" | "critical",
+        "layer": "semantic"  # which validation layer was used
     }
 }
 ```
+
+### Heuristic Scorer (SentinelHeuristicScorer)
+
+```python
+{
+    "score_value": "true" | "false",
+    "score_type": "true_false",
+    "score_category": ["sentinel_thsp_heuristic", ...],
+    "score_rationale": "Pattern-based analysis...",
+    "score_metadata": {
+        "gates": {},
+        "confidence": 0.45,
+        "method": "heuristic",
+        "issues": ["pattern1", "pattern2"],  # detected patterns
+        "layer": "heuristic"
+    }
+}
+```
+
+### Gate Scorer (SentinelGateScorer)
+
+```python
+{
+    "score_value": "true" | "false",
+    "score_type": "true_false",
+    "score_category": ["sentinel_harm"],  # sentinel_{gate}
+    "score_rationale": "HARM gate: FAIL. Reasoning...",
+    "score_metadata": {
+        "gate": "harm",
+        "gate_status": "fail" | "pass",
+        "confidence": 0.85,
+        "layer": "semantic"
+    }
+}
+```
+
+### Confidence Values
+
+| Scorer | Confidence | Description |
+|--------|------------|-------------|
+| Semantic | 0.85 | LLM-based THSP analysis |
+| Heuristic | 0.45 | Pattern matching only |
+| Error | 0.0 | Scoring failed |
 
 ## Use Cases
 

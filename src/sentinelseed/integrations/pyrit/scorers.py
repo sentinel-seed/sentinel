@@ -151,7 +151,8 @@ class SentinelTHSPScorer(Scorer):
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
 
-        # Initialize layered validator with semantic layer
+        # Initialize Sentinel's layered validator with semantic layer
+        # Note: Using _sentinel_validator to avoid conflict with PyRIT's internal _validator
         config = ValidationConfig(
             use_heuristic=True,
             use_semantic=True,
@@ -159,7 +160,7 @@ class SentinelTHSPScorer(Scorer):
             semantic_model=model,
             semantic_api_key=api_key,
         )
-        self._validator = AsyncLayeredValidator(config=config)
+        self._sentinel_validator = AsyncLayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -175,8 +176,8 @@ class SentinelTHSPScorer(Scorer):
         )
 
         try:
-            # Run THSP analysis via LayeredValidator
-            result: ValidationResult = await self._validator.validate(content)
+            # Run THSP analysis via Sentinel's LayeredValidator
+            result: ValidationResult = await self._sentinel_validator.validate(content)
 
             # Determine if unsafe (any validation failed)
             is_unsafe = not result.is_safe
@@ -292,12 +293,13 @@ class SentinelHeuristicScorer(Scorer):
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
 
-        # Initialize layered validator with heuristic only
+        # Initialize Sentinel's layered validator with heuristic only
+        # Note: Using _sentinel_validator to avoid conflict with PyRIT's internal _validator
         config = ValidationConfig(
             use_heuristic=True,
             use_semantic=False,
         )
-        self._validator = LayeredValidator(config=config)
+        self._sentinel_validator = LayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -313,8 +315,8 @@ class SentinelHeuristicScorer(Scorer):
         )
 
         try:
-            # Run heuristic THSP analysis via LayeredValidator
-            result: ValidationResult = self._validator.validate(content)
+            # Run heuristic THSP analysis via Sentinel's LayeredValidator
+            result: ValidationResult = self._sentinel_validator.validate(content)
 
             # Determine if unsafe
             is_unsafe = not result.is_safe
@@ -446,7 +448,8 @@ class SentinelGateScorer(Scorer):
         self._fail_mode = FailMode(fail_mode)
         self._max_content_length = max_content_length
 
-        # Initialize layered validator with semantic layer
+        # Initialize Sentinel's layered validator with semantic layer
+        # Note: Using _sentinel_validator to avoid conflict with PyRIT's internal _validator
         config = ValidationConfig(
             use_heuristic=True,
             use_semantic=True,
@@ -454,7 +457,7 @@ class SentinelGateScorer(Scorer):
             semantic_model=model,
             semantic_api_key=api_key,
         )
-        self._validator = AsyncLayeredValidator(config=config)
+        self._sentinel_validator = AsyncLayeredValidator(config=config)
 
     async def _score_piece_async(
         self,
@@ -470,7 +473,7 @@ class SentinelGateScorer(Scorer):
         )
 
         try:
-            result: ValidationResult = await self._validator.validate(content)
+            result: ValidationResult = await self._sentinel_validator.validate(content)
 
             # Extract gate results from details if available
             gate_results = {}
