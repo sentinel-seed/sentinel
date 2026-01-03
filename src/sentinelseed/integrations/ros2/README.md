@@ -2,7 +2,7 @@
 
 Safety middleware for ROS2 robots using THSP (Truth-Harm-Scope-Purpose) validation.
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 ## Overview
 
@@ -78,7 +78,7 @@ ROS2 Lifecycle Node that validates messages in real-time.
 from sentinelseed.integrations.ros2 import SentinelSafetyNode
 
 node = SentinelSafetyNode(
-    node_name='sentinel_safety',     # ROS2 node name
+    node_name='sentinel_safety',     # ROS2 node name (default: 'sentinel_safety_node')
     input_topic='/cmd_vel_raw',      # Subscribe to raw commands
     output_topic='/cmd_vel',         # Publish safe commands
     status_topic='/sentinel/status', # Publish diagnostics
@@ -106,16 +106,18 @@ from sentinelseed.integrations.ros2 import CommandSafetyFilter, VelocityLimits, 
 filter = CommandSafetyFilter(
     velocity_limits=VelocityLimits.differential_drive(),
     safety_zone=SafetyZone.indoor(room_size=10.0),
+    require_purpose=False,   # Require explicit purpose for commands
     mode='clamp',
 )
 
 # Without position (Scope Gate skipped)
 safe_twist, result = filter.filter(twist_msg)
 
-# With position (Scope Gate active)
+# With position and purpose
 safe_twist, result = filter.filter(
     twist_msg,
-    current_position=(2.0, 3.0, 0.0),  # From odometry
+    purpose="Navigate to waypoint A",   # Optional purpose description
+    current_position=(2.0, 3.0, 0.0),   # From odometry (enables Scope Gate)
 )
 print(result.gates)  # {'truth': True, 'harm': True, 'scope': True, 'purpose': True}
 ```
@@ -127,7 +129,10 @@ Filter for String (natural language) commands.
 ```python
 from sentinelseed.integrations.ros2 import StringSafetyFilter
 
-filter = StringSafetyFilter(block_unsafe=True)
+filter = StringSafetyFilter(
+    block_unsafe=True,        # Block unsafe messages entirely
+    require_purpose=False,    # Require explicit purpose
+)
 
 safe_string, result = filter.filter(string_msg)
 if not result.is_safe:
@@ -256,6 +261,8 @@ from sentinelseed.integrations.ros2 import (
 
 rules = RobotSafetyRules(
     velocity_limits=VelocityLimits.differential_drive(max_linear=1.0),
+    require_purpose=False,            # Require explicit purpose for commands
+    emergency_stop_on_violation=True, # Stop robot on DANGEROUS violations
 )
 
 # Safe command
@@ -447,7 +454,7 @@ from sentinelseed.integrations.ros2 import (
 - [cmd_vel_mux (Toyota Research)](https://github.com/ToyotaResearchInstitute/cmd_vel_mux)
 
 ### Industrial Safety Standards
-- [IEC 60204-1](https://www.iso.org/standard/82337.html) - Stop categories (Cat 0, Cat 1, Cat 2)
+- [IEC 60204-1](https://webstore.iec.ch/en/publication/26037) - Stop categories (Cat 0, Cat 1, Cat 2)
 - [ISO 10218](https://www.iso.org/standard/73934.html) - Robot safety requirements
 - [ISO/TS 15066](https://www.iso.org/standard/62996.html) - Collaborative robot safety
 

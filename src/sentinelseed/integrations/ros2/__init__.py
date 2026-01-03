@@ -45,7 +45,7 @@ Usage:
 References:
     - ROS 2 Safety Working Group: https://github.com/ros-safety
     - ROS 2 Lifecycle Nodes: https://design.ros2.org/articles/node_lifecycle.html
-    - Nav2 Safety Node: https://navigation.ros.org/
+    - Nav2 Safety Node: https://docs.nav2.org/
 """
 
 from sentinelseed.integrations.ros2.nodes import (
