@@ -53,7 +53,7 @@ from sentinelseed.integrations.raw_api import prepare_anthropic_request
 
 headers, body = prepare_anthropic_request(
     messages=[{"role": "user", "content": "Hello"}],
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-5-20250929",
     api_key="sk-ant-...",
     system="You are helpful",  # Seed prepended
 )
@@ -147,7 +147,7 @@ prepare_openai_request(
 ```python
 prepare_anthropic_request(
     messages=[...],
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-5-20250929",
     api_key=None,
     sentinel=None,
     seed_level="standard",       # minimal, standard, full
@@ -166,9 +166,10 @@ prepare_anthropic_request(
 ```python
 validate_response(
     response,                    # Parsed JSON dict
-    sentinel=None,
+    sentinel=None,               # Sentinel instance (fallback)
     response_format="openai",    # openai, anthropic
     block_on_unsafe=False,       # Raise ValidationError if unsafe
+    validator=None,              # LayeredValidator (preferred over sentinel)
 )
 # Returns: {valid, response, violations, content, sentinel_checked}
 # Raises: ValueError, ValidationError
@@ -183,9 +184,10 @@ RawAPIClient(
     base_url=None,               # Custom endpoint
     sentinel=None,
     seed_level="standard",       # minimal, standard, full
-    timeout=30,                  # Request timeout in seconds
+    timeout=30,                  # Request timeout in seconds (int or float)
+    validator=None,              # LayeredValidator for dependency injection
 )
-# Raises: ValueError for invalid provider/seed_level
+# Raises: ValueError for invalid provider/seed_level/base_url/timeout
 
 client.chat(
     messages=[...],
@@ -197,6 +199,40 @@ client.chat(
 )
 # Returns: {valid, response, violations, content, sentinel_checked}
 # Raises: RawAPIError, ValidationError
+```
+
+## Limitations & Behaviors
+
+### Content Size Limit
+
+**Maximum content size:** 50KB (50,000 bytes) per message.
+Content exceeding this limit will be blocked with a `ValidationError`.
+
+### Response Handling
+
+| Behavior | Description |
+|----------|-------------|
+| **Streaming** | Not supported. Use full responses only. Delta format returns empty content. |
+| **Multiple choices** | Only the first choice is extracted. Other choices are ignored. |
+| **Tool calls** | When `content` is `None` (tool_calls present), returns empty string. |
+| **Vision format** | Content as list (OpenAI vision) is converted to concatenated text. |
+| **Anthropic blocks** | Multiple text blocks are concatenated. Non-text blocks are ignored. |
+
+### Example: Tool Calls Response
+
+```python
+# When API returns tool_calls, content may be None
+response = {
+    "choices": [{
+        "message": {
+            "content": None,  # No text, only tool calls
+            "tool_calls": [...]
+        }
+    }]
+}
+result = validate_response(response)
+result["content"]  # Returns ""
+result["valid"]    # Returns True
 ```
 
 ## Error Handling
@@ -280,6 +316,39 @@ except RawAPIError as e:
 | `create_anthropic_request_body(...)` | Body only |
 | `inject_seed_openai(messages)` | Add seed to messages |
 | `inject_seed_anthropic(system)` | Add seed to system |
+
+### create_openai_request_body
+
+```python
+create_openai_request_body(
+    messages=[...],
+    model="gpt-4o-mini",
+    sentinel=None,
+    seed_level="standard",
+    inject_seed=True,
+    max_tokens=1024,
+    temperature=0.7,
+    **kwargs,
+)
+# Returns: dict (request body, no headers)
+```
+
+### create_anthropic_request_body
+
+```python
+create_anthropic_request_body(
+    messages=[...],
+    model="claude-sonnet-4-5-20250929",
+    sentinel=None,
+    seed_level="standard",
+    inject_seed=True,
+    max_tokens=1024,
+    temperature=1.0,
+    system=None,
+    **kwargs,
+)
+# Returns: dict (request body, no headers)
+```
 
 ### Classes
 

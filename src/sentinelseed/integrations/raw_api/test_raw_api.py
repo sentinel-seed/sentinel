@@ -754,6 +754,339 @@ class TestHappyPath:
         assert client.timeout == 60
 
 
+# =============================================================================
+# Tests for NEW-001 - base_url empty string validation
+# =============================================================================
+class TestNEW001BaseUrlEmptyValidation:
+    """NEW-001: base_url='' should raise ValueError."""
+
+    def test_base_url_empty_raises_valueerror(self):
+        """NEW-001: base_url='' should raise ValueError."""
+        with pytest.raises(ValueError, match="cannot be an empty string"):
+            RawAPIClient(provider='openai', base_url='')
+
+    def test_base_url_whitespace_raises_valueerror(self):
+        """NEW-001: base_url='   ' should raise ValueError."""
+        with pytest.raises(ValueError, match="cannot be an empty string"):
+            RawAPIClient(provider='openai', base_url='   ')
+
+
+# =============================================================================
+# Tests for edge cases - streaming, multiple choices, tool_calls, vision
+# =============================================================================
+class TestEdgeCasesStreamingDelta:
+    """B002: Test streaming (delta format) returns empty content."""
+
+    def test_streaming_delta_returns_empty(self, mock_sentinel):
+        """Streaming response with delta should return empty content."""
+        # Streaming responses have 'delta' instead of 'message'
+        response = {
+            'choices': [{
+                'delta': {'content': 'Hello streaming!'}
+            }]
+        }
+        result = validate_response(response, sentinel=mock_sentinel)
+        # delta is not extracted - returns empty
+        assert result['content'] == ''
+        assert result['valid'] is True
+
+    def test_streaming_delta_no_message_key(self, mock_sentinel):
+        """Streaming response without 'message' key returns empty."""
+        response = {
+            'choices': [{
+                'index': 0,
+                'delta': {'role': 'assistant', 'content': 'Hi'}
+            }]
+        }
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == ''
+
+
+class TestEdgeCasesMultipleChoices:
+    """B002: Test multiple choices - only first is extracted."""
+
+    def test_multiple_choices_extracts_first_only(self, mock_sentinel):
+        """Multiple choices should extract only the first one."""
+        response = {
+            'choices': [
+                {'message': {'content': 'First choice'}},
+                {'message': {'content': 'Second choice'}},
+                {'message': {'content': 'Third choice'}},
+            ]
+        }
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == 'First choice'
+        # Second and third are ignored
+
+
+class TestEdgeCasesToolCalls:
+    """B002: Test tool_calls with content=None returns empty."""
+
+    def test_tool_calls_content_none_returns_empty(self, mock_sentinel):
+        """Tool calls response with content=None should return empty string."""
+        response = {
+            'choices': [{
+                'message': {
+                    'content': None,
+                    'tool_calls': [
+                        {
+                            'id': 'call_123',
+                            'type': 'function',
+                            'function': {'name': 'get_weather', 'arguments': '{}'}
+                        }
+                    ]
+                }
+            }]
+        }
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == ''
+        assert result['valid'] is True
+
+    def test_tool_calls_with_content_returns_content(self, mock_sentinel):
+        """Tool calls response with content should return the content."""
+        response = {
+            'choices': [{
+                'message': {
+                    'content': 'Let me check the weather for you.',
+                    'tool_calls': [
+                        {'id': 'call_123', 'type': 'function', 'function': {'name': 'get_weather'}}
+                    ]
+                }
+            }]
+        }
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == 'Let me check the weather for you.'
+
+
+class TestEdgeCasesVisionFormat:
+    """B002: Test vision format (content as list) is converted to string."""
+
+    def test_vision_content_list_converted_to_string(self, mock_sentinel):
+        """Vision format with content as list should be extracted correctly."""
+        # OpenAI vision format uses list of content blocks
+        from sentinelseed.integrations.raw_api import _safe_get_content
+
+        msg = {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'What is in this image?'},
+                {'type': 'image_url', 'image_url': {'url': 'https://example.com/img.png'}}
+            ]
+        }
+        content = _safe_get_content(msg)
+        assert content == 'What is in this image?'
+
+    def test_vision_multiple_text_blocks(self, mock_sentinel):
+        """Multiple text blocks should be concatenated with space."""
+        from sentinelseed.integrations.raw_api import _safe_get_content
+
+        msg = {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'First part'},
+                {'type': 'image_url', 'image_url': {'url': 'https://example.com/img.png'}},
+                {'type': 'text', 'text': 'Second part'},
+            ]
+        }
+        content = _safe_get_content(msg)
+        assert content == 'First part Second part'
+
+
+class TestEdgeCasesAnthropicMultipleBlocks:
+    """B002: Test Anthropic multiple content blocks are concatenated."""
+
+    def test_anthropic_multiple_text_blocks(self, mock_sentinel):
+        """Anthropic response with multiple text blocks should concatenate."""
+        response = {
+            'content': [
+                {'type': 'text', 'text': 'Hello '},
+                {'type': 'text', 'text': 'World!'},
+            ]
+        }
+        result = validate_response(
+            response,
+            sentinel=mock_sentinel,
+            response_format='anthropic'
+        )
+        assert result['content'] == 'Hello World!'
+
+    def test_anthropic_mixed_blocks(self, mock_sentinel):
+        """Anthropic response with mixed blocks extracts only text."""
+        response = {
+            'content': [
+                {'type': 'text', 'text': 'Here is the result:'},
+                {'type': 'tool_use', 'id': 'toolu_123', 'name': 'calculator', 'input': {}},
+                {'type': 'text', 'text': ' Done.'},
+            ]
+        }
+        result = validate_response(
+            response,
+            sentinel=mock_sentinel,
+            response_format='anthropic'
+        )
+        assert result['content'] == 'Here is the result: Done.'
+
+
+class TestEdgeCasesEmptyResponses:
+    """B002: Test empty and edge case responses."""
+
+    def test_empty_choices_list(self, mock_sentinel):
+        """Empty choices list should return empty content."""
+        response = {'choices': []}
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == ''
+        assert result['valid'] is True
+
+    def test_no_choices_key(self, mock_sentinel):
+        """Response without choices key should return empty content."""
+        response = {'id': 'chatcmpl-123', 'model': 'gpt-4'}
+        result = validate_response(response, sentinel=mock_sentinel)
+        assert result['content'] == ''
+
+    def test_anthropic_empty_content_list(self, mock_sentinel):
+        """Anthropic empty content list should return empty string."""
+        response = {'content': []}
+        result = validate_response(
+            response,
+            sentinel=mock_sentinel,
+            response_format='anthropic'
+        )
+        assert result['content'] == ''
+
+
+class TestCreateRequestBodyParams:
+    """NEW-002: Test create_*_request_body expose max_tokens and temperature."""
+
+    def test_create_openai_body_with_max_tokens(self, mock_sentinel):
+        """create_openai_request_body should accept max_tokens."""
+        from sentinelseed.integrations.raw_api import create_openai_request_body
+
+        body = create_openai_request_body(
+            messages=[{'role': 'user', 'content': 'Hi'}],
+            max_tokens=500,
+            sentinel=mock_sentinel,
+        )
+        assert body['max_tokens'] == 500
+
+    def test_create_openai_body_with_temperature(self, mock_sentinel):
+        """create_openai_request_body should accept temperature."""
+        from sentinelseed.integrations.raw_api import create_openai_request_body
+
+        body = create_openai_request_body(
+            messages=[{'role': 'user', 'content': 'Hi'}],
+            temperature=0.5,
+            sentinel=mock_sentinel,
+        )
+        assert body['temperature'] == 0.5
+
+    def test_create_anthropic_body_with_max_tokens(self, mock_sentinel):
+        """create_anthropic_request_body should accept max_tokens."""
+        from sentinelseed.integrations.raw_api import create_anthropic_request_body
+
+        body = create_anthropic_request_body(
+            messages=[{'role': 'user', 'content': 'Hi'}],
+            max_tokens=500,
+            sentinel=mock_sentinel,
+        )
+        assert body['max_tokens'] == 500
+
+
+class TestTimeoutFloatType:
+    """NEW-003: Test timeout accepts float values."""
+
+    def test_timeout_float_accepted_in_init(self):
+        """RawAPIClient should accept float timeout."""
+        client = RawAPIClient(provider='openai', timeout=30.5)
+        assert client.timeout == 30.5
+
+    def test_timeout_float_accepted_in_chat(self):
+        """chat() should accept float timeout without error."""
+        client = RawAPIClient(provider='openai')
+        # We can't actually call chat without mocking requests,
+        # but we can verify the validation doesn't reject float
+        from sentinelseed.integrations.raw_api import _validate_timeout
+        # Should not raise
+        _validate_timeout(30.5)
+        _validate_timeout(0.1)
+
+
+# =============================================================================
+# Tests for REV-001 to REV-005 - sentinel and validator type validation
+# =============================================================================
+class TestSentinelTypeValidation:
+    """REV-002/003/004: Test sentinel parameter type validation."""
+
+    def test_sentinel_string_raises_typeerror(self, valid_messages):
+        """sentinel='string' should raise TypeError."""
+        with pytest.raises(TypeError, match="sentinel must have a callable"):
+            prepare_openai_request(
+                messages=valid_messages,
+                sentinel='invalid'
+            )
+
+    def test_sentinel_int_raises_typeerror(self, valid_messages):
+        """sentinel=123 should raise TypeError."""
+        with pytest.raises(TypeError, match="sentinel must have a callable"):
+            prepare_openai_request(
+                messages=valid_messages,
+                sentinel=123
+            )
+
+    def test_sentinel_dict_raises_typeerror(self, valid_messages):
+        """sentinel={} should raise TypeError (no validate method)."""
+        with pytest.raises(TypeError, match="sentinel must have a callable"):
+            prepare_openai_request(
+                messages=valid_messages,
+                sentinel={}
+            )
+
+    def test_sentinel_anthropic_string_raises_typeerror(self, valid_messages):
+        """sentinel='string' in anthropic should raise TypeError."""
+        with pytest.raises(TypeError, match="sentinel must have a callable"):
+            prepare_anthropic_request(
+                messages=valid_messages,
+                sentinel='invalid'
+            )
+
+    def test_sentinel_client_string_raises_typeerror(self):
+        """sentinel='string' in RawAPIClient should raise TypeError."""
+        with pytest.raises(TypeError, match="sentinel must have a callable"):
+            RawAPIClient(provider='openai', sentinel='invalid')
+
+
+class TestValidatorTypeValidation:
+    """REV-001/005: Test validator parameter type validation."""
+
+    def test_validator_string_raises_typeerror(self, mock_sentinel):
+        """validator='string' should raise TypeError."""
+        response = {'choices': [{'message': {'content': 'Hello'}}]}
+        with pytest.raises(TypeError, match="validator must have a callable"):
+            validate_response(response, validator='invalid')
+
+    def test_validator_int_raises_typeerror(self, mock_sentinel):
+        """validator=123 should raise TypeError."""
+        response = {'choices': [{'message': {'content': 'Hello'}}]}
+        with pytest.raises(TypeError, match="validator must have a callable"):
+            validate_response(response, validator=123)
+
+    def test_validator_dict_raises_typeerror(self, mock_sentinel):
+        """validator={} should raise TypeError (no validate method)."""
+        response = {'choices': [{'message': {'content': 'Hello'}}]}
+        with pytest.raises(TypeError, match="validator must have a callable"):
+            validate_response(response, validator={})
+
+    def test_validator_client_string_raises_typeerror(self):
+        """validator='string' in RawAPIClient should raise TypeError."""
+        with pytest.raises(TypeError, match="validator must have a callable"):
+            RawAPIClient(provider='openai', validator='invalid')
+
+    def test_validator_none_accepted(self, mock_sentinel):
+        """validator=None should be accepted (uses sentinel fallback)."""
+        response = {'choices': [{'message': {'content': 'Hello'}}]}
+        result = validate_response(response, sentinel=mock_sentinel, validator=None)
+        assert result['valid'] is True
+
+
 # Run tests
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

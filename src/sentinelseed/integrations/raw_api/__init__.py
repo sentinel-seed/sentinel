@@ -35,7 +35,7 @@ Usage:
     )
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from json import JSONDecodeError
 import logging
 
@@ -47,7 +47,7 @@ from sentinelseed.integrations._base import (
     ValidationResult,
 )
 
-__version__ = "1.0.0"
+__version__ = "2.19.0"
 
 __all__ = [
     # Functions
@@ -225,6 +225,34 @@ def _validate_base_url(base_url: Any) -> None:
         raise ValueError(
             f"base_url must be a string, got {type(base_url).__name__}"
         )
+    if not base_url.strip():
+        raise ValueError("base_url cannot be an empty string")
+
+
+def _validate_sentinel(sentinel: Any) -> None:
+    """Validate sentinel parameter has required methods (duck-typing)."""
+    if sentinel is None:
+        return
+    # Duck-typing: check for required methods
+    required_methods = ['validate', 'validate_request', 'get_seed']
+    for method in required_methods:
+        if not callable(getattr(sentinel, method, None)):
+            raise TypeError(
+                f"sentinel must have a callable '{method}' method, "
+                f"got {type(sentinel).__name__} without {method}()"
+            )
+
+
+def _validate_validator(validator: Any) -> None:
+    """Validate validator parameter has required methods (duck-typing)."""
+    if validator is None:
+        return
+    # Duck-typing: check for validate method
+    if not callable(getattr(validator, 'validate', None)):
+        raise TypeError(
+            f"validator must have a callable 'validate' method, "
+            f"got {type(validator).__name__} without validate()"
+        )
 
 
 def _safe_get_content(msg: Dict[str, Any]) -> str:
@@ -305,6 +333,7 @@ def prepare_openai_request(
     _validate_temperature(temperature)
     _validate_bool(inject_seed, "inject_seed")
     _validate_bool(validate_input, "validate_input")
+    _validate_sentinel(sentinel)
 
     # Create sentinel instance
     try:
@@ -437,6 +466,7 @@ def prepare_anthropic_request(
     _validate_system(system)
     _validate_bool(inject_seed, "inject_seed")
     _validate_bool(validate_input, "validate_input")
+    _validate_sentinel(sentinel)
 
     # Create sentinel instance
     try:
@@ -615,6 +645,7 @@ def validate_response(
 
     # Validate block_on_unsafe
     _validate_bool(block_on_unsafe, "block_on_unsafe")
+    _validate_validator(validator)
 
     # M011: Detect API error responses before processing
     # Only treat as error if "error" key exists AND has a truthy value
@@ -683,6 +714,8 @@ def create_openai_request_body(
     sentinel: Optional[Sentinel] = None,
     seed_level: str = "standard",
     inject_seed: bool = True,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
     **kwargs,
 ) -> Dict[str, Any]:
     """
@@ -696,6 +729,8 @@ def create_openai_request_body(
         sentinel: Sentinel instance
         seed_level: Seed level to use
         inject_seed: Whether to inject seed
+        max_tokens: Maximum tokens in response
+        temperature: Sampling temperature (0 to 2)
         **kwargs: Additional parameters
 
     Returns:
@@ -720,6 +755,8 @@ def create_openai_request_body(
         seed_level=seed_level,
         inject_seed=inject_seed,
         validate_input=False,  # Caller handles validation
+        max_tokens=max_tokens,
+        temperature=temperature,
         **kwargs,
     )
     return body
@@ -731,6 +768,7 @@ def create_anthropic_request_body(
     sentinel: Optional[Sentinel] = None,
     seed_level: str = "standard",
     inject_seed: bool = True,
+    max_tokens: int = 1024,
     temperature: float = 1.0,
     system: Optional[str] = None,
     **kwargs,
@@ -744,6 +782,7 @@ def create_anthropic_request_body(
         sentinel: Sentinel instance
         seed_level: Seed level to use
         inject_seed: Whether to inject seed
+        max_tokens: Maximum tokens in response
         temperature: Sampling temperature (0 to 1)
         system: System prompt
         **kwargs: Additional parameters
@@ -758,6 +797,7 @@ def create_anthropic_request_body(
         seed_level=seed_level,
         inject_seed=inject_seed,
         validate_input=False,
+        max_tokens=max_tokens,
         temperature=temperature,
         system=system,
         **kwargs,
@@ -806,7 +846,7 @@ class RawAPIClient(SentinelIntegration):
         base_url: Optional[str] = None,
         sentinel: Optional[Sentinel] = None,
         seed_level: str = "standard",
-        timeout: int = DEFAULT_TIMEOUT,
+        timeout: Union[int, float] = DEFAULT_TIMEOUT,
         validator: Optional[LayeredValidator] = None,
     ):
         """
@@ -818,11 +858,11 @@ class RawAPIClient(SentinelIntegration):
             base_url: Custom base URL (for OpenAI-compatible APIs)
             sentinel: Sentinel instance (backwards compatibility for get_seed())
             seed_level: Seed level to use (minimal, standard, full)
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (int or float)
             validator: Optional LayeredValidator for dependency injection (testing)
 
         Raises:
-            ValueError: If provider or seed_level is invalid
+            ValueError: If provider, seed_level, base_url, or timeout is invalid
         """
         # Validate provider
         if provider not in VALID_PROVIDERS:
@@ -841,6 +881,12 @@ class RawAPIClient(SentinelIntegration):
 
         # Validate base_url (C001)
         _validate_base_url(base_url)
+
+        # Validate sentinel (REV-004)
+        _validate_sentinel(sentinel)
+
+        # Validate validator (REV-005)
+        _validate_validator(validator)
 
         # Create LayeredValidator if not provided
         if validator is None:
@@ -879,7 +925,7 @@ class RawAPIClient(SentinelIntegration):
         messages: List[Dict[str, str]],
         model: Optional[str] = None,
         max_tokens: int = 1024,
-        timeout: Optional[int] = None,
+        timeout: Optional[Union[int, float]] = None,
         block_on_unsafe: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
