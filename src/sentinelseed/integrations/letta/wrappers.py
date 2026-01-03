@@ -241,11 +241,22 @@ class SentinelMessagesAPI:
 
             # Handle ValidationResult from LayeredValidator
             if hasattr(result, "is_safe"):
+                # Extract gate results from details (same pattern as helpers.py)
+                gates = {}
+                if hasattr(result, 'details') and isinstance(result.details, dict):
+                    gates = result.details.get("gate_results", {})
+
+                # Safely get first violation for reasoning
+                reasoning = "Validation passed"
+                violations = result.violations if hasattr(result, 'violations') and result.violations else []
+                if violations and len(violations) > 0 and violations[0]:
+                    reasoning = violations[0]
+
                 return {
                     "is_safe": result.is_safe,
-                    "gates": {},  # Gate details in violations
-                    "reasoning": result.violations[0] if result.violations else "Validation passed",
-                    "failed_gates": result.violations or [],
+                    "gates": gates,
+                    "reasoning": reasoning,
+                    "failed_gates": violations,
                     "method": result.layer.value if hasattr(result, "layer") and result.layer else "layered",
                     "context": context,
                     "risk_level": result.risk_level.value if hasattr(result, "risk_level") and result.risk_level else "unknown",
@@ -467,6 +478,13 @@ class SentinelLettaClient(SentinelIntegration):
         if not hasattr(client, 'agents'):
             raise ValueError("client must have an 'agents' attribute")
 
+        # Validate expected interface on agents
+        agents_api = client.agents
+        if not hasattr(agents_api, 'create'):
+            raise ValueError("client.agents must have a 'create' method")
+        if not hasattr(agents_api, 'messages'):
+            raise ValueError("client.agents must have a 'messages' attribute")
+
         self._agents = SentinelAgentsAPI(
             client.agents,
             self._config,
@@ -588,6 +606,7 @@ def create_safe_agent(
                 client,
                 api_key=validator_api_key,
                 provider=validator_provider,
+                name=safety_tool_name,
             )
             if safety_tool.name not in tools:
                 tools.append(safety_tool.name)

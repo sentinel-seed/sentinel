@@ -634,6 +634,43 @@ class TestSentinelLettaClient:
         with pytest.raises(ValueError, match="Invalid provider"):
             SentinelLettaClient(MockLettaClient(), provider="invalid")
 
+    def test_client_without_agents_raises(self):
+        """Test that client without agents attribute raises ValueError."""
+        from sentinelseed.integrations.letta import SentinelLettaClient
+
+        class BadClient:
+            pass
+
+        with pytest.raises(ValueError, match="must have an 'agents' attribute"):
+            SentinelLettaClient(BadClient())
+
+    def test_client_agents_without_create_raises(self):
+        """Test that client.agents without create method raises ValueError."""
+        from sentinelseed.integrations.letta import SentinelLettaClient
+
+        class BadAgentsAPI:
+            messages = None  # has messages but no create
+
+        class BadClient:
+            agents = BadAgentsAPI()
+
+        with pytest.raises(ValueError, match="must have a 'create' method"):
+            SentinelLettaClient(BadClient())
+
+    def test_client_agents_without_messages_raises(self):
+        """Test that client.agents without messages raises ValueError."""
+        from sentinelseed.integrations.letta import SentinelLettaClient
+
+        class BadAgentsAPI:
+            def create(self, **kwargs):
+                pass  # has create but no messages
+
+        class BadClient:
+            agents = BadAgentsAPI()
+
+        with pytest.raises(ValueError, match="must have a 'messages' attribute"):
+            SentinelLettaClient(BadClient())
+
     def test_valid_client_creates_wrapper(self):
         """Test that valid client creates wrapper."""
         from sentinelseed.integrations.letta import SentinelLettaClient

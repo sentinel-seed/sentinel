@@ -374,6 +374,9 @@ class MemoryGuardTool:
                 if memory_label not in self._label_to_entry:
                     return f"ERROR: Memory block '{memory_label}' not registered. Provide content to register."
                 entry_id = self._label_to_entry[memory_label]
+                # Note: Direct access to _entries is intentional here.
+                # We need the raw hash without re-verification (which get() does).
+                # The hash is used for later verification, not for content retrieval.
                 entry = self._store._entries.get(entry_id)
                 if entry is None:
                     return f"ERROR: Memory block '{memory_label}' entry not found"
@@ -385,6 +388,7 @@ class MemoryGuardTool:
                     return f"ERROR: Memory block '{memory_label}' not registered"
 
                 entry_id = self._label_to_entry[memory_label]
+                # Note: Direct access to _entries is intentional (see Case 2 comment)
                 entry = self._store._entries.get(entry_id)
                 if entry is None:
                     return f"ERROR: Memory block '{memory_label}' entry not found"
@@ -466,6 +470,7 @@ def create_sentinel_tool(
     provider: str = "openai",
     model: Optional[str] = None,
     require_approval: bool = False,
+    name: str = "sentinel_safety_check",
 ) -> SentinelSafetyTool:
     """
     Create and register a Sentinel safety check tool with a Letta client.
@@ -479,6 +484,7 @@ def create_sentinel_tool(
         provider: LLM provider ("openai" or "anthropic")
         model: Model for validation
         require_approval: Whether tool calls require human approval
+        name: Name for the tool (default: "sentinel_safety_check")
 
     Returns:
         SentinelSafetyTool with tool_id set
@@ -493,6 +499,7 @@ def create_sentinel_tool(
         )
     """
     tool = SentinelSafetyTool(
+        name=name,
         requires_approval=require_approval,
     )
     tool._api_key = api_key

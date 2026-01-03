@@ -79,7 +79,7 @@ class ApprovalDecision:
         Convert to Letta approval message format.
 
         Returns:
-            Dict suitable for client.agents.messages.create()
+            Dict suitable for client.agents.messages(agent_id).create()
         """
         return {
             "type": "approval",
@@ -336,8 +336,7 @@ def sentinel_approval_handler(
                     api_key="sk-...",
                     auto_approve_safe=True
                 )
-                client.agents.messages.create(
-                    agent_id=agent.id,
+                client.agents.messages(agent.id).create(
                     messages=[decision.to_approval_message()]
                 )
     """

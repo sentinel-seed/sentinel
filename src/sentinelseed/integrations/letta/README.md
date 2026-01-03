@@ -125,8 +125,7 @@ decision = sentinel_approval_handler(
 )
 
 # Send decision back to agent
-client.agents.messages.create(
-    agent_id=agent.id,
+client.agents.messages(agent.id).create(
     messages=[decision.to_approval_message()]
 )
 ```
@@ -150,10 +149,10 @@ agent = client.agents.create(
 )
 ```
 
-> **Note:** The `MemoryGuardTool` is currently a placeholder implementation.
-> Full memory integrity verification requires access to Letta's memory blocks
-> through the client API, which varies by deployment. The tool structure is
-> in place for future implementation or custom extension.
+> **Note:** The `MemoryGuardTool` provides HMAC-based memory integrity verification.
+> It uses the core `MemoryIntegrityChecker` to sign and verify memory blocks,
+> detecting tampering attempts. The tool can register memory content, retrieve
+> hashes, and verify content against expected hashes.
 
 ## API Reference
 
@@ -187,7 +186,8 @@ tool = create_sentinel_tool(
     api_key=None,          # API key for validation
     provider="openai",     # LLM provider
     model=None,            # Model for validation
-    require_approval=False # Require human approval
+    require_approval=False,# Require human approval
+    name="sentinel_safety_check",  # Tool name
 )
 ```
 
@@ -233,6 +233,21 @@ result = validate_tool_call(
 # result: {"is_safe": False, "risk_level": "high", ...}
 ```
 
+### async_validate_message
+
+Async version of validate_message for use in async contexts:
+
+```python
+from sentinelseed.integrations.letta import async_validate_message
+
+# In async context
+result = await async_validate_message(
+    "Check this content",
+    api_key="your-key"
+)
+# Returns same format as validate_message
+```
+
 ## THSP Gates
 
 The integration validates content through four gates:
@@ -263,16 +278,17 @@ Default tools considered high-risk:
 
 ## Known Limitations
 
-1. **MemoryGuardTool is a placeholder** - Full memory integrity verification
-   requires access to Letta's memory blocks through the client API.
-
-2. **Streaming output validation** - Output validation is not possible during
+1. **Streaming output validation** - Output validation is not possible during
    streaming. Use `create()` instead of `stream()` for full validation.
 
-3. **Semantic validation requires API key** - Without an OpenAI or Anthropic
+2. **Semantic validation requires API key** - Without an OpenAI or Anthropic
    API key, only heuristic validation is available.
 
-4. **Provider support** - Currently supports `openai` and `anthropic` providers only.
+3. **Provider support** - Currently supports `openai` and `anthropic` providers only.
+
+4. **Memory verification scope** - MemoryGuardTool verifies content registered
+   through the tool. External modifications to Letta's memory blocks need to be
+   re-registered for verification.
 
 ## Examples
 
