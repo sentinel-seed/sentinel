@@ -261,6 +261,7 @@ from sentinelseed.integrations.ros2 import (
 
 rules = RobotSafetyRules(
     velocity_limits=VelocityLimits.differential_drive(max_linear=1.0),
+    safety_zone=None,                 # Optional SafetyZone for Scope Gate
     require_purpose=False,            # Require explicit purpose for commands
     emergency_stop_on_violation=True, # Stop robot on DANGEROUS violations
 )
