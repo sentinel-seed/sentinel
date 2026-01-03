@@ -14,7 +14,7 @@ pip install sentinelseed
 - `sentinelseed>=2.0.0`
 - `langchain` (optional, for LangChain tools)
 
-**Solana Agent Kit:** [GitHub](https://github.com/sendaifun/solana-agent-kit) | [Docs](https://kit.sendai.fun/)
+**Solana Agent Kit:** [GitHub](https://github.com/sendaifun/solana-agent-kit) | [Docs](https://docs.sendai.fun)
 
 ## Overview
 
@@ -93,11 +93,11 @@ if result.should_proceed:
 
 ```python
 from langchain.agents import create_react_agent
-from solana_agent_kit import createSolanaTools
+from solana_agent_kit import create_solana_tools
 from sentinelseed.integrations.solana_agent_kit import create_langchain_tools
 
-# Get Solana tools
-solana_tools = createSolanaTools(agent)
+# Get Solana tools (from solana-agent-kit-py)
+solana_tools = create_solana_tools(agent)
 
 # Add Sentinel safety tools
 safety_tools = create_langchain_tools()
@@ -143,17 +143,32 @@ from sentinelseed.integrations.solana_agent_kit import (
 )
 
 SentinelValidator(
-    seed_level="standard",
-    max_transfer=100.0,          # Max SOL per transaction (see note below)
-    confirm_above=10.0,          # Require confirmation above
-    blocked_addresses=[],        # Blocked wallet addresses
-    allowed_programs=[],         # Whitelist (empty = all)
-    require_purpose_for=[        # Actions needing purpose
+    # Core settings
+    seed_level="standard",           # Sentinel seed level ("minimal", "standard", "full")
+    max_transfer=100.0,              # Max SOL per transaction (see note below)
+    confirm_above=10.0,              # Require confirmation above
+    blocked_addresses=[],            # Blocked wallet addresses
+    allowed_programs=[],             # Whitelist (empty = all)
+    require_purpose_for=[            # Actions needing purpose
         "transfer", "send", "approve", "swap", "bridge", "withdraw", "stake"
     ],
-    address_validation=AddressValidationMode.WARN,  # IGNORE, WARN, or STRICT
-    memory_integrity_check=False,
-    memory_secret_key=None,
+    address_validation=AddressValidationMode.STRICT,  # IGNORE, WARN, or STRICT (default: STRICT for security)
+
+    # Advanced settings
+    max_history_size=1000,           # Max validation history entries
+    strict_mode=False,               # Block any transaction with concerns
+    custom_patterns=None,            # Additional SuspiciousPattern list
+    on_validation=None,              # Callback after each validation
+    validator=None,                  # Custom LayeredValidator (for testing)
+
+    # Memory integrity
+    memory_integrity_check=False,    # Enable cryptographic history verification
+    memory_secret_key=None,          # Secret key for HMAC signatures
+
+    # Fiduciary validation (see section below)
+    fiduciary_enabled=True,          # Enable duty of loyalty/care checks
+    user_context=None,               # UserContext for fiduciary validation
+    strict_fiduciary=False,          # Block on any fiduciary violation
 )
 ```
 
@@ -165,8 +180,8 @@ SentinelValidator(
 | Mode | Behavior |
 |------|----------|
 | `IGNORE` | Don't validate address format |
-| `WARN` | Log warning but allow transaction (default) |
-| `STRICT` | Reject invalid addresses with CRITICAL risk |
+| `WARN` | Log warning but allow transaction |
+| `STRICT` | Reject invalid addresses with CRITICAL risk (default) |
 
 ```python
 from sentinelseed.integrations.solana_agent_kit import is_valid_solana_address
@@ -207,6 +222,58 @@ class TransactionSafetyResult:
 5. **PURPOSE gate:** Sensitive actions need purpose
 6. **Sentinel validation:** THSP protocol check
 7. **Pattern detection:** Drain, sweep, bulk transfers
+8. **Fiduciary validation:** User-aligned decision making (if enabled)
+
+## Fiduciary Validation
+
+Validates that transactions align with user's best interests (duty of loyalty/care).
+
+### Enabling Fiduciary Validation
+
+```python
+from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+# Enabled by default with Solana-specific defaults
+validator = SentinelValidator(fiduciary_enabled=True)
+
+# Custom user context
+from sentinelseed.fiduciary import UserContext, RiskTolerance
+
+validator = SentinelValidator(
+    fiduciary_enabled=True,
+    user_context=UserContext(
+        goals=["protect holdings", "minimize fees"],
+        constraints=["max 10 SOL per day"],
+        risk_tolerance=RiskTolerance.LOW,
+    ),
+    strict_fiduciary=True,  # Block any fiduciary violation
+)
+```
+
+### Fiduciary Classes (re-exported)
+
+| Class | Description |
+|-------|-------------|
+| `UserContext` | User goals, constraints, risk tolerance |
+| `RiskTolerance` | LOW, MODERATE, HIGH, AGGRESSIVE |
+| `FiduciaryValidator` | Core fiduciary validator |
+| `FiduciaryResult` | Validation result with violations |
+
+### Fiduciary Methods
+
+| Method | Description |
+|--------|-------------|
+| `get_fiduciary_stats()` | Get fiduciary validation statistics |
+| `update_user_context(ctx)` | Update user context at runtime |
+
+### Checking Fiduciary Availability
+
+```python
+from sentinelseed.integrations.solana_agent_kit import HAS_FIDUCIARY
+
+if HAS_FIDUCIARY:
+    print("Fiduciary validation available")
+```
 
 ## LangChain Tool
 
@@ -253,9 +320,10 @@ python -m sentinelseed.integrations.solana_agent_kit.example --all
 | Class | Description |
 |-------|-------------|
 | `SentinelValidator` | Core validator |
-| `TransactionSafetyResult` | Validation result |
+| `TransactionSafetyResult` | Validation result dataclass |
 | `TransactionRisk` | Risk level enum (LOW, MEDIUM, HIGH, CRITICAL) |
 | `AddressValidationMode` | Address validation mode (IGNORE, WARN, STRICT) |
+| `SuspiciousPattern` | Pattern definition for suspicious behavior detection |
 | `SentinelSafetyMiddleware` | Function wrapper |
 | `TransactionBlockedError` | Exception for blocked transactions |
 
@@ -268,13 +336,31 @@ python -m sentinelseed.integrations.solana_agent_kit.example --all
 | `create_langchain_tools()` | LangChain Tool list |
 | `is_valid_solana_address(addr)` | Validate address format |
 
+### Constants
+
+| Constant | Type | Description |
+|----------|------|-------------|
+| `__version__` | str | Integration version (e.g., "2.1.0") |
+| `HAS_FIDUCIARY` | bool | Whether fiduciary module is available |
+| `DEFAULT_SUSPICIOUS_PATTERNS` | List[SuspiciousPattern] | Default crypto-specific patterns |
+| `HIGH_RISK_ACTIONS` | List[str] | Actions that always trigger blocking |
+| `ALLOWED_METADATA_KEYS` | Set[str] | Allowed keys for metadata sanitization |
+
 ### Methods (SentinelValidator)
 
-| Method | Returns |
-|--------|---------|
-| `check(action, amount, recipient, ...)` | TransactionSafetyResult |
-| `get_stats()` | Dict with validation statistics |
-| `clear_history()` | None |
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `check(action, amount, recipient, ...)` | TransactionSafetyResult | Validate transaction |
+| `get_stats()` | Dict | Validation statistics |
+| `clear_history()` | None | Clear validation history |
+| `verify_transaction_history()` | Dict | Verify history integrity (if enabled) |
+| `get_memory_stats()` | Dict | Memory integrity statistics |
+| `get_fiduciary_stats()` | Dict | Fiduciary validation statistics |
+| `update_user_context(ctx)` | None | Update fiduciary user context |
+| `block_address(addr)` | None | Add address to blocklist |
+| `unblock_address(addr)` | None | Remove address from blocklist |
+| `get_config()` | Dict | Get current configuration |
+| `update_config(...)` | None | Update configuration at runtime |
 
 ## Error Handling
 
@@ -305,6 +391,6 @@ logging.getLogger("sentinelseed.solana_agent_kit").setLevel(logging.DEBUG)
 
 ## Links
 
-- **Solana Agent Kit:** https://kit.sendai.fun/
+- **Solana Agent Kit:** https://docs.sendai.fun
 - **Solana Agent Kit GitHub:** https://github.com/sendaifun/solana-agent-kit
 - **Sentinel:** https://sentinelseed.dev

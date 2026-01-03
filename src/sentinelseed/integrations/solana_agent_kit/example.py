@@ -319,7 +319,7 @@ def main():
     print("Sentinel + Solana Agent Kit Integration")
     print("=" * 60)
     print("\nDemonstrating safety validation for Solana transactions.")
-    print("Documentation: https://sentinelseed.dev/docs/solana-agent-kit")
+    print("Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/solana_agent_kit")
 
     # Check for help
     if "--help" in sys.argv or "-h" in sys.argv:

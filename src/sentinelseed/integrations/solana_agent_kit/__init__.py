@@ -33,7 +33,7 @@ Usage patterns:
     validator = SentinelValidator()
     # Use in your custom Solana Agent Kit actions
 
-Documentation: https://sentinelseed.dev/docs/solana-agent-kit
+Documentation: https://github.com/sentinel-seed/sentinel/tree/main/src/sentinelseed/integrations/solana_agent_kit
 """
 
 __version__ = "2.1.0"
@@ -66,7 +66,7 @@ try:
         Violation,
     )
     HAS_FIDUCIARY = True
-except ImportError:
+except (ImportError, AttributeError):
     HAS_FIDUCIARY = False
     FiduciaryValidator = None
     FiduciaryResult = None
@@ -1151,11 +1151,11 @@ def create_langchain_tools(
 
     Example:
         from langchain.agents import create_react_agent
-        from solana_agent_kit import createSolanaTools
+        from solana_agent_kit import create_solana_tools
         from sentinelseed.integrations.solana_agent_kit import create_langchain_tools
 
-        # Get Solana tools
-        solana_tools = createSolanaTools(agent)
+        # Get Solana tools (from solana-agent-kit-py)
+        solana_tools = create_solana_tools(agent)
 
         # Add Sentinel safety tools
         safety_tools = create_langchain_tools()
@@ -1342,7 +1342,6 @@ __all__ = [
     "create_sentinel_actions",
     "create_langchain_tools",
     "is_valid_solana_address",
-    "_sanitize_metadata",
     # Fiduciary (re-exports for convenience)
     "HAS_FIDUCIARY",
 ]
