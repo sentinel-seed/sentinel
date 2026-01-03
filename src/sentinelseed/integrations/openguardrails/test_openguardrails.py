@@ -251,8 +251,8 @@ class TestSentinelGuardrailsWrapperValidation:
         assert result["safe"] is True
         assert result["blocked_by"] == []
 
-    def test_require_both_one_fails_blocks(self):
-        """C001: require_both=True - if one fails, block"""
+    def test_require_both_true_one_fails_allows(self):
+        """A001: require_both=True (permissive) - if only one fails, allow"""
         class PassingSentinel:
             def validate(self, content):
                 return {"safe": True}
@@ -264,12 +264,12 @@ class TestSentinelGuardrailsWrapperValidation:
         wrapper = SentinelGuardrailsWrapper(
             sentinel=PassingSentinel(),
             openguardrails=FailingGuardrails(),
-            require_both=True
+            require_both=True  # permissive mode: only block if BOTH fail
         )
         result = wrapper.validate("test content")
 
-        # With require_both=True, if OpenGuardrails fails, result should be safe=False
-        assert result["safe"] is False
+        # With require_both=True, if only OpenGuardrails fails, result should be safe=True
+        assert result["safe"] is True
         assert "openguardrails" in result["blocked_by"]
 
     def test_require_both_both_pass_safe(self):
@@ -351,6 +351,276 @@ class TestImportConditionals:
         with patch.dict('sys.modules', {'requests': None}):
             # The module is already loaded, so we test the flag behavior
             pass  # This is tested by the REQUESTS_AVAILABLE flag check
+
+
+class TestRequireBothLogic:
+    """Tests for A001 - require_both parameter implementation"""
+
+    def test_require_both_false_sentinel_fails_blocks(self):
+        """require_both=False (default): if sentinel fails, block"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Blocked by sentinel"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            require_both=False  # default: restrictive mode
+        )
+        result = wrapper.validate("test content")
+
+        assert result["safe"] is False
+        assert "sentinel" in result["blocked_by"]
+
+    def test_require_both_true_only_sentinel_fails_allows(self):
+        """require_both=True (permissive): if only sentinel fails, allow"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Blocked by sentinel"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
+
+        # No OpenGuardrails configured, so only sentinel runs
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            openguardrails=None,
+            require_both=True  # permissive mode
+        )
+        result = wrapper.validate("test content")
+
+        # Only sentinel failed, so with require_both=True should allow
+        assert result["safe"] is True
+        assert "sentinel" in result["blocked_by"]
+
+    def test_require_both_true_both_fail_blocks(self):
+        """require_both=True (permissive): if both fail, block"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            violations=["Blocked by sentinel"],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.HIGH,
+        )
+
+        class FailingGuardrails:
+            def validate(self, content, scanners=None):
+                return DetectionResult(safe=False, risk_level=RiskLevel.HIGH, detections=["blocked"])
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            openguardrails=FailingGuardrails(),
+            require_both=True  # permissive mode
+        )
+        result = wrapper.validate("test content")
+
+        # Both failed, so should block
+        assert result["safe"] is False
+        assert "sentinel" in result["blocked_by"]
+        assert "openguardrails" in result["blocked_by"]
+
+    def test_require_both_true_only_openguardrails_fails_allows(self):
+        """require_both=True (permissive): if only openguardrails fails, allow"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=True,
+            violations=[],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.LOW,
+        )
+
+        class FailingGuardrails:
+            def validate(self, content, scanners=None):
+                return DetectionResult(safe=False, risk_level=RiskLevel.HIGH, detections=["blocked"])
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            openguardrails=FailingGuardrails(),
+            require_both=True  # permissive mode
+        )
+        result = wrapper.validate("test content")
+
+        # Only openguardrails failed, so with require_both=True should allow
+        assert result["safe"] is True
+        assert "openguardrails" in result["blocked_by"]
+        assert "sentinel" not in result["blocked_by"]
+
+
+class TestScannersValidation:
+    """Tests for NEW-001 - scanners parameter validation in validate()"""
+
+    def test_scanners_with_int_raises(self):
+        """scanners list with int should raise TypeError"""
+        validator = OpenGuardrailsValidator()
+        with pytest.raises(TypeError, match="must be string"):
+            validator.validate("test content", scanners=["S1", 123])
+
+    def test_scanners_with_none_item_raises(self):
+        """scanners list with None item should raise TypeError"""
+        validator = OpenGuardrailsValidator()
+        with pytest.raises(TypeError, match="must be string"):
+            validator.validate("test content", scanners=["S1", None])
+
+
+class TestScannerUrlValidation:
+    """Tests for NEW-002 - openguardrails_url validation"""
+
+    def test_openguardrails_url_empty_raises(self):
+        """Empty openguardrails_url should raise ValueError"""
+        with pytest.raises(ValueError, match="non-empty string"):
+            SentinelOpenGuardrailsScanner(openguardrails_url="")
+
+    def test_openguardrails_url_none_raises(self):
+        """None openguardrails_url should raise ValueError"""
+        with pytest.raises(ValueError, match="non-empty string"):
+            SentinelOpenGuardrailsScanner(openguardrails_url=None)
+
+
+class TestContextValidation:
+    """Tests for context parameter validation"""
+
+    def test_context_int_raises(self):
+        """context must be string or None"""
+        validator = OpenGuardrailsValidator()
+        with pytest.raises(TypeError, match="context must be string or None"):
+            validator.validate("test content", context=123)
+
+    def test_context_list_raises(self):
+        """context must be string or None"""
+        validator = OpenGuardrailsValidator()
+        with pytest.raises(TypeError, match="context must be string or None"):
+            validator.validate("test content", context=["previous", "messages"])
+
+
+class TestWrapperTypeValidation:
+    """Tests for SentinelGuardrailsWrapper parameter validation"""
+
+    def test_openguardrails_wrong_type_raises(self):
+        """openguardrails must have validate method"""
+        with pytest.raises(TypeError, match="callable 'validate' method"):
+            SentinelGuardrailsWrapper(openguardrails="not a validator")
+
+    def test_openguardrails_dict_raises(self):
+        """openguardrails must have validate method"""
+        with pytest.raises(TypeError, match="callable 'validate' method"):
+            SentinelGuardrailsWrapper(openguardrails={"api_url": "http://test"})
+
+    def test_require_both_string_raises(self):
+        """require_both must be bool"""
+        with pytest.raises(TypeError, match="require_both must be bool"):
+            SentinelGuardrailsWrapper(require_both="yes")
+
+    def test_require_both_int_raises(self):
+        """require_both must be bool"""
+        with pytest.raises(TypeError, match="require_both must be bool"):
+            SentinelGuardrailsWrapper(require_both=1)
+
+
+class TestRequireBothWithErrors:
+    """Tests for require_both behavior with errors"""
+
+    def test_require_both_true_with_sentinel_error_blocks(self):
+        """require_both=True: sentinel error still blocks (fail-closed)"""
+        from unittest.mock import MagicMock
+
+        mock_validator = MagicMock()
+        mock_validator.validate.side_effect = RuntimeError("Sentinel crashed!")
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            require_both=True
+        )
+        result = wrapper.validate("test content")
+
+        # Even with require_both=True, errors should block
+        assert result["safe"] is False
+        assert "sentinel_error" in result["blocked_by"]
+
+    def test_require_both_true_with_og_error_blocks(self):
+        """require_both=True: openguardrails error still blocks (fail-closed)"""
+        from unittest.mock import MagicMock
+        from sentinelseed.validation import ValidationResult
+        from sentinelseed.validation.types import ValidationLayer, RiskLevel
+
+        mock_validator = MagicMock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=True,
+            violations=[],
+            layer=ValidationLayer.HEURISTIC,
+            risk_level=RiskLevel.LOW,
+        )
+
+        class ErrorGuardrails:
+            def validate(self, content, scanners=None):
+                raise RuntimeError("OpenGuardrails crashed!")
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            openguardrails=ErrorGuardrails(),
+            require_both=True
+        )
+        result = wrapper.validate("test content")
+
+        # Even with require_both=True, errors should block
+        assert result["safe"] is False
+        assert "openguardrails_error" in result["blocked_by"]
+
+
+class TestUnknownRiskLevel:
+    """Tests for NEW-003 - unknown risk_level handling"""
+
+    def test_unknown_risk_level_is_unsafe(self):
+        """Unknown risk_level should be treated as unsafe (fail-closed)"""
+        response = {
+            "detections": [
+                {"risk_level": "unknown_risk", "type": "test"}
+            ]
+        }
+        result = DetectionResult.from_response(response)
+        assert result.safe is False
+        assert result.risk_level == RiskLevel.HIGH
+
+    def test_invalid_risk_level_string_is_unsafe(self):
+        """Invalid risk_level string should be treated as unsafe"""
+        response = {
+            "detections": [
+                {"risk_level": "CRITICAL_RISK", "type": "test"}  # Wrong case
+            ]
+        }
+        result = DetectionResult.from_response(response)
+        assert result.safe is False
+        assert result.risk_level == RiskLevel.HIGH
+
+    def test_missing_risk_level_is_low_risk(self):
+        """Missing risk_level should default to low_risk"""
+        response = {
+            "detections": [
+                {"type": "test"}  # No risk_level
+            ]
+        }
+        result = DetectionResult.from_response(response)
+        assert result.safe is True
+        assert result.risk_level == RiskLevel.LOW
 
 
 # Run tests

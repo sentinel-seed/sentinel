@@ -193,6 +193,7 @@ class SentinelGuardrailsWrapper:
         sentinel: Optional[Any] = None,
         openguardrails: Optional[OpenGuardrailsValidator] = None,
         require_both: bool = False,
+        validator: Optional[LayeredValidator] = None,
     ):
         """
         Initialize combined wrapper.
@@ -200,7 +201,9 @@ class SentinelGuardrailsWrapper:
         Args:
             sentinel: Sentinel instance (optional, will create if not provided)
             openguardrails: OpenGuardrailsValidator instance
-            require_both: If True, both must fail to block. If False, either can block.
+            require_both: If True, both validators must fail to block (permissive mode).
+                         If False (default), either validator can block (restrictive mode).
+            validator: Optional LayeredValidator for dependency injection (testing)
         """
 
     def validate(

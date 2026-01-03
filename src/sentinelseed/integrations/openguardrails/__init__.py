@@ -120,17 +120,35 @@ class DetectionResult:
                     f"detection at index {i} must be a dict, got {type(d).__name__}"
                 )
 
-        # Safe if no high/critical detections
+        # Valid risk levels - unknown values are treated as HIGH (fail-closed)
+        valid_risk_levels = {"low_risk", "medium_risk", "high_risk", "critical_risk"}
+
+        # Get risk levels with default for missing values
+        # Missing risk_level defaults to "low_risk", but explicitly invalid values are unsafe
+        def get_effective_risk(d: Dict[str, Any]) -> str:
+            rl = d.get("risk_level")
+            if rl is None:
+                return "low_risk"  # Missing is safe (default)
+            return rl  # Keep the value (may be invalid)
+
+        # Safe if no high/critical/unknown detections (fail-closed for unknown)
         safe = not any(
-            d.get("risk_level") in ["high_risk", "critical_risk"]
+            get_effective_risk(d) in ["high_risk", "critical_risk"] or
+            (d.get("risk_level") is not None and d.get("risk_level") not in valid_risk_levels)
             for d in detections
         )
 
-        # Get highest risk level
-        risk_levels = [d.get("risk_level", "low_risk") for d in detections]
+        # Get highest risk level (unknown treated as HIGH for safety)
+        risk_levels = [get_effective_risk(d) for d in detections]
+        # Check for any explicitly invalid risk levels (not just missing)
+        has_unknown = any(
+            d.get("risk_level") is not None and d.get("risk_level") not in valid_risk_levels
+            for d in detections
+        )
+
         if "critical_risk" in risk_levels:
             risk = RiskLevel.CRITICAL
-        elif "high_risk" in risk_levels:
+        elif "high_risk" in risk_levels or has_unknown:
             risk = RiskLevel.HIGH
         elif "medium_risk" in risk_levels:
             risk = RiskLevel.MEDIUM
@@ -256,8 +274,17 @@ class OpenGuardrailsValidator:
             raise ValueError("content cannot be empty or whitespace-only")
 
         # Validate scanners if provided
-        if scanners is not None and not isinstance(scanners, list):
-            raise ValueError(f"scanners must be a list, got {type(scanners).__name__}")
+        if scanners is not None:
+            if not isinstance(scanners, list):
+                raise ValueError(f"scanners must be a list, got {type(scanners).__name__}")
+            for i, scanner in enumerate(scanners):
+                if not isinstance(scanner, str):
+                    raise TypeError(f"scanners[{i}] must be string, got {type(scanner).__name__}")
+
+        # Validate context if provided
+        if context is not None:
+            if not isinstance(context, str):
+                raise TypeError(f"context must be string or None, got {type(context).__name__}")
 
         payload = {
             "content": content,
@@ -412,6 +439,10 @@ class SentinelOpenGuardrailsScanner:
                 "Install with: pip install requests"
             )
 
+        # Validate openguardrails_url
+        if not openguardrails_url or not isinstance(openguardrails_url, str):
+            raise ValueError("openguardrails_url must be a non-empty string")
+
         # Validate risk_level
         if not isinstance(risk_level, RiskLevel):
             if isinstance(risk_level, str):
@@ -564,9 +595,22 @@ class SentinelGuardrailsWrapper(SentinelIntegration):
         Args:
             sentinel: Sentinel instance (backwards compatibility for get_seed())
             openguardrails: OpenGuardrailsValidator instance
-            require_both: If True, both must pass. If False, either can block.
+            require_both: If True, both validators must fail to block (permissive mode).
+                         If False (default), either validator can block (restrictive mode).
             validator: Optional LayeredValidator for dependency injection (testing)
         """
+        # Validate openguardrails has validate method if provided (duck typing)
+        if openguardrails is not None:
+            if not callable(getattr(openguardrails, 'validate', None)):
+                raise TypeError(
+                    f"openguardrails must have a callable 'validate' method, "
+                    f"got {type(openguardrails).__name__} without validate()"
+                )
+
+        # Validate require_both
+        if not isinstance(require_both, bool):
+            raise TypeError(f"require_both must be bool, got {type(require_both).__name__}")
+
         # Create LayeredValidator if not provided
         if validator is None:
             config = ValidationConfig(
@@ -638,11 +682,9 @@ class SentinelGuardrailsWrapper(SentinelIntegration):
             }
 
             if not sentinel_result.is_safe:
-                result["safe"] = False
                 result["blocked_by"].append("sentinel")
         except Exception as e:
             logger.error(f"Sentinel validation error: {e}")
-            result["safe"] = False
             result["blocked_by"].append("sentinel_error")
 
         # Run OpenGuardrails validation
@@ -655,18 +697,40 @@ class SentinelGuardrailsWrapper(SentinelIntegration):
                     "detections": og_result.detections,
                 }
                 if not og_result.safe:
-                    result["safe"] = False
                     result["blocked_by"].append("openguardrails")
             except ValueError as e:
                 # Re-raise validation errors (e.g., empty content)
                 raise
             except Exception as e:
                 logger.error(f"OpenGuardrails validation error: {e}")
-                result["safe"] = False
                 result["blocked_by"].append("openguardrails_error")
 
-        # require_both=True means both validators must pass - which is the default
-        # behavior (any failure blocks). The logic is already correct.
+        # Apply require_both logic:
+        # - require_both=False (default): either validator can block (restrictive)
+        # - require_both=True: both must fail to block (permissive)
+        if self.require_both:
+            # Permissive mode: only block if BOTH validators failed
+            # Count actual failures (not errors, which are treated as failures)
+            sentinel_failed = "sentinel" in result["blocked_by"]
+            og_failed = "openguardrails" in result["blocked_by"]
+
+            # If only one failed, allow (safe=True)
+            # If both failed, block (safe=False)
+            # If neither failed, allow (safe=True)
+            if sentinel_failed and og_failed:
+                result["safe"] = False
+            else:
+                result["safe"] = True
+
+            # Handle errors: errors always count as failures for safety
+            if "sentinel_error" in result["blocked_by"] or "openguardrails_error" in result["blocked_by"]:
+                result["safe"] = False
+        else:
+            # Restrictive mode (default): any failure blocks
+            if result["blocked_by"]:
+                result["safe"] = False
+            else:
+                result["safe"] = True
 
         return result
 
@@ -735,6 +799,7 @@ def create_combined_validator(
     openguardrails_url: str = "http://localhost:5001",
     openguardrails_key: Optional[str] = None,
     fail_safe: bool = False,
+    require_both: bool = False,
 ) -> SentinelGuardrailsWrapper:
     """
     Convenience function to create combined Sentinel + OpenGuardrails validator.
@@ -743,6 +808,8 @@ def create_combined_validator(
         openguardrails_url: OpenGuardrails detection API URL
         openguardrails_key: API key for OpenGuardrails
         fail_safe: If True, allow requests when OpenGuardrails API is down (DANGEROUS)
+        require_both: If True, both validators must fail to block (permissive mode).
+                     If False (default), either validator can block (restrictive mode).
 
     Returns:
         Combined validator wrapper
@@ -752,7 +819,7 @@ def create_combined_validator(
         api_key=openguardrails_key,
         fail_safe=fail_safe,
     )
-    return SentinelGuardrailsWrapper(openguardrails=og_validator)
+    return SentinelGuardrailsWrapper(openguardrails=og_validator, require_both=require_both)
 
 
 __all__ = [
@@ -768,4 +835,4 @@ __all__ = [
 ]
 
 
-__version__ = "1.0.0"
+__version__ = "2.19.0"
