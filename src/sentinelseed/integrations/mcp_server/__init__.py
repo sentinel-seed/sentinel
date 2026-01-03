@@ -9,7 +9,7 @@ https://github.com/modelcontextprotocol/python-sdk
 
 Usage:
     # Option 1: Run as standalone MCP server
-    python -m sentinel.integrations.mcp_server
+    python -m sentinelseed.integrations.mcp_server
 
     # Option 2: Import and customize
     from sentinelseed.integrations.mcp_server import create_sentinel_mcp_server
@@ -39,7 +39,27 @@ from typing import Any, Dict, List, Optional, Union
 import asyncio
 import logging
 
-__version__ = "2.0.0"
+__version__ = "2.19.0"
+
+# Public API exports
+__all__ = [
+    # Version
+    "__version__",
+    # Configuration
+    "MCPConfig",
+    "MCP_AVAILABLE",
+    # Exceptions
+    "TextTooLargeError",
+    "MCPClientError",
+    "MCPTimeoutError",
+    "MCPConnectionError",
+    # Server functions
+    "create_sentinel_mcp_server",
+    "add_sentinel_tools",
+    "run_server",
+    # Client
+    "SentinelMCPClient",
+]
 
 
 # Configuration constants

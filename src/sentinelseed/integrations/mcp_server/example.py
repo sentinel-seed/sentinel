@@ -294,7 +294,7 @@ def main():
     print("Sentinel MCP Server Integration Examples")
     print("=" * 60)
     print("\nDemonstrating MCP server creation and client usage.")
-    print("Documentation: https://sentinelseed.dev/docs/mcp-server")
+    print("Documentation: https://github.com/sentinel-seed/sentinel")
 
     if "--help" in sys.argv or "-h" in sys.argv:
         print(__doc__)

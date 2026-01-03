@@ -173,6 +173,16 @@ create_sentinel_mcp_server(
 )
 ```
 
+### add_sentinel_tools
+
+```python
+add_sentinel_tools(
+    mcp,                         # FastMCP server instance (required)
+    sentinel=None,               # Sentinel instance for get_seed (optional)
+    validator=None,              # LayeredValidator for validation (optional)
+)
+```
+
 ## Tool Specifications
 
 ### sentinel_validate
@@ -270,6 +280,9 @@ def sentinel_batch_validate(
 
 ### HTTP Transport (Remote Server)
 
+> **Note:** HTTP transport requires `streamable_http_client` from the MCP SDK, which
+> may not be available in all versions. Use stdio transport for maximum compatibility.
+
 ```python
 from sentinelseed.integrations.mcp_server import SentinelMCPClient
 
@@ -356,8 +369,8 @@ python -m sentinelseed.integrations.mcp_server.example --all
 
 | Function | Description |
 |----------|-------------|
-| `create_sentinel_mcp_server(name)` | Create server |
-| `add_sentinel_tools(mcp)` | Add tools to server |
+| `create_sentinel_mcp_server(name, sentinel, seed_level)` | Create server |
+| `add_sentinel_tools(mcp, sentinel, validator)` | Add tools to server |
 | `run_server()` | Run standalone |
 
 ### Classes
@@ -393,5 +406,5 @@ python -m sentinelseed.integrations.mcp_server.example --all
 
 - **MCP SDK:** https://github.com/modelcontextprotocol/python-sdk
 - **MCP Specification:** https://spec.modelcontextprotocol.io/
-- **npm Package:** https://npmjs.com/package/mcp-server-sentinelseed
+- **npm Package:** https://www.npmjs.com/package/mcp-server-sentinelseed
 - **Sentinel:** https://sentinelseed.dev
