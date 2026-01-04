@@ -28,8 +28,8 @@ the THSP (Truth-Harm-Scope-Purpose) protocol. It analyzes text for potential
 safety violations and displays diagnostics directly in your editor.
 
 Features:
-- Two analysis modes: Semantic (LLM-based, ~90% accuracy) and Heuristic
-  (pattern-based, ~50% accuracy)
+- Two analysis modes: Semantic (LLM-based, higher accuracy) and Heuristic
+  (pattern-based, works offline)
 - Support for OpenAI and Anthropic APIs
 - Native Neovim diagnostics integration
 - Alignment seed insertion for AI prompts
@@ -269,12 +269,12 @@ Analysis Modes~
 
 Semantic Mode (default):
   Uses LLM (OpenAI/Anthropic) for deep semantic analysis.
-  Accuracy: ~90%
+  Higher accuracy for nuanced content.
   Requires: API key
 
 Heuristic Mode:
   Uses pattern matching for fast local analysis.
-  Accuracy: ~50%
+  Works offline with no external dependencies.
   Requires: Nothing (works offline)
 
 ==============================================================================

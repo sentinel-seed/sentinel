@@ -6,8 +6,8 @@ AI Safety validation for Neovim using the THSP protocol.
 
 - **THSP Protocol**: Four-gate safety validation (Truth, Harm, Scope, Purpose)
 - **Two Analysis Modes**:
-  - Semantic (LLM-based): ~90% accuracy with OpenAI or Anthropic
-  - Heuristic (pattern-based): ~50-60% accuracy, works offline
+  - Semantic (LLM-based): higher accuracy with OpenAI or Anthropic
+  - Heuristic (pattern-based): works offline, no API required
     - Best for: quick local checks, offline usage, cost savings
     - Limitations: pattern-matching cannot catch all sophisticated attacks
 - **Native Diagnostics**: Violations appear as Neovim diagnostics
@@ -203,7 +203,7 @@ Insert alignment seeds to configure AI behavior:
 
 ## Requirements
 
-- Neovim >= 0.9.0
+- Neovim >= 0.8.0 (0.9+ recommended for best experience)
 - curl (for semantic analysis)
 - OpenAI or Anthropic API key (for semantic analysis)
 
