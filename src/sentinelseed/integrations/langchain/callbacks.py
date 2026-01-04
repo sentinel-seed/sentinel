@@ -17,9 +17,8 @@ from sentinelseed import Sentinel, SeedLevel
 from sentinelseed.validation import (
     LayeredValidator,
     ValidationConfig,
-    ValidationResult,
+    ValidationResult as CoreValidationResult,
 )
-from sentinelseed.integrations._base import SentinelIntegration
 
 from .utils import (
     DEFAULT_MAX_VIOLATIONS,
@@ -113,14 +112,14 @@ class StreamingBuffer:
             self._buffer = ""
 
 
-class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
+class SentinelCallback(BaseCallbackHandler):
     """
     LangChain callback handler for Sentinel safety monitoring.
 
     Monitors LLM inputs and outputs for safety violations using
     the THSP protocol. Thread-safe and supports streaming.
 
-    Inherits from SentinelIntegration for consistent validation behavior.
+    Uses LayeredValidator internally for consistent validation behavior.
 
     Example:
         from langchain_openai import ChatOpenAI
@@ -205,7 +204,7 @@ class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
         if LANGCHAIN_AVAILABLE and BaseCallbackHandler is not object:
             BaseCallbackHandler.__init__(self)
 
-        # Create LayeredValidator with config
+        # Create LayeredValidator with config (composition instead of inheritance)
         if validator is None:
             config = ValidationConfig(
                 use_heuristic=True,
@@ -216,8 +215,8 @@ class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
             )
             validator = LayeredValidator(config=config)
 
-        # Initialize SentinelIntegration with the validator
-        SentinelIntegration.__init__(self, validator=validator)
+        # Store validator for use in validation methods
+        self._validator = validator
 
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
         self.seed_level = seed_level
@@ -268,6 +267,27 @@ class SentinelCallback(BaseCallbackHandler, SentinelIntegration):
     def validate_output(self, value: bool) -> None:
         """Backwards compatibility setter for validate_output."""
         self.validate_output_enabled = value
+
+    # ========================================================================
+    # Validation Methods (previously from SentinelIntegration)
+    # ========================================================================
+
+    def validate(self, content: str) -> CoreValidationResult:
+        """
+        Validate content through the configured validator.
+
+        Args:
+            content: Text content to validate
+
+        Returns:
+            ValidationResult with is_safe, violations, layer, risk_level
+        """
+        return self._validator.validate(content)
+
+    @property
+    def validator(self) -> LayeredValidator:
+        """Access the underlying validator."""
+        return self._validator
 
     # ========================================================================
     # LLM Callbacks
