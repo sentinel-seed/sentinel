@@ -23,10 +23,10 @@ AI safety guardrails for LLM prompts using the THSP protocol (Truth, Harm, Scope
 
 | Mode | Method | Accuracy | Requires |
 |------|--------|----------|----------|
-| **Semantic** (recommended) | LLM-based analysis | High (~90%) | LLM provider (OpenAI, Anthropic, Ollama, Groq) |
-| **Heuristic** (fallback) | Pattern matching | Limited (~50%) | Nothing |
+| **Semantic** (recommended) | LLM-based analysis | High | LLM provider (OpenAI, Anthropic, Ollama, Groq) |
+| **Heuristic** (fallback) | Pattern matching | Limited | Nothing |
 
-> **For accurate results, configure an LLM provider.** Heuristic mode uses pattern matching which has significant false positives/negatives.
+> **For accurate results, configure an LLM provider.** Heuristic mode uses pattern matching which has significant false positives/negatives. Accuracy varies by content type and complexity.
 
 ### Real-time Safety Linting
 
@@ -172,7 +172,7 @@ Uses an LLM to understand content contextually:
 - ✅ Understands context ("hack my productivity" vs malicious hacking)
 - ✅ Detects paraphrased harmful content
 - ✅ Provides reasoning for decisions
-- ✅ ~90% confidence
+- ✅ High confidence
 
 ### Heuristic Analysis (Fallback)
 
@@ -180,7 +180,7 @@ Uses pattern matching for basic detection:
 - ⚠️ May flag legitimate content (false positives)
 - ⚠️ May miss paraphrased threats (false negatives)
 - ⚠️ No contextual understanding
-- ⚠️ ~50% confidence
+- ⚠️ Limited confidence
 
 ## Compliance Checking
 
@@ -191,7 +191,7 @@ The extension includes regulatory compliance checking against three major framew
 | Framework | Coverage | Description |
 |-----------|----------|-------------|
 | **EU AI Act** | Article 5 prohibited practices, Annex III high-risk contexts | Risk classification (unacceptable/high/limited/minimal) |
-| **OWASP LLM Top 10** | 6/10 vulnerabilities with strong THSP coverage | Input and output validation against LLM security risks |
+| **OWASP LLM Top 10** | 5/10 vulnerabilities with strong THSP coverage, 1 moderate | Input and output validation against LLM security risks |
 | **CSA AI Controls Matrix** | 10/18 domains with THSP support | Security domains and threat category assessment |
 
 ### OWASP LLM Top 10 Coverage
@@ -264,10 +264,12 @@ Windsurf also uses OpenVSX:
 ### Manual Installation (Any IDE)
 
 For any VS Code-compatible IDE:
-1. Download the `.vsix` file from [Releases](https://github.com/sentinel-seed/sentinel/releases)
+1. Download the `.vsix` file from [OpenVSX](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety) or build from source
 2. Open Command Palette (`Ctrl+Shift+P`)
 3. Run "Extensions: Install from VSIX..."
 4. Select the downloaded file
+
+> **Note:** The extension is available on VS Code Marketplace and OpenVSX. Building from source requires the full repository clone.
 
 ## MCP Server Alternative
 
