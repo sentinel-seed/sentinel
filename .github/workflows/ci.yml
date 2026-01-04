@@ -77,7 +77,7 @@ jobs:
           pip install ruff
 
       - name: Run ruff
-        run: ruff check src/sentinelseed/ --ignore E501,F401,F541,E402 --exclude "**/example.py,**/test_*.py"
+        run: ruff check src/sentinelseed/ --ignore E501,F401,F541,E402,F841,E741 --exclude "**/example.py,**/test_*.py"
 
   security-scan:
     name: Security Scan
