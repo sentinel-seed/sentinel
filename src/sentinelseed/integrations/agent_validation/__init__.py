@@ -70,8 +70,14 @@ from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIn
 
 logger = logging.getLogger("sentinelseed.agent_validation")
 
+# Version
+__version__ = "2.19.0"
+
 # Valid providers
 VALID_PROVIDERS = ("openai", "anthropic")
+
+# Valid seed levels
+VALID_SEED_LEVELS = ("minimal", "standard", "full")
 
 # Default limits
 DEFAULT_MAX_TEXT_SIZE = 50 * 1024  # 50KB
@@ -212,8 +218,8 @@ class SafetyValidator(SentinelIntegration):
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         seed_level: str = "standard",
-        block_unsafe: bool = True,
         log_checks: bool = True,
+        record_history: bool = True,
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         history_limit: int = DEFAULT_HISTORY_LIMIT,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
@@ -221,6 +227,8 @@ class SafetyValidator(SentinelIntegration):
         use_layered: bool = True,
         use_heuristic: bool = True,
         validator: Optional[LayeredValidator] = None,
+        # Deprecated parameter - kept for backward compatibility
+        block_unsafe: Optional[bool] = None,
     ):
         """
         Initialize the safety validator.
@@ -229,26 +237,48 @@ class SafetyValidator(SentinelIntegration):
             provider: LLM provider ("openai" or "anthropic")
             model: Model to use (auto-detected if None)
             api_key: API key (from environment if None)
-            seed_level: Seed level for seed injection
-            block_unsafe: Whether to block unsafe actions
-            log_checks: Whether to log safety checks
+            seed_level: Seed level for seed injection ("minimal", "standard", "full")
+            log_checks: Whether to log safety checks to console
+            record_history: Whether to record validations in history (default: True)
             max_text_size: Maximum text size in bytes (default: 50KB)
-            history_limit: Maximum history entries (default: 1000)
+            history_limit: Maximum history entries (default: 1000, must be >= 0)
             validation_timeout: Timeout for validation in seconds (default: 30)
             fail_closed: If True, validation errors result in blocking (default: False)
             use_layered: Use LayeredValidator (heuristic + semantic) (default: True)
             use_heuristic: Enable heuristic validation in layered mode (default: True)
             validator: Optional LayeredValidator for dependency injection (testing)
+            block_unsafe: DEPRECATED - This parameter is ignored. Will be removed in v3.0.
+
+        Raises:
+            InvalidProviderError: If provider is not valid
+            ValueError: If seed_level, validation_timeout, max_text_size, or history_limit are invalid
         """
+        # Deprecation warning for block_unsafe
+        if block_unsafe is not None:
+            import warnings
+            warnings.warn(
+                "block_unsafe parameter is deprecated and ignored. "
+                "It will be removed in v3.0. All unsafe actions are always blocked.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         # Validate provider
         if provider not in VALID_PROVIDERS:
             raise InvalidProviderError(provider)
+
+        # Validate seed_level
+        if seed_level not in VALID_SEED_LEVELS:
+            raise ValueError(
+                f"Invalid seed_level '{seed_level}'. Must be one of: {', '.join(VALID_SEED_LEVELS)}"
+            )
 
         # Validate parameters
         if validation_timeout <= 0:
             raise ValueError("validation_timeout must be positive")
         if max_text_size <= 0:
             raise ValueError("max_text_size must be positive")
+        if history_limit < 0:
+            raise ValueError("history_limit must be non-negative")
 
         # Create LayeredValidator if not provided
         if validator is None:
@@ -269,14 +299,15 @@ class SafetyValidator(SentinelIntegration):
 
         self.provider = provider
         self.model = model
-        self.block_unsafe = block_unsafe
         self.log_checks = log_checks
+        self.record_history = record_history
         self.seed_level = seed_level
         self.max_text_size = max_text_size
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
         self.fail_closed = fail_closed
         self.use_layered = use_layered
+        self.use_heuristic = use_heuristic
 
         # Sentinel for seed retrieval
         self._sentinel = Sentinel(seed_level=seed_level)
@@ -353,11 +384,13 @@ class SafetyValidator(SentinelIntegration):
                     gate_results={},
                 )
 
-        # Log if enabled
-        if self.log_checks:
+        # Record history if enabled (separate from logging)
+        if self.record_history:
             self._check_history.append(result)
-            if not result.should_proceed:
-                logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
+
+        # Log warning if enabled and action blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
 
         return result
 
@@ -407,8 +440,13 @@ class SafetyValidator(SentinelIntegration):
                     gate_results={},
                 )
 
-        if self.log_checks:
+        # Record history if enabled
+        if self.record_history:
             self._check_history.append(result)
+
+        # Log warning if enabled and blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Thought blocked: {result.reasoning}")
 
         return result
 
@@ -458,8 +496,13 @@ class SafetyValidator(SentinelIntegration):
                     gate_results={},
                 )
 
-        if self.log_checks:
+        # Record history if enabled
+        if self.record_history:
             self._check_history.append(result)
+
+        # Log warning if enabled and blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Output blocked: {result.reasoning}")
 
         return result
 
@@ -502,10 +545,13 @@ class SafetyValidator(SentinelIntegration):
             "block_rate": blocked / len(history) if history else 0,
             "provider": self.provider,
             "model": self.model,
+            "seed_level": self.seed_level,
             "history_limit": self.history_limit,
             "max_text_size": self.max_text_size,
             "validation_timeout": self.validation_timeout,
             "fail_closed": self.fail_closed,
+            "use_layered": self.use_layered,
+            "use_heuristic": self.use_heuristic,
         }
 
 
@@ -528,13 +574,17 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         seed_level: str = "standard",
-        block_unsafe: bool = True,
         log_checks: bool = True,
+        record_history: bool = True,
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         history_limit: int = DEFAULT_HISTORY_LIMIT,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
+        use_layered: bool = True,
+        use_heuristic: bool = True,
         validator: Optional[AsyncLayeredValidator] = None,
+        # Deprecated parameter - kept for backward compatibility
+        block_unsafe: Optional[bool] = None,
     ):
         """
         Initialize the async safety validator.
@@ -543,29 +593,54 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
             provider: LLM provider ("openai" or "anthropic")
             model: Model to use (auto-detected if None)
             api_key: API key (from environment if None)
-            seed_level: Seed level for seed injection
-            block_unsafe: Whether to block unsafe actions
-            log_checks: Whether to log safety checks
+            seed_level: Seed level for seed injection ("minimal", "standard", "full")
+            log_checks: Whether to log safety checks to console
+            record_history: Whether to record validations in history (default: True)
             max_text_size: Maximum text size in bytes (default: 50KB)
-            history_limit: Maximum history entries (default: 1000)
+            history_limit: Maximum history entries (default: 1000, must be >= 0)
             validation_timeout: Timeout for validation in seconds (default: 30)
             fail_closed: If True, validation errors result in blocking (default: False)
+            use_layered: Use LayeredValidator (heuristic + semantic) (default: True)
+            use_heuristic: Enable heuristic validation in layered mode (default: True)
             validator: Optional AsyncLayeredValidator for dependency injection (testing)
+            block_unsafe: DEPRECATED - This parameter is ignored. Will be removed in v3.0.
+
+        Raises:
+            InvalidProviderError: If provider is not valid
+            ValueError: If seed_level, validation_timeout, max_text_size, or history_limit are invalid
         """
+        # Deprecation warning for block_unsafe
+        if block_unsafe is not None:
+            import warnings
+            warnings.warn(
+                "block_unsafe parameter is deprecated and ignored. "
+                "It will be removed in v3.0. All unsafe actions are always blocked.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # Validate provider
         if provider not in VALID_PROVIDERS:
             raise InvalidProviderError(provider)
+
+        # Validate seed_level
+        if seed_level not in VALID_SEED_LEVELS:
+            raise ValueError(
+                f"Invalid seed_level '{seed_level}'. Must be one of: {', '.join(VALID_SEED_LEVELS)}"
+            )
 
         # Validate parameters
         if validation_timeout <= 0:
             raise ValueError("validation_timeout must be positive")
         if max_text_size <= 0:
             raise ValueError("max_text_size must be positive")
+        if history_limit < 0:
+            raise ValueError("history_limit must be non-negative")
 
         # Create AsyncLayeredValidator if not provided
         if validator is None:
             config = ValidationConfig(
-                use_heuristic=True,
+                use_heuristic=use_heuristic,
                 use_semantic=bool(api_key),
                 semantic_provider=provider,
                 semantic_model=model,
@@ -581,13 +656,15 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
 
         self.provider = provider
         self.model = model
-        self.block_unsafe = block_unsafe
         self.log_checks = log_checks
+        self.record_history = record_history
         self.seed_level = seed_level
         self.max_text_size = max_text_size
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
         self.fail_closed = fail_closed
+        self.use_layered = use_layered
+        self.use_heuristic = use_heuristic
 
         self._sentinel = Sentinel(seed_level=seed_level)
         self._check_history: deque = deque(maxlen=history_limit)
@@ -613,9 +690,12 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
             if purpose:
                 self._validate_text_size(purpose, "purpose")
 
+            # Combine action and purpose for validation (matches sync behavior)
+            content = f"{action} {purpose}".strip() if purpose else action
+
             # Use inherited async validate method from AsyncSentinelIntegration
             layered_result = await asyncio.wait_for(
-                self.avalidate(action),
+                self.avalidate(content),
                 timeout=self.validation_timeout,
             )
 
@@ -652,10 +732,13 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
                     gate_results={},
                 )
 
-        if self.log_checks:
+        # Record history if enabled (separate from logging)
+        if self.record_history:
             self._check_history.append(result)
-            if not result.should_proceed:
-                logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
+
+        # Log warning if enabled and action blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Action blocked: {result.reasoning}")
 
         return result
 
@@ -702,8 +785,13 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
                     gate_results={},
                 )
 
-        if self.log_checks:
+        # Record history if enabled
+        if self.record_history:
             self._check_history.append(result)
+
+        # Log warning if enabled and blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Thought blocked: {result.reasoning}")
 
         return result
 
@@ -750,8 +838,13 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
                     gate_results={},
                 )
 
-        if self.log_checks:
+        # Record history if enabled
+        if self.record_history:
             self._check_history.append(result)
+
+        # Log warning if enabled and blocked
+        if self.log_checks and not result.should_proceed:
+            logger.warning(f"[SENTINEL] Output blocked: {result.reasoning}")
 
         return result
 
@@ -779,15 +872,23 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
             return {"total_checks": 0}
 
         blocked = sum(1 for c in history if not c.should_proceed)
+        high_risk = sum(1 for c in history if c.risk_level == "high")
+
         return {
             "total_checks": len(history),
             "blocked": blocked,
             "allowed": len(history) - blocked,
+            "high_risk": high_risk,
             "block_rate": blocked / len(history) if history else 0,
+            "provider": self.provider,
+            "model": self.model,
+            "seed_level": self.seed_level,
             "history_limit": self.history_limit,
             "max_text_size": self.max_text_size,
             "validation_timeout": self.validation_timeout,
             "fail_closed": self.fail_closed,
+            "use_layered": self.use_layered,
+            "use_heuristic": self.use_heuristic,
         }
 
 
@@ -811,11 +912,12 @@ class ExecutionGuard:
         provider: str = "openai",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
-        block_unsafe: bool = True,
         max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
         validation_timeout: float = DEFAULT_VALIDATION_TIMEOUT,
         fail_closed: bool = False,
         action_extractor: Optional[Callable[..., str]] = None,
+        # Deprecated parameter - kept for backward compatibility
+        block_unsafe: Optional[bool] = None,
     ):
         """
         Initialize execution guard.
@@ -824,17 +926,26 @@ class ExecutionGuard:
             provider: LLM provider ("openai" or "anthropic")
             model: Model to use (auto-detected if None)
             api_key: API key (from environment if None)
-            block_unsafe: Whether to block unsafe actions
             max_text_size: Maximum text size in bytes
             validation_timeout: Timeout for validation in seconds
             fail_closed: If True, validation errors result in blocking
             action_extractor: Custom function to extract action from args/kwargs
+            block_unsafe: DEPRECATED - This parameter is ignored. Will be removed in v3.0.
         """
+        # Deprecation warning for block_unsafe
+        if block_unsafe is not None:
+            import warnings
+            warnings.warn(
+                "block_unsafe parameter is deprecated and ignored. "
+                "It will be removed in v3.0. All unsafe actions are always blocked.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.validator = SafetyValidator(
             provider=provider,
             model=model,
             api_key=api_key,
-            block_unsafe=block_unsafe,
             max_text_size=max_text_size,
             validation_timeout=validation_timeout,
             fail_closed=fail_closed,
@@ -1024,6 +1135,8 @@ SentinelGuard = ExecutionGuard
 
 
 __all__ = [
+    # Version
+    "__version__",
     # Main classes
     "ValidationResult",
     "SafetyValidator",
@@ -1036,6 +1149,7 @@ __all__ = [
     "InvalidProviderError",
     # Constants
     "VALID_PROVIDERS",
+    "VALID_SEED_LEVELS",
     "DEFAULT_MAX_TEXT_SIZE",
     "DEFAULT_HISTORY_LIMIT",
     "DEFAULT_VALIDATION_TIMEOUT",

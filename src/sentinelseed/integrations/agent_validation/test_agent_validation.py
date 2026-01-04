@@ -267,12 +267,14 @@ class TestSafetyValidator:
 
         assert validator.provider == "openai"
         assert validator.model is None
-        assert validator.block_unsafe is True
         assert validator.log_checks is True
+        assert validator.record_history is True
         assert validator.max_text_size == DEFAULT_MAX_TEXT_SIZE
         assert validator.history_limit == DEFAULT_HISTORY_LIMIT
         assert validator.validation_timeout == DEFAULT_VALIDATION_TIMEOUT
         assert validator.fail_closed is False
+        assert validator.use_layered is True
+        assert validator.use_heuristic is True
 
     def test_init_custom_config(self, mock_layered_validator):
         """Test initialization with custom config."""
@@ -1019,6 +1021,328 @@ class TestInputValidationBugs:
         result = my_func(123)
         assert result["blocked"] is True
         assert result["error_type"] == "TypeError"
+
+
+# ============================================================================
+# New Tests for Correction #025 (Bugs Found Beyond Audit)
+# ============================================================================
+
+
+class TestSeedLevelValidation:
+    """Tests for M005: seed_level validation."""
+
+    def test_valid_seed_levels(self, mock_layered_validator, mock_sentinel):
+        """Test that valid seed_levels are accepted."""
+        for level in ("minimal", "standard", "full"):
+            with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+                with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                    validator = SafetyValidator(seed_level=level)
+                    assert validator.seed_level == level
+
+    def test_invalid_seed_level_raises(self, mock_layered_validator, mock_sentinel):
+        """Test that invalid seed_level raises ValueError."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="Invalid seed_level"):
+                    SafetyValidator(seed_level="invalid")
+
+    def test_empty_seed_level_raises(self, mock_layered_validator, mock_sentinel):
+        """Test that empty seed_level raises ValueError."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="Invalid seed_level"):
+                    SafetyValidator(seed_level="")
+
+    def test_async_invalid_seed_level_raises(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator also validates seed_level."""
+        with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+            with pytest.raises(ValueError, match="Invalid seed_level"):
+                AsyncSafetyValidator(validator=mock_async_layered_validator, seed_level="invalid")
+
+
+class TestHistoryLimitValidation:
+    """Tests for NEW-001: history_limit validation."""
+
+    def test_negative_history_limit_raises(self, mock_layered_validator, mock_sentinel):
+        """Test that negative history_limit raises ValueError."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with pytest.raises(ValueError, match="non-negative"):
+                    SafetyValidator(history_limit=-1)
+
+    def test_zero_history_limit_accepted(self, mock_layered_validator, mock_sentinel):
+        """Test that history_limit=0 is valid (creates empty deque)."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator(history_limit=0, record_history=True)
+                validator.validate_action("action")
+                # With limit=0, history should always be empty
+                assert len(validator.get_history()) == 0
+
+    def test_async_negative_history_limit_raises(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator also validates history_limit."""
+        with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+            with pytest.raises(ValueError, match="non-negative"):
+                AsyncSafetyValidator(validator=mock_async_layered_validator, history_limit=-1)
+
+
+class TestRecordHistorySeparation:
+    """Tests for A002: record_history separate from log_checks."""
+
+    def test_record_history_true_logs_false(self, mock_layered_validator, mock_sentinel):
+        """Test that record_history=True records even when log_checks=False."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator(record_history=True, log_checks=False)
+
+        validator.validate_action("action")
+        assert len(validator.get_history()) == 1
+
+    def test_record_history_false_no_history(self, mock_layered_validator, mock_sentinel):
+        """Test that record_history=False prevents history recording."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator(record_history=False, log_checks=True)
+
+        validator.validate_action("action")
+        assert len(validator.get_history()) == 0
+
+    def test_async_record_history_true(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator respects record_history."""
+        async def run_test():
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = AsyncSafetyValidator(
+                    validator=mock_async_layered_validator,
+                    record_history=True,
+                    log_checks=False,
+                )
+            await validator.validate_action("action")
+            assert len(validator.get_history()) == 1
+
+        asyncio.run(run_test())
+
+    def test_async_record_history_false(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator record_history=False prevents history."""
+        async def run_test():
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = AsyncSafetyValidator(
+                    validator=mock_async_layered_validator,
+                    record_history=False,
+                    log_checks=True,
+                )
+            await validator.validate_action("action")
+            assert len(validator.get_history()) == 0
+
+        asyncio.run(run_test())
+
+
+class TestAsyncPurposeHandling:
+    """Tests for NEW-004: AsyncSafetyValidator should use purpose."""
+
+    def test_async_validate_action_with_purpose(self, mock_layered_result_safe, mock_sentinel):
+        """Test that AsyncSafetyValidator uses purpose in validation."""
+        async def run_test():
+            # Create mock that captures the argument
+            # Note: AsyncSentinelIntegration.avalidate calls self._validator.validate()
+            captured_args = []
+            async def capture_validate(content):
+                captured_args.append(content)
+                return mock_layered_result_safe
+
+            mock_validator = AsyncMock()
+            mock_validator.validate = capture_validate
+
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = AsyncSafetyValidator(validator=mock_validator)
+
+            await validator.validate_action("action", purpose="legitimate purpose")
+
+            # Check that validate was called with combined content
+            assert len(captured_args) == 1
+            assert "legitimate purpose" in captured_args[0]
+            assert "action" in captured_args[0]
+
+        asyncio.run(run_test())
+
+
+class TestGetStatsCompleteness:
+    """Tests for NEW-007: get_stats should have all fields."""
+
+    def test_sync_get_stats_has_all_fields(self, mock_layered_result_safe):
+        """Test that SafetyValidator.get_stats has all required fields."""
+        mock_validator = Mock()
+        mock_validator.validate.return_value = mock_layered_result_safe
+
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel"):
+                validator = SafetyValidator(record_history=True)
+
+        validator.validate_action("action")
+        stats = validator.get_stats()
+
+        required_fields = [
+            "total_checks", "blocked", "allowed", "high_risk",
+            "block_rate", "provider", "model", "seed_level",
+            "history_limit", "max_text_size", "validation_timeout",
+            "fail_closed", "use_layered", "use_heuristic",
+        ]
+        for field in required_fields:
+            assert field in stats, f"Missing field: {field}"
+
+    def test_async_get_stats_has_all_fields(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator.get_stats has same fields as sync."""
+        async def run_test():
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = AsyncSafetyValidator(
+                    validator=mock_async_layered_validator,
+                    record_history=True,
+                )
+
+            await validator.validate_action("action")
+            stats = validator.get_stats()
+
+            required_fields = [
+                "total_checks", "blocked", "allowed", "high_risk",
+                "block_rate", "provider", "model", "seed_level",
+                "history_limit", "max_text_size", "validation_timeout",
+                "fail_closed", "use_layered", "use_heuristic",
+            ]
+            for field in required_fields:
+                assert field in stats, f"Missing field: {field}"
+
+        asyncio.run(run_test())
+
+
+class TestUseLayeredHeuristicParams:
+    """Tests for NEW-008: use_layered and use_heuristic parameters."""
+
+    def test_sync_has_use_layered_heuristic(self, mock_layered_validator, mock_sentinel):
+        """Test that SafetyValidator accepts use_layered and use_heuristic."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator(use_layered=True, use_heuristic=False)
+
+        assert validator.use_layered is True
+        assert validator.use_heuristic is False
+
+    def test_async_has_use_layered_heuristic(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator accepts use_layered and use_heuristic."""
+        with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+            validator = AsyncSafetyValidator(
+                validator=mock_async_layered_validator,
+                use_layered=True,
+                use_heuristic=False,
+            )
+
+        assert validator.use_layered is True
+        assert validator.use_heuristic is False
+
+
+class TestPurposeEmptyVsNone:
+    """Tests for B002: purpose empty vs None behavior."""
+
+    def test_purpose_empty_string_same_as_none(self, mock_layered_validator, mock_sentinel):
+        """Test that purpose='' is treated same as not passing purpose."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        # Call with empty purpose
+        validator.validate_action("action", purpose="")
+
+        # Should be called with just "action" (no trailing space)
+        call_args = mock_layered_validator.validate.call_args[0][0]
+        assert call_args == "action"
+
+    def test_purpose_with_value_included(self, mock_layered_validator, mock_sentinel):
+        """Test that purpose with value is included."""
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                validator = SafetyValidator()
+
+        validator.validate_action("action", purpose="reason")
+
+        call_args = mock_layered_validator.validate.call_args[0][0]
+        assert "action reason" == call_args
+
+
+class TestVersionConstant:
+    """Tests for M001: __version__ defined."""
+
+    def test_version_defined(self):
+        """Test that __version__ is defined."""
+        from sentinelseed.integrations.agent_validation import __version__
+        assert __version__ is not None
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0
+
+    def test_version_format(self):
+        """Test that __version__ follows semver format."""
+        from sentinelseed.integrations.agent_validation import __version__
+        parts = __version__.split(".")
+        assert len(parts) >= 2  # At least major.minor
+
+
+class TestValidSeedLevelsConstant:
+    """Tests for VALID_SEED_LEVELS constant."""
+
+    def test_valid_seed_levels_defined(self):
+        """Test that VALID_SEED_LEVELS is defined and exported."""
+        from sentinelseed.integrations.agent_validation import VALID_SEED_LEVELS
+        assert VALID_SEED_LEVELS is not None
+        assert isinstance(VALID_SEED_LEVELS, tuple)
+        assert "minimal" in VALID_SEED_LEVELS
+        assert "standard" in VALID_SEED_LEVELS
+        assert "full" in VALID_SEED_LEVELS
+
+
+class TestBlockUnsafeDeprecation:
+    """Tests for block_unsafe backward compatibility."""
+
+    def test_safety_validator_block_unsafe_deprecated(self, mock_layered_validator, mock_sentinel):
+        """Test that block_unsafe emits DeprecationWarning."""
+        import warnings
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always")
+                    validator = SafetyValidator(block_unsafe=True)
+                    assert len(w) == 1
+                    assert issubclass(w[0].category, DeprecationWarning)
+                    assert "block_unsafe" in str(w[0].message)
+                    assert "deprecated" in str(w[0].message).lower()
+
+    def test_safety_validator_without_block_unsafe_no_warning(self, mock_layered_validator, mock_sentinel):
+        """Test that no warning without block_unsafe."""
+        import warnings
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always")
+                    validator = SafetyValidator()
+                    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+                    assert len(deprecation_warnings) == 0
+
+    def test_async_safety_validator_block_unsafe_deprecated(self, mock_async_layered_validator, mock_sentinel):
+        """Test that AsyncSafetyValidator block_unsafe emits DeprecationWarning."""
+        import warnings
+        with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                validator = AsyncSafetyValidator(validator=mock_async_layered_validator, block_unsafe=True)
+                assert len(w) == 1
+                assert issubclass(w[0].category, DeprecationWarning)
+
+    def test_execution_guard_block_unsafe_deprecated(self, mock_layered_validator, mock_sentinel):
+        """Test that ExecutionGuard block_unsafe emits DeprecationWarning."""
+        import warnings
+        with patch("sentinelseed.integrations.agent_validation.LayeredValidator", return_value=mock_layered_validator):
+            with patch("sentinelseed.integrations.agent_validation.Sentinel", mock_sentinel):
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always")
+                    guard = ExecutionGuard(block_unsafe=True)
+                    assert len(w) == 1
+                    assert issubclass(w[0].category, DeprecationWarning)
 
 
 if __name__ == "__main__":

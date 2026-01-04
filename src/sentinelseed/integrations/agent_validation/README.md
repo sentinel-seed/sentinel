@@ -33,8 +33,9 @@ class MyAgent:
             provider="openai",       # or "anthropic"
             model="gpt-4o-mini",     # optional, auto-detected
             seed_level="standard",
-            block_unsafe=True,
-            max_text_size=50 * 1024,      # 50KB limit
+            log_checks=True,               # log blocked actions
+            record_history=True,           # record for get_history()
+            max_text_size=50 * 1024,       # 50KB limit
             history_limit=1000,            # max history entries
             validation_timeout=30.0,       # seconds
             fail_closed=False,             # fail-open by default
@@ -54,7 +55,6 @@ from sentinelseed.integrations.agent_validation import ExecutionGuard
 
 guard = ExecutionGuard(
     provider="openai",
-    block_unsafe=True,
     validation_timeout=30.0,
 )
 
@@ -90,23 +90,45 @@ SafetyValidator(
     provider="openai",           # "openai" or "anthropic"
     model=None,                  # auto-detected if None
     api_key=None,                # from environment if None
-    seed_level="standard",       # minimal, standard, full
-    block_unsafe=True,           # block or allow with warning
-    log_checks=True,             # log to console
+    seed_level="standard",       # "minimal", "standard", or "full"
+    log_checks=True,             # log blocked actions to console
+    record_history=True,         # record validations in history
     max_text_size=51200,         # 50KB default
-    history_limit=1000,          # max history entries
+    history_limit=1000,          # max history entries (>= 0)
     validation_timeout=30.0,     # timeout in seconds
     fail_closed=False,           # block on errors if True
+    use_layered=True,            # use LayeredValidator (heuristic + semantic)
+    use_heuristic=True,          # enable heuristic pre-validation
+    validator=None,              # optional LayeredValidator for DI (testing)
 )
 ```
+
+**Note on logging vs history:**
+- `log_checks`: Controls whether blocked actions are logged to console
+- `record_history`: Controls whether validations are recorded for `get_history()`
+
+These are independent. You can record history without logging, or vice versa.
 
 ### AsyncSafetyValidator
 
 Same parameters as `SafetyValidator`, for async contexts:
 
 ```python
-validator = AsyncSafetyValidator(provider="openai")
-result = await validator.validate_action("transfer funds")
+AsyncSafetyValidator(
+    provider="openai",           # "openai" or "anthropic"
+    model=None,                  # auto-detected if None
+    api_key=None,                # from environment if None
+    seed_level="standard",       # "minimal", "standard", or "full"
+    log_checks=True,             # log blocked actions to console
+    record_history=True,         # record validations in history
+    max_text_size=51200,         # 50KB default
+    history_limit=1000,          # max history entries (>= 0)
+    validation_timeout=30.0,     # timeout in seconds
+    fail_closed=False,           # block on errors if True
+    use_layered=True,            # use LayeredValidator (heuristic + semantic)
+    use_heuristic=True,          # enable heuristic pre-validation
+    validator=None,              # optional AsyncLayeredValidator for DI (testing)
+)
 ```
 
 ### ExecutionGuard
@@ -116,7 +138,6 @@ ExecutionGuard(
     provider="openai",
     model=None,
     api_key=None,
-    block_unsafe=True,
     max_text_size=51200,
     validation_timeout=30.0,
     fail_closed=False,
@@ -145,6 +166,11 @@ result = validator.validate_action(
 # - reasoning: str
 # - gate_results: Dict[str, bool]
 ```
+
+**Note on `purpose` parameter:**
+- When `purpose` is provided, it's combined with `action` for validation: `"{action} {purpose}"`
+- Empty string (`purpose=""`) is treated the same as not passing `purpose`
+- Both sync and async validators handle `purpose` identically
 
 ### validate_thought
 
