@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sentinelseed-promptfoo"
-version = "1.0.0"
+version = "1.0.1"
 description = "Sentinel safety provider for Promptfoo - THSP protocol validation for red-teaming"
 readme = "README.md"
 license = "MIT"
