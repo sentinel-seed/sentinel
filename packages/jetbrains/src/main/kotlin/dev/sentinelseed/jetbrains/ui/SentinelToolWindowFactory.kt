@@ -81,7 +81,7 @@ class SentinelPanel : JPanel(BorderLayout()) {
                 "Select text and use <b>Ctrl+Shift+Alt+S</b> to analyze,<br/>" +
                 "or right-click and select <b>Sentinel → Analyze Selection</b>.<br/><br/>" +
                 "Configure API keys in <b>Settings → Tools → Sentinel AI Safety</b><br/>" +
-                "for semantic analysis (~90% accuracy)." +
+                "for comprehensive semantic analysis." +
                 "</html>")
 
         resultPanel.add(welcomeLabel)

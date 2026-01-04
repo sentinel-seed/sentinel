@@ -84,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status bar widget
 - Settings panel for API configuration
 
-[0.3.0]: https://github.com/sentinel-seed/sentinel/compare/jetbrains-v0.2.1...jetbrains-v0.3.0
-[0.2.1]: https://github.com/sentinel-seed/sentinel/compare/jetbrains-v0.2.0...jetbrains-v0.2.1
-[0.2.0]: https://github.com/sentinel-seed/sentinel/compare/jetbrains-v0.1.0...jetbrains-v0.2.0
-[0.1.0]: https://github.com/sentinel-seed/sentinel/releases/tag/jetbrains-v0.1.0
+[0.3.0]: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
+[0.2.1]: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
+[0.2.0]: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
+[0.1.0]: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety

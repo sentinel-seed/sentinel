@@ -48,9 +48,11 @@ Or visit: https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety
 
 ### From Disk
 
-1. Download the latest `.zip` from [Releases](https://github.com/sentinel-seed/sentinel/releases)
+1. Download the `.zip` from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29459-sentinel-ai-safety) or build from source
 2. Go to **Settings → Plugins → ⚙️ → Install Plugin from Disk**
 3. Select the downloaded `.zip` file
+
+> **Note:** The plugin is available on the JetBrains Marketplace. Building from source requires the full repository clone.
 
 ## Usage
 
@@ -130,8 +132,10 @@ Use any OpenAI-compatible API (Groq, Together AI):
 
 API keys are stored securely using the IDE's built-in credential storage (PasswordSafe).
 
-- Without an API key: Heuristic analysis (~50% accuracy)
-- With an API key or Ollama: Semantic analysis (~90% accuracy)
+- Without an API key: Heuristic analysis (pattern-based, limited)
+- With an API key or Ollama: Semantic analysis (LLM-powered, recommended)
+
+> **Note:** Accuracy varies by content type and complexity. Semantic analysis provides more comprehensive coverage.
 
 ## Keyboard Shortcuts
 

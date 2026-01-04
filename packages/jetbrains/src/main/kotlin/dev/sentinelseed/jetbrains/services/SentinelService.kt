@@ -374,8 +374,8 @@ class SentinelService {
     }
 
     /**
-     * Heuristic-based analysis using pattern matching
-     * Less accurate (~50%) but works offline
+     * Heuristic-based analysis using pattern matching.
+     * Less comprehensive than semantic analysis but works offline.
      */
     private fun analyzeHeuristic(content: String): AnalysisResult {
         val lowerContent = content.lowercase()
@@ -463,7 +463,7 @@ class SentinelService {
             issues = issues,
             confidence = 0.5,
             method = AnalysisMethod.HEURISTIC,
-            reasoning = "Heuristic pattern matching (~50% accuracy). Configure LLM API key for semantic analysis."
+            reasoning = "Heuristic pattern matching (limited coverage). Configure an LLM provider for more comprehensive semantic analysis."
         )
     }
 

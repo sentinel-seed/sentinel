@@ -21,17 +21,17 @@ class ShowStatusAction : AnAction() {
 
             Provider: $provider
             Model: $model
-            Accuracy: ~90%
+            Mode: Comprehensive (LLM-powered)
             """.trimIndent()
         } else {
             """
             Sentinel is using heuristic analysis (pattern matching).
 
-            Accuracy: ~50%
+            Mode: Basic (pattern-based, limited coverage)
 
             To enable semantic analysis:
             • Go to Settings → Tools → Sentinel AI Safety
-            • Configure your OpenAI or Anthropic API key
+            • Configure your OpenAI, Anthropic, or Ollama
             """.trimIndent()
         }
 
