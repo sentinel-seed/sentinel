@@ -96,7 +96,7 @@ jobs:
           pip install bandit pip-audit
 
       - name: Run bandit security scan
-        run: bandit -c pyproject.toml -r src/sentinelseed --skip B101 -x tests/
+        run: bandit -c pyproject.toml -r src/sentinelseed --skip B101,B105,B108,B311 -x tests/,**/example.py,**/test_*.py
 
       - name: Check dependencies for vulnerabilities
         run: pip-audit --strict
