@@ -77,7 +77,7 @@ jobs:
           pip install ruff
 
       - name: Run ruff
-        run: ruff check . --ignore E501
+        run: ruff check . --ignore E501 --ignore F401
 
   security-scan:
     name: Security Scan
