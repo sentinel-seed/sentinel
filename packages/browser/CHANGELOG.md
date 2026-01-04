@@ -73,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Meta AI (meta.ai)
 
 #### Testing
-- 504 tests passing
+- 866 tests passing
 - 50%+ code coverage
 - Unit tests for all major components
 - Integration tests for approval flow
