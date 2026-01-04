@@ -439,7 +439,13 @@ class TestSentinelSafetyWorker:
 
     def test_get_stats(self):
         """Test validation statistics."""
-        from sentinelseed.integrations.virtuals import SentinelSafetyWorker, SentinelConfig
+        from sentinelseed.integrations.virtuals import (
+            SentinelSafetyWorker, SentinelConfig, GAME_SDK_AVAILABLE
+        )
+
+        if not GAME_SDK_AVAILABLE:
+            pytest.skip("GAME SDK not available")
+
         worker = SentinelSafetyWorker(SentinelConfig())
 
         # Run some validations
