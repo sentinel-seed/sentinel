@@ -154,7 +154,7 @@ from sentinelseed.database import (
     is_safe_query,
 )
 
-__version__ = "2.18.0"
+__version__ = "2.19.0"
 
 # Deprecated exports - kept for backwards compatibility
 # These will be removed in version 3.0.0

@@ -57,9 +57,11 @@ class TestImports:
         assert PreflightResult is not None
 
     def test_version(self):
-        """Test that version is defined."""
+        """Test that version is defined and matches package version."""
         from sentinelseed.integrations.preflight import __version__
-        assert __version__ == "1.0.0"
+        import sentinelseed
+        # Integration version should match package version
+        assert __version__ == sentinelseed.__version__
 
 
 class TestRiskLevel:

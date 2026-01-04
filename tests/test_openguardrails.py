@@ -578,10 +578,11 @@ class TestSentinelGuardrailsWrapperResults:
         assert result["safe"] is True
         assert result["openguardrails_result"]["safe"] is True
 
-    def test_validate_require_both_one_blocks(self):
-        """With require_both=True, both validators must PASS (any failure blocks)."""
+    def test_validate_require_both_permissive_mode(self):
+        """With require_both=True (permissive mode), only block if BOTH validators fail."""
         from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
 
+        # Sentinel validator fails
         mock_validator = Mock()
         mock_validator.validate.return_value = ValidationResult(
             is_safe=False,
@@ -590,16 +591,58 @@ class TestSentinelGuardrailsWrapperResults:
             risk_level=ValRiskLevel.HIGH,
         )
 
+        # OpenGuardrails validator passes
+        mock_og = Mock()
+        mock_og.validate.return_value = DetectionResult(
+            safe=True,
+            risk_level=RiskLevel.LOW,
+            detections=[],
+        )
+
         wrapper = SentinelGuardrailsWrapper(
             validator=mock_validator,
+            openguardrails=mock_og,
             require_both=True,
         )
         result = wrapper.validate("test content")
 
-        # require_both=True means both must PASS, so if validator fails, result is blocked
-        # This is the same as default behavior - any failure blocks for security
+        # require_both=True (permissive): only block if BOTH fail
+        # Here only sentinel fails, so should be allowed
+        assert result["safe"] is True
+        assert "sentinel" in result["blocked_by"]  # sentinel failed but didn't block overall
+
+    def test_validate_require_both_blocks_when_both_fail(self):
+        """With require_both=True, block when BOTH validators fail."""
+        from sentinelseed.validation import ValidationResult, ValidationLayer, RiskLevel as ValRiskLevel
+
+        # Sentinel validator fails
+        mock_validator = Mock()
+        mock_validator.validate.return_value = ValidationResult(
+            is_safe=False,
+            layer=ValidationLayer.HEURISTIC,
+            violations=["Blocked content"],
+            risk_level=ValRiskLevel.HIGH,
+        )
+
+        # OpenGuardrails validator also fails
+        mock_og = Mock()
+        mock_og.validate.return_value = DetectionResult(
+            safe=False,
+            risk_level=RiskLevel.HIGH,
+            detections=["Detected threat"],
+        )
+
+        wrapper = SentinelGuardrailsWrapper(
+            validator=mock_validator,
+            openguardrails=mock_og,
+            require_both=True,
+        )
+        result = wrapper.validate("test content")
+
+        # require_both=True: BOTH failed, so should block
         assert result["safe"] is False
         assert "sentinel" in result["blocked_by"]
+        assert "openguardrails" in result["blocked_by"]
 
 
 class TestConvenienceFunctions:
