@@ -16,4 +16,7 @@ export default defineConfig({
   target: 'node18',
   outDir: 'dist',
   external: ['@voltagent/core'],
+  // Bundle sentinel-core since it's not published to npm
+  // This ensures the package works standalone without the monorepo
+  noExternal: ['@anthropic/sentinel-core'],
 });

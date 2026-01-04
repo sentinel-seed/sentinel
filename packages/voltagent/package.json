@@ -71,9 +71,7 @@
   "bugs": {
     "url": "https://github.com/sentinel-seed/sentinel/issues"
   },
-  "dependencies": {
-    "@anthropic/sentinel-core": "file:../core"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@voltagent/core": ">=0.1.0"
   },
@@ -83,6 +81,7 @@
     }
   },
   "devDependencies": {
+    "@anthropic/sentinel-core": "file:../core",
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",

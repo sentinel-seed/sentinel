@@ -335,4 +335,22 @@ describe('getPatternCount', () => {
     expect(counts.jailbreak).toBeGreaterThan(counts.scope);
     expect(counts.jailbreak).toBeGreaterThan(counts.purpose);
   });
+
+  it('should return correct pattern counts from sentinel-core', () => {
+    const counts = getPatternCount();
+
+    // Based on sentinel-core patterns.ts v0.2.1
+    expect(counts.truth).toBe(17);
+    expect(counts.harm).toBe(103);
+    expect(counts.scope).toBe(43);
+    expect(counts.purpose).toBe(16);
+    expect(counts.jailbreak).toBe(130);
+  });
+
+  it('should have total count of ~309 patterns', () => {
+    const counts = getPatternCount();
+    const total = counts.truth + counts.harm + counts.scope + counts.purpose + counts.jailbreak;
+
+    expect(total).toBe(309);
+  });
 });

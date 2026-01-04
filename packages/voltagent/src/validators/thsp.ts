@@ -256,16 +256,27 @@ function generateRecommendation(gates: THSPGates, concerns: string[]): string {
 
 /**
  * Get total count of built-in patterns from core.
- * Note: In v0.2.0+, patterns are managed by @anthropic/sentinel-core
+ *
+ * Note: In v0.2.0+, patterns are managed by @anthropic/sentinel-core.
+ * These counts are based on sentinel-core patterns.ts as of v0.2.1.
+ *
+ * @deprecated Pattern counts may change between versions. Use this for
+ * informational purposes only. For pattern customization, use customPatterns
+ * parameter in validateTHSP().
  */
 export function getPatternCount(): Record<keyof THSPGates, number> {
-  // These are approximate counts from the core module
+  // Counts from @anthropic/sentinel-core patterns.ts (v0.2.1)
+  // truth: 10 regex + 7 indicators
+  // harm: 91 regex + 12 keywords
+  // scope: 29 regex + 14 indicators
+  // purpose: 10 regex + 6 indicators
+  // jailbreak: 81 regex + 49 indicators
   return {
     truth: 17,
-    harm: 40,
-    scope: 20,
-    purpose: 13,
-    jailbreak: 80,
+    harm: 103,
+    scope: 43,
+    purpose: 16,
+    jailbreak: 130,
   };
 }
 

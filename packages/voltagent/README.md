@@ -263,7 +263,21 @@ interface SentinelGuardrailConfig {
 ## Requirements
 
 - Node.js >= 18.0.0
-- VoltAgent >= 1.0.0 (tested with @voltagent/core v1.5.2)
+- VoltAgent >= 0.1.0 (tested with @voltagent/core v1.5.2)
+
+## Development
+
+This package depends on `@anthropic/sentinel-core` which provides the THSP validation patterns. When developing locally, the dependency is resolved via `file:../core` in the monorepo structure.
+
+For production npm installations, the core patterns are bundled during the build process. If you're building from source, ensure you have the full monorepo cloned:
+
+```bash
+git clone https://github.com/sentinel-seed/sentinel.git
+cd sentinel
+npm install
+npm run build -w packages/core
+npm run build -w packages/voltagent
+```
 
 ## Related Packages
 

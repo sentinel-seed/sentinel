@@ -25,7 +25,7 @@
  * });
  * ```
  *
- * @see https://sentinelseed.dev/docs/integrations/voltagent
+ * @see https://github.com/sentinel-seed/sentinel/tree/main/packages/voltagent
  * @see https://voltagent.dev/docs/
  */
 
@@ -161,7 +161,7 @@ export type {
 /**
  * Package version.
  */
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.1';
 
 /**
  * Package name.
@@ -171,4 +171,4 @@ export const PACKAGE_NAME = '@sentinelseed/voltagent';
 /**
  * Supported VoltAgent version range.
  */
-export const VOLTAGENT_VERSION_RANGE = '>=1.0.0';
+export const VOLTAGENT_VERSION_RANGE = '>=0.1.0';
