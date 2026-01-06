@@ -105,6 +105,11 @@ from sentinelseed.validation.layered import (
     create_layered_validator,
 )
 
+from sentinelseed.validation.sentinel_adapter import (
+    SentinelV3Adapter,
+    AsyncSentinelV3Adapter,
+)
+
 
 __all__ = [
     # Types
@@ -120,6 +125,9 @@ __all__ = [
     "LayeredValidator",
     "AsyncLayeredValidator",
     "create_layered_validator",
+    # v3.0 Adapters
+    "SentinelV3Adapter",
+    "AsyncSentinelV3Adapter",
 ]
 
 __version__ = "1.0.0"

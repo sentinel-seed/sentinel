@@ -6,8 +6,8 @@ the foundation classes for all framework-specific integrations.
 
 By inheriting from these base classes, integrations automatically get:
 
-1. THSP validation (Truth, Harm, Scope, Purpose gates)
-2. Layered validation (heuristic 580+ patterns + optional semantic)
+1. Sentinel v3.0 validation (InputValidator + OutputValidator)
+2. 580+ attack patterns with optional embedding detection
 3. Consistent configuration interface
 4. Statistics tracking
 5. Automatic benefit from core improvements
@@ -83,6 +83,8 @@ from sentinelseed.validation import (
     ValidationConfig,
     ValidationResult,
     ValidationLayer,
+    SentinelV3Adapter,
+    AsyncSentinelV3Adapter,
 )
 from sentinelseed.validation.types import RiskLevel
 
@@ -133,6 +135,8 @@ class SentinelIntegration:
         self,
         validator: Optional["Validator"] = None,
         validation_config: Optional["ValidationConfig"] = None,
+        use_v3: bool = True,
+        use_embeddings: bool = False,
         **kwargs: Any,
     ):
         """
@@ -143,23 +147,27 @@ class SentinelIntegration:
 
         Args:
             validator: Custom validator instance. If provided, takes precedence
-                      over validation_config. Useful for testing with mocks.
-            validation_config: Configuration for LayeredValidator.
-                              If None, uses default config (heuristic only).
+                      over all other options. Useful for testing with mocks.
+            validation_config: Configuration for validator.
+            use_v3: Use Sentinel v3.0 adapter (default: True). If False, uses
+                   LayeredValidator for backwards compatibility.
+            use_embeddings: Enable embedding-based detection (requires v3.0).
             **kwargs: Additional arguments (absorbed for flexibility).
 
         Priority:
             1. validator (if provided) - used directly
-            2. validation_config (if provided) - creates LayeredValidator
-            3. Neither - creates LayeredValidator with defaults (heuristic only)
+            2. use_v3=True - creates SentinelV3Adapter (recommended)
+            3. use_v3=False - creates LayeredValidator (legacy)
 
         Example:
-            # Default - heuristic only, no API needed
+            # Default - v3.0 with 580+ patterns
             integration = MyIntegration()
 
-            # With semantic validation
-            config = ValidationConfig(use_semantic=True, semantic_api_key="sk-...")
-            integration = MyIntegration(validation_config=config)
+            # With embedding detection (higher accuracy)
+            integration = MyIntegration(use_embeddings=True)
+
+            # Legacy mode (LayeredValidator)
+            integration = MyIntegration(use_v3=False)
 
             # With mock for testing
             integration = MyIntegration(validator=MockValidator())
@@ -171,8 +179,20 @@ class SentinelIntegration:
                 f"[{self._integration_name}] Using provided validator: "
                 f"{type(validator).__name__}"
             )
+        elif use_v3:
+            # Use Sentinel v3.0 adapter (recommended)
+            from sentinelseed.validation import SentinelV3Adapter
+
+            self._validator = SentinelV3Adapter(
+                config=validation_config,
+                use_embeddings=use_embeddings,
+            )
+            logger.debug(
+                f"[{self._integration_name}] Created SentinelV3Adapter "
+                f"(embeddings={use_embeddings})"
+            )
         else:
-            # Create LayeredValidator
+            # Legacy: Create LayeredValidator
             from sentinelseed.validation import LayeredValidator
 
             if validation_config is not None:
@@ -397,14 +417,18 @@ class AsyncSentinelIntegration:
         self,
         validator: Optional["AsyncValidator"] = None,
         validation_config: Optional["ValidationConfig"] = None,
+        use_v3: bool = True,
+        use_embeddings: bool = False,
         **kwargs: Any,
     ):
         """
-        Initialize with AsyncLayeredValidator if no validator provided.
+        Initialize with AsyncSentinelV3Adapter if no validator provided.
 
         Args:
             validator: Custom async validator instance
-            validation_config: Configuration for AsyncLayeredValidator
+            validation_config: Configuration for validator
+            use_v3: Use Sentinel v3.0 adapter (default: True)
+            use_embeddings: Enable embedding-based detection
             **kwargs: Additional arguments (absorbed for flexibility)
         """
         if validator is not None:
@@ -413,7 +437,20 @@ class AsyncSentinelIntegration:
                 f"[{self._integration_name}] Using provided validator: "
                 f"{type(validator).__name__}"
             )
+        elif use_v3:
+            # Use Sentinel v3.0 async adapter (recommended)
+            from sentinelseed.validation import AsyncSentinelV3Adapter
+
+            self._validator = AsyncSentinelV3Adapter(
+                config=validation_config,
+                use_embeddings=use_embeddings,
+            )
+            logger.debug(
+                f"[{self._integration_name}] Created AsyncSentinelV3Adapter "
+                f"(embeddings={use_embeddings})"
+            )
         else:
+            # Legacy: Create AsyncLayeredValidator
             from sentinelseed.validation import AsyncLayeredValidator
 
             if validation_config is not None:
@@ -698,4 +735,7 @@ __all__ = [
     "ValidationResult",
     "ValidationLayer",
     "RiskLevel",
+    # v3.0 adapters
+    "SentinelV3Adapter",
+    "AsyncSentinelV3Adapter",
 ]
