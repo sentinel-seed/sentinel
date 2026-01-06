@@ -27,7 +27,7 @@ References:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import logging
 import math
 import threading
@@ -37,6 +37,9 @@ from sentinelseed.safety.base import (
     SafetyLevel,
     SafetyValidator,
 )
+
+if TYPE_CHECKING:
+    from sentinelseed.validation import LayeredValidator
 
 from sentinelseed.safety.humanoid.body_model import (
     HumanBodyModel,
@@ -187,6 +190,7 @@ class HumanoidSafetyValidator(SafetyValidator):
         require_purpose: bool = False,
         log_violations: bool = True,
         collaborative_velocity: float = DEFAULT_COLLABORATIVE_VELOCITY,
+        text_validator: Optional["LayeredValidator"] = None,
     ):
         """
         Initialize the humanoid safety validator.
@@ -199,6 +203,10 @@ class HumanoidSafetyValidator(SafetyValidator):
             require_purpose: If True, require explicit purpose for actions
             log_violations: If True, log violations to console
             collaborative_velocity: Max end effector speed for collaborative work (m/s)
+            text_validator: Optional LayeredValidator for text field validation.
+                           If not provided, one will be created automatically.
+                           Used for validating text fields like 'purpose' with
+                           580+ patterns instead of the basic local patterns.
 
         Raises:
             TypeError: If arguments are of wrong type
@@ -229,6 +237,26 @@ class HumanoidSafetyValidator(SafetyValidator):
         self.require_purpose = require_purpose
         self.log_violations = log_violations
         self.collaborative_velocity = collaborative_velocity
+
+        # Initialize text validator for purpose field validation
+        # Uses 580+ patterns from central validation system instead of ~10 local patterns
+        self._text_validator = text_validator
+        if self._text_validator is None:
+            try:
+                from sentinelseed.validation import LayeredValidator, ValidationConfig
+                # Create heuristic-only validator (no API required)
+                config = ValidationConfig(use_heuristic=True, use_semantic=False)
+                self._text_validator = LayeredValidator(config=config)
+                logger.debug(
+                    "HumanoidSafetyValidator: Created LayeredValidator for text validation"
+                )
+            except ImportError:
+                # Fallback to local patterns if core validation unavailable
+                self._text_validator = None
+                logger.debug(
+                    "HumanoidSafetyValidator: LayeredValidator unavailable, "
+                    "using local DANGEROUS_PURPOSE_PATTERNS fallback"
+                )
 
         # Thread safety for statistics
         self._stats_lock = threading.Lock()
@@ -523,8 +551,13 @@ class HumanoidSafetyValidator(SafetyValidator):
 
         Checks:
         - Action has stated purpose (if required)
-        - Purpose is not obviously malicious
+        - Purpose is not obviously malicious (via central validation with 580+ patterns)
         - Action serves a beneficial goal
+
+        The purpose field is validated using the central LayeredValidator when available,
+        which provides comprehensive pattern matching (580+ patterns), jailbreak detection,
+        and synonym recognition. Falls back to local DANGEROUS_PURPOSE_PATTERNS if the
+        central validation system is unavailable.
         """
         if self.require_purpose and not action.purpose:
             result.add_violation(
@@ -535,19 +568,45 @@ class HumanoidSafetyValidator(SafetyValidator):
             )
             return  # Early return since there's no purpose to check
 
-        # Check for obviously problematic purposes
+        # Check for problematic purposes
         if action.purpose:
-            purpose_lower = action.purpose.lower()
+            central_blocked = False
 
-            for pattern in DANGEROUS_PURPOSE_PATTERNS:
-                if pattern in purpose_lower:
-                    result.add_violation(
-                        "purpose",
-                        ViolationType.PURPOSE,
-                        f"Purpose contains concerning pattern: '{pattern}'",
-                        "critical",
-                    )
-                    break  # Only add one violation per purpose
+            # Layer 1: Central validation system (580+ patterns for jailbreak, injection, etc.)
+            if self._text_validator is not None:
+                text_result = self._text_validator.validate(action.purpose)
+                if not text_result.is_safe:
+                    central_blocked = True
+                    # Map violations from central validator
+                    for violation in text_result.violations:
+                        # Determine severity based on violation content
+                        severity = "critical" if any(
+                            keyword in violation.lower()
+                            for keyword in ["harm", "kill", "attack", "jailbreak", "inject"]
+                        ) else "high"
+
+                        result.add_violation(
+                            "purpose",
+                            ViolationType.PURPOSE,
+                            f"Purpose failed safety validation: {violation}",
+                            severity,
+                        )
+
+            # Layer 2: Local pattern matching (robotics-specific dangerous intents)
+            # Always check these patterns - they catch simple harmful intents
+            # that the central system may not flag (e.g., "harm", "kill", "injure")
+            if not central_blocked:
+                purpose_lower = action.purpose.lower()
+
+                for pattern in DANGEROUS_PURPOSE_PATTERNS:
+                    if pattern in purpose_lower:
+                        result.add_violation(
+                            "purpose",
+                            ViolationType.PURPOSE,
+                            f"Purpose contains dangerous intent: '{pattern}'",
+                            "critical",
+                        )
+                        break  # Only add one violation per purpose
 
     def _determine_level(self, result: ValidationResult) -> SafetyLevel:
         """Determine safety level from violations."""

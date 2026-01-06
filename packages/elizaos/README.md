@@ -207,14 +207,14 @@ const plugin = sentinelPlugin({
 ### Direct Validation
 
 ```typescript
-import { validateContent, quickCheck } from '@sentinelseed/elizaos-plugin';
+import { validateContent, validateAction, quickCheck } from '@sentinelseed/elizaos-plugin';
 
 // Quick check for critical patterns (fast)
 if (!quickCheck(userInput)) {
   console.log('Critical safety concern detected');
 }
 
-// Full THSP validation
+// Full THSP validation for content
 const result = validateContent(userInput);
 if (!result.safe) {
   console.log('Blocked:', result.concerns);
@@ -222,6 +222,16 @@ if (!result.safe) {
   console.log('Failed gates:', Object.entries(result.gates)
     .filter(([_, status]) => status === 'fail')
     .map(([gate]) => gate));
+}
+
+// Validate an action before execution
+const actionResult = validateAction({
+  action: 'send_email',
+  params: { to: 'user@example.com', subject: 'Hello' },
+  purpose: 'User requested notification',
+});
+if (!actionResult.safe) {
+  console.log('Action blocked:', actionResult.concerns);
 }
 ```
 
@@ -268,6 +278,23 @@ const history = getValidationHistory();
 
 // Clear history
 clearValidationHistory();
+
+// Memory verification statistics (v1.1.0+)
+const memStats = getMemoryVerificationStats();
+console.log(`Memory checks: ${memStats.total}`);
+console.log(`Valid: ${memStats.valid}`);
+console.log(`Invalid: ${memStats.invalid}`);
+
+// Get memory verification history
+const memHistory = getMemoryVerificationHistory();
+
+// Clear memory verification history
+clearMemoryVerificationHistory();
+
+// Check if memory integrity is enabled
+if (isMemoryIntegrityEnabled()) {
+  console.log('Memory integrity protection is active');
+}
 ```
 
 ## Risk Levels
