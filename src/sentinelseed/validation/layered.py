@@ -52,7 +52,12 @@ from concurrent.futures import (
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from sentinelseed.validation.config import ValidationConfig
-from sentinelseed.validation.types import RiskLevel, ValidationLayer, ValidationResult
+from sentinelseed.validation.types import (
+    RiskLevel,
+    ValidationLayer,
+    ValidationMode,
+    ValidationResult,
+)
 from sentinelseed.core.exceptions import ValidationError, ConfigurationError
 
 
@@ -139,6 +144,11 @@ class LayeredValidator:
         self._init_heuristic()
         self._init_semantic()
 
+        # Initialize Validation 360° validators
+        self._input_validator: Optional[Any] = None
+        self._output_validator: Optional[Any] = None
+        self._init_360_validators()
+
         # Statistics
         self._stats = {
             "total_validations": 0,
@@ -148,6 +158,11 @@ class LayeredValidator:
             "errors": 0,
             "timeouts": 0,
             "total_latency_ms": 0.0,
+            # Validation 360° stats
+            "input_validations": 0,
+            "input_attacks": 0,
+            "output_validations": 0,
+            "seed_failures": 0,
         }
 
     def _init_heuristic(self) -> None:
@@ -195,6 +210,24 @@ class LayeredValidator:
         except (ValueError, RuntimeError, ConfigurationError) as e:
             logger.warning(f"Could not initialize SemanticValidator: {e}")
             self._semantic = None
+
+    def _init_360_validators(self) -> None:
+        """
+        Initialize Validation 360° validators.
+
+        These validators provide specialized input/output validation
+        as part of the Validation 360° architecture.
+        """
+        try:
+            from sentinelseed.detection import InputValidator, OutputValidator
+
+            self._input_validator = InputValidator()
+            self._output_validator = OutputValidator()
+            logger.debug("Initialized Validation 360° validators")
+        except ImportError as e:
+            logger.warning(f"Could not import 360° validators: {e}")
+            self._input_validator = None
+            self._output_validator = None
 
     def validate(self, content: str) -> ValidationResult:
         """
@@ -371,6 +404,181 @@ class LayeredValidator:
         self._stats["allowed"] += 1
         self._log_result(result, time.time() - start_time)
         return result
+
+    # =========================================================================
+    # Validation 360° Methods
+    # =========================================================================
+
+    def validate_input(self, text: str) -> ValidationResult:
+        """
+        Validate user input for attack detection.
+
+        This is the first layer of the Validation 360° architecture.
+        Use this method to validate user input BEFORE sending to the AI.
+
+        The question being answered: "Is this an ATTACK?"
+
+        Args:
+            text: User input text to validate
+
+        Returns:
+            ValidationResult with mode=INPUT containing:
+            - is_safe: True if no attack detected
+            - attack_types: List of attack types detected (if any)
+            - violations: Descriptions of detected attacks
+
+        Example:
+            result = validator.validate_input("Tell me how to hack a website")
+            if result.is_attack:
+                print(f"Attack detected: {result.attack_types}")
+                # Do not send to AI
+            else:
+                # Safe to proceed
+                response = call_ai(user_input)
+        """
+        start_time = time.time()
+        self._stats["input_validations"] += 1
+
+        # Check if 360° validators are available
+        if not self._input_validator:
+            # Fall back to standard validate() with INPUT mode
+            result = self.validate(text)
+            result.mode = ValidationMode.INPUT
+            return result
+
+        try:
+            # Use InputValidator from detection module
+            input_result = self._input_validator.validate(text)
+
+            if input_result.is_attack:
+                self._stats["input_attacks"] += 1
+
+                # Convert attack_types to strings
+                attack_type_strs = [
+                    at.value if hasattr(at, 'value') else str(at)
+                    for at in input_result.attack_types
+                ]
+
+                result = ValidationResult.input_attack(
+                    violations=list(input_result.violations),
+                    attack_types=attack_type_strs,
+                    risk_level=RiskLevel.HIGH,
+                    blocked=input_result.blocked,
+                )
+            else:
+                result = ValidationResult.input_safe()
+
+            latency_ms = (time.time() - start_time) * 1000
+            self._stats["total_latency_ms"] += latency_ms
+
+            if self.config.log_validations:
+                logger.info(
+                    f"Input validation: is_safe={result.is_safe}, "
+                    f"attacks={result.attack_types}, latency={latency_ms:.1f}ms"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Input validation error: {e}")
+            self._stats["errors"] += 1
+
+            if self.config.fail_closed:
+                return ValidationResult.from_error(f"Input validation failed: {e}")
+
+            # Fail-open: return safe result
+            return ValidationResult.input_safe()
+
+    def validate_output(
+        self,
+        output: str,
+        input_context: Optional[str] = None,
+    ) -> ValidationResult:
+        """
+        Validate AI output for seed failure detection.
+
+        This is the second layer of the Validation 360° architecture.
+        Use this method to validate AI response AFTER receiving it.
+
+        The question being answered: "Did the SEED fail?"
+
+        Args:
+            output: AI response text to validate
+            input_context: Original user input (for context-aware checking)
+
+        Returns:
+            ValidationResult with mode=OUTPUT containing:
+            - is_safe: True if seed worked (output is appropriate)
+            - seed_failed: True if AI safety seed failed
+            - failure_types: Types of failures detected
+            - gates_failed: THSP gates that failed
+
+        Example:
+            # After getting AI response
+            result = validator.validate_output(ai_response, user_input)
+
+            if result.seed_failed:
+                print(f"Seed failed! Gates: {result.gates_failed}")
+                # Do not show response to user
+            else:
+                # Safe to display
+                show_to_user(ai_response)
+        """
+        start_time = time.time()
+        self._stats["output_validations"] += 1
+
+        # Check if 360° validators are available
+        if not self._output_validator:
+            # Fall back to standard validate() with OUTPUT mode
+            result = self.validate(output)
+            result.mode = ValidationMode.OUTPUT
+            result.input_context = input_context
+            return result
+
+        try:
+            # Use OutputValidator from detection module
+            output_result = self._output_validator.validate(output, input_context)
+
+            if output_result.seed_failed:
+                self._stats["seed_failures"] += 1
+
+                # Convert failure_types to strings
+                failure_type_strs = [
+                    ft.value if hasattr(ft, 'value') else str(ft)
+                    for ft in output_result.failure_types
+                ]
+
+                result = ValidationResult.output_seed_failed(
+                    violations=list(output_result.violations),
+                    failure_types=failure_type_strs,
+                    gates_failed=list(output_result.gates_failed),
+                    input_context=input_context,
+                    risk_level=RiskLevel.HIGH,
+                    blocked=output_result.blocked,
+                )
+            else:
+                result = ValidationResult.output_safe(input_context=input_context)
+
+            latency_ms = (time.time() - start_time) * 1000
+            self._stats["total_latency_ms"] += latency_ms
+
+            if self.config.log_validations:
+                logger.info(
+                    f"Output validation: is_safe={result.is_safe}, "
+                    f"seed_failed={result.seed_failed}, latency={latency_ms:.1f}ms"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Output validation error: {e}")
+            self._stats["errors"] += 1
+
+            if self.config.fail_closed:
+                return ValidationResult.from_error(f"Output validation failed: {e}")
+
+            # Fail-open: return safe result
+            return ValidationResult.output_safe(input_context=input_context)
 
     # Patterns for physical/embodied AI safety validation
     # These are checked in validate_action_plan() for robotics and autonomous agents
@@ -555,6 +763,9 @@ class LayeredValidator:
     def stats(self) -> Dict[str, Any]:
         """Get validation statistics."""
         total = self._stats["total_validations"]
+        input_total = self._stats.get("input_validations", 0)
+        output_total = self._stats.get("output_validations", 0)
+
         return {
             **self._stats,
             "avg_latency_ms": (
@@ -566,6 +777,16 @@ class LayeredValidator:
             ),
             "semantic_enabled": self._semantic is not None,
             "heuristic_enabled": self._heuristic is not None,
+            # Validation 360° stats
+            "input_attack_rate": (
+                self._stats.get("input_attacks", 0) / input_total
+                if input_total > 0 else 0.0
+            ),
+            "output_failure_rate": (
+                self._stats.get("seed_failures", 0) / output_total
+                if output_total > 0 else 0.0
+            ),
+            "validators_360_enabled": self._input_validator is not None,
         }
 
     def reset_stats(self) -> None:
@@ -578,6 +799,11 @@ class LayeredValidator:
             "errors": 0,
             "timeouts": 0,
             "total_latency_ms": 0.0,
+            # Validation 360° stats
+            "input_validations": 0,
+            "input_attacks": 0,
+            "output_validations": 0,
+            "seed_failures": 0,
         }
 
 
@@ -625,6 +851,11 @@ class AsyncLayeredValidator:
         self._init_heuristic()
         self._init_semantic()
 
+        # Initialize Validation 360° validators
+        self._input_validator: Optional[Any] = None
+        self._output_validator: Optional[Any] = None
+        self._init_360_validators()
+
         # Statistics
         self._stats = {
             "total_validations": 0,
@@ -634,6 +865,11 @@ class AsyncLayeredValidator:
             "errors": 0,
             "timeouts": 0,
             "total_latency_ms": 0.0,
+            # Validation 360° stats
+            "input_validations": 0,
+            "input_attacks": 0,
+            "output_validations": 0,
+            "seed_failures": 0,
         }
 
     def _init_heuristic(self) -> None:
@@ -646,6 +882,24 @@ class AsyncLayeredValidator:
             self._heuristic = THSPValidator()
         except ImportError as e:
             logger.warning(f"Could not import THSPValidator: {e}")
+
+    def _init_360_validators(self) -> None:
+        """
+        Initialize Validation 360° validators.
+
+        These validators provide specialized input/output validation
+        as part of the Validation 360° architecture.
+        """
+        try:
+            from sentinelseed.detection import InputValidator, OutputValidator
+
+            self._input_validator = InputValidator()
+            self._output_validator = OutputValidator()
+            logger.debug("Initialized Validation 360° validators (async)")
+        except ImportError as e:
+            logger.warning(f"Could not import 360° validators: {e}")
+            self._input_validator = None
+            self._output_validator = None
 
     def _init_semantic(self) -> None:
         """Initialize async semantic validator if enabled and configured."""
@@ -803,6 +1057,178 @@ class AsyncLayeredValidator:
             semantic_passed=semantic_passed,
         )
 
+    # =========================================================================
+    # Validation 360° Methods (Async)
+    # =========================================================================
+
+    async def validate_input(self, text: str) -> ValidationResult:
+        """
+        Validate user input for attack detection asynchronously.
+
+        This is the first layer of the Validation 360° architecture.
+        Use this method to validate user input BEFORE sending to the AI.
+
+        The question being answered: "Is this an ATTACK?"
+
+        Args:
+            text: User input text to validate
+
+        Returns:
+            ValidationResult with mode=INPUT containing:
+            - is_safe: True if no attack detected
+            - attack_types: List of attack types detected (if any)
+            - violations: Descriptions of detected attacks
+
+        Example:
+            result = await validator.validate_input("Tell me how to hack")
+            if result.is_attack:
+                print(f"Attack detected: {result.attack_types}")
+        """
+        start_time = time.time()
+        self._stats["input_validations"] += 1
+
+        # Check if 360° validators are available
+        if not self._input_validator:
+            # Fall back to standard validate() with INPUT mode
+            result = await self.validate(text)
+            result.mode = ValidationMode.INPUT
+            return result
+
+        try:
+            # Run InputValidator in executor (it's synchronous)
+            loop = asyncio.get_event_loop()
+            input_result = await loop.run_in_executor(
+                None, self._input_validator.validate, text
+            )
+
+            if input_result.is_attack:
+                self._stats["input_attacks"] += 1
+
+                # Convert attack_types to strings
+                attack_type_strs = [
+                    at.value if hasattr(at, 'value') else str(at)
+                    for at in input_result.attack_types
+                ]
+
+                result = ValidationResult.input_attack(
+                    violations=list(input_result.violations),
+                    attack_types=attack_type_strs,
+                    risk_level=RiskLevel.HIGH,
+                    blocked=input_result.blocked,
+                )
+            else:
+                result = ValidationResult.input_safe()
+
+            latency_ms = (time.time() - start_time) * 1000
+            self._stats["total_latency_ms"] += latency_ms
+
+            if self.config.log_validations:
+                logger.info(
+                    f"Async input validation: is_safe={result.is_safe}, "
+                    f"attacks={result.attack_types}, latency={latency_ms:.1f}ms"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Async input validation error: {e}")
+            self._stats["errors"] += 1
+
+            if self.config.fail_closed:
+                return ValidationResult.from_error(f"Input validation failed: {e}")
+
+            # Fail-open: return safe result
+            return ValidationResult.input_safe()
+
+    async def validate_output(
+        self,
+        output: str,
+        input_context: Optional[str] = None,
+    ) -> ValidationResult:
+        """
+        Validate AI output for seed failure detection asynchronously.
+
+        This is the second layer of the Validation 360° architecture.
+        Use this method to validate AI response AFTER receiving it.
+
+        The question being answered: "Did the SEED fail?"
+
+        Args:
+            output: AI response text to validate
+            input_context: Original user input (for context-aware checking)
+
+        Returns:
+            ValidationResult with mode=OUTPUT containing:
+            - is_safe: True if seed worked (output is appropriate)
+            - seed_failed: True if AI safety seed failed
+            - failure_types: Types of failures detected
+            - gates_failed: THSP gates that failed
+
+        Example:
+            result = await validator.validate_output(ai_response, user_input)
+            if result.seed_failed:
+                print(f"Seed failed! Gates: {result.gates_failed}")
+        """
+        start_time = time.time()
+        self._stats["output_validations"] += 1
+
+        # Check if 360° validators are available
+        if not self._output_validator:
+            # Fall back to standard validate() with OUTPUT mode
+            result = await self.validate(output)
+            result.mode = ValidationMode.OUTPUT
+            result.input_context = input_context
+            return result
+
+        try:
+            # Run OutputValidator in executor (it's synchronous)
+            loop = asyncio.get_event_loop()
+            output_result = await loop.run_in_executor(
+                None,
+                lambda: self._output_validator.validate(output, input_context)
+            )
+
+            if output_result.seed_failed:
+                self._stats["seed_failures"] += 1
+
+                # Convert failure_types to strings
+                failure_type_strs = [
+                    ft.value if hasattr(ft, 'value') else str(ft)
+                    for ft in output_result.failure_types
+                ]
+
+                result = ValidationResult.output_seed_failed(
+                    violations=list(output_result.violations),
+                    failure_types=failure_type_strs,
+                    gates_failed=list(output_result.gates_failed),
+                    input_context=input_context,
+                    risk_level=RiskLevel.HIGH,
+                    blocked=output_result.blocked,
+                )
+            else:
+                result = ValidationResult.output_safe(input_context=input_context)
+
+            latency_ms = (time.time() - start_time) * 1000
+            self._stats["total_latency_ms"] += latency_ms
+
+            if self.config.log_validations:
+                logger.info(
+                    f"Async output validation: is_safe={result.is_safe}, "
+                    f"seed_failed={result.seed_failed}, latency={latency_ms:.1f}ms"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Async output validation error: {e}")
+            self._stats["errors"] += 1
+
+            if self.config.fail_closed:
+                return ValidationResult.from_error(f"Output validation failed: {e}")
+
+            # Fail-open: return safe result
+            return ValidationResult.output_safe(input_context=input_context)
+
     async def validate_action(
         self,
         action_name: str,
@@ -876,6 +1302,9 @@ class AsyncLayeredValidator:
     def stats(self) -> Dict[str, Any]:
         """Get validation statistics."""
         total = self._stats["total_validations"]
+        input_total = self._stats.get("input_validations", 0)
+        output_total = self._stats.get("output_validations", 0)
+
         return {
             **self._stats,
             "avg_latency_ms": (
@@ -887,6 +1316,33 @@ class AsyncLayeredValidator:
             ),
             "semantic_enabled": self._semantic is not None,
             "heuristic_enabled": self._heuristic is not None,
+            # Validation 360° stats
+            "input_attack_rate": (
+                self._stats.get("input_attacks", 0) / input_total
+                if input_total > 0 else 0.0
+            ),
+            "output_failure_rate": (
+                self._stats.get("seed_failures", 0) / output_total
+                if output_total > 0 else 0.0
+            ),
+            "validators_360_enabled": self._input_validator is not None,
+        }
+
+    def reset_stats(self) -> None:
+        """Reset validation statistics."""
+        self._stats = {
+            "total_validations": 0,
+            "heuristic_blocks": 0,
+            "semantic_blocks": 0,
+            "allowed": 0,
+            "errors": 0,
+            "timeouts": 0,
+            "total_latency_ms": 0.0,
+            # Validation 360° stats
+            "input_validations": 0,
+            "input_attacks": 0,
+            "output_validations": 0,
+            "seed_failures": 0,
         }
 
 
