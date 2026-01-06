@@ -7,7 +7,46 @@ Sentinel uses a layered validation architecture with two main components:
 1. **Heuristic Layer**: Fast regex-based validation (580+ patterns, <10ms, free)
 2. **Semantic Layer**: LLM-based validation for nuanced cases (1-5s, ~$0.0005/call)
 
-### Validation Flow
+### Validation 360° Architecture
+
+Sentinel implements a 360° validation architecture that validates both input and output:
+
+```
+User Input → [validate_input] → AI + Seed → [validate_output] → Response
+                  ↓                              ↓
+           "Is this ATTACK?"            "Did SEED fail?"
+```
+
+```mermaid
+flowchart LR
+    subgraph Input["Input Validation"]
+        UI[User Input] --> VI[validate_input]
+        VI --> |Attack?| D1{Safe?}
+        D1 -->|No| B1[Block]
+        D1 -->|Yes| AI
+    end
+
+    subgraph Core["AI Processing"]
+        AI[AI + Seed]
+    end
+
+    subgraph Output["Output Validation"]
+        AI --> VO[validate_output]
+        VO --> |Seed Failed?| D2{Safe?}
+        D2 -->|No| B2[Block]
+        D2 -->|Yes| R[Response]
+    end
+
+    style Input fill:#e3f2fd
+    style Core fill:#fff3e0
+    style Output fill:#e8f5e9
+    style B1 fill:#ffcdd2
+    style B2 fill:#ffcdd2
+```
+
+### Generic Validation Flow
+
+The `validate()` method provides general-purpose validation:
 
 ```mermaid
 flowchart TD
@@ -65,9 +104,11 @@ classDiagram
 
     class LayeredValidator {
         +config: ValidationConfig
-        +validate(content)
-        +validate_action(action)
         +stats: Dict
+        +validate(content)
+        +validate_input(text)
+        +validate_output(output, input_context)
+        +validate_action(action)
     }
 
     class THSPValidator {
@@ -87,6 +128,10 @@ classDiagram
         +violations: List
         +layer: ValidationLayer
         +risk_level: RiskLevel
+        +mode: ValidationMode
+        +attack_types: List
+        +seed_failed: bool
+        +gates_failed: List
     }
 
     Sentinel --> LayeredValidator
@@ -207,8 +252,30 @@ config = ValidationConfig(
 )
 
 validator = LayeredValidator(config=config)
+
+# Generic validation
 result = validator.validate("Check this content")
+
+# Input validation (before AI processing)
+input_result = validator.validate_input(user_input)
+if input_result.is_attack:
+    print(f"Attack detected: {input_result.attack_types}")
+    # Do not send to AI
+
+# Output validation (after AI processing)
+output_result = validator.validate_output(ai_response, user_input)
+if output_result.seed_failed:
+    print(f"Seed failed! Gates: {output_result.gates_failed}")
+    # Do not show to user
 ```
+
+#### Validation Methods
+
+| Method | Purpose | Returns |
+|--------|---------|---------|
+| `validate(content)` | General-purpose validation | `ValidationResult` |
+| `validate_input(text)` | Detect attacks in user input | `ValidationResult` with `attack_types` |
+| `validate_output(output, input_context)` | Detect seed failures in AI output | `ValidationResult` with `seed_failed`, `gates_failed` |
 
 ### THSPValidator (Heuristic)
 
@@ -220,6 +287,62 @@ Four-gate validation using 580+ regex patterns:
 | **Harm** | Identifies violence, malware, theft | Weapons, hacking, doxxing |
 | **Scope** | Catches jailbreaks, prompt injection | "Ignore previous instructions" |
 | **Purpose** | Flags purposeless destruction | Destruction without benefit |
+
+### InputValidator (Pre-AI Detection)
+
+The InputValidator is a multi-detector system that runs **before** content reaches the AI. It uses a layered approach with multiple specialized detectors:
+
+```
+InputValidator v1.4.0
+├── TextNormalizer (8 deobfuscation stages)
+├── PatternDetector (580+ patterns, weight 1.0)
+├── EscalationDetector (multi-turn, weight 1.1)
+├── FramingDetector (70+ patterns, weight 1.2)
+├── HarmfulRequestDetector (10 categories, weight 1.3)
+└── EmbeddingDetector (semantic, weight 1.4, optional)
+```
+
+#### Detectors
+
+| Detector | Purpose | Weight |
+|----------|---------|--------|
+| **PatternDetector** | THSP patterns (jailbreak, injection, manipulation) | 1.0 |
+| **EscalationDetector** | Multi-turn attacks like Crescendo | 1.1 |
+| **FramingDetector** | Roleplay, fiction, DAN mode framing | 1.2 |
+| **HarmfulRequestDetector** | Direct harmful content requests | 1.3 |
+| **EmbeddingDetector** | Semantic similarity to known attacks | 1.4 |
+
+#### Embedding-Based Detection
+
+The EmbeddingDetector uses semantic similarity to catch attacks that evade keyword-based detection:
+
+```python
+from sentinelseed.detection.embeddings import (
+    EmbeddingDetector,
+    OpenAIEmbeddings,  # or OllamaEmbeddings
+    AttackVectorDatabase,
+)
+
+# Load attack vectors
+database = AttackVectorDatabase()
+database.load_from_file("attack_vectors.json")
+
+# Create detector with provider
+provider = OpenAIEmbeddings()  # Uses OPENAI_API_KEY
+detector = EmbeddingDetector(
+    provider=provider,
+    database=database,
+)
+```
+
+**Supported Providers:**
+
+| Provider | Model | Availability |
+|----------|-------|--------------|
+| OpenAI | text-embedding-3-small | Requires API key |
+| Ollama | nomic-embed-text | Local, free |
+
+**Graceful Degradation:** The system works without embedding support, falling back to heuristic detection.
 
 ### SemanticValidator
 
@@ -245,13 +368,32 @@ class MyIntegration(SentinelIntegration):
         )
         super().__init__(validation_config=config)
 
-    def process(self, content: str):
-        # Use inherited validate() method
-        result = self.validate(content)
-        if not result.is_safe:
-            raise ValueError(f"Content blocked: {result.violations}")
-        return content
+    def process(self, user_input: str):
+        # Step 1: Validate user input
+        input_result = self.validate_input(user_input)
+        if not input_result.is_safe:
+            raise ValueError(f"Attack detected: {input_result.attack_types}")
+
+        # Step 2: Get AI response
+        ai_response = self.call_ai(user_input)
+
+        # Step 3: Validate AI output
+        output_result = self.validate_output(ai_response, user_input)
+        if not output_result.is_safe:
+            raise ValueError(f"Seed failed: {output_result.gates_failed}")
+
+        return ai_response
 ```
+
+#### Inherited Methods
+
+All integrations inheriting from `SentinelIntegration` have access to:
+
+| Method | Description |
+|--------|-------------|
+| `validate(content)` | General-purpose validation |
+| `validate_input(text)` | Detect attacks in user input |
+| `validate_output(output, input_context)` | Detect seed failures in AI output |
 
 ### Integrations Using Standard Pattern
 

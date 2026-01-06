@@ -17,6 +17,11 @@ Complete API reference for the Sentinel Python SDK (`sentinelseed`).
   - [ValidationConfig](#validationconfig)
   - [ValidationLayer Enum](#validationlayer-enum)
   - [RiskLevel Enum](#risklevel-enum)
+- [Detection Module](#detection-module)
+  - [InputValidator](#inputvalidator)
+  - [EmbeddingDetector](#embeddingdetector)
+  - [EmbeddingProvider](#embeddingprovider)
+  - [AttackVectorDatabase](#attackvectordatabase)
 - [Memory Integrity](#memory-integrity)
   - [MemoryIntegrityChecker](#memoryintegritychecker)
   - [MemoryEntry](#memoryentry)
@@ -712,6 +717,139 @@ from sentinelseed import ValidationRiskLevel
 | `MEDIUM` | Some concerns, may be acceptable |
 | `HIGH` | Significant safety concerns |
 | `CRITICAL` | Severe or immediate risks |
+
+---
+
+## Detection Module
+
+Pre-AI detection system for input validation.
+
+### InputValidator
+
+Multi-detector system for validating input before AI processing.
+
+```python
+from sentinelseed.detection import InputValidator
+```
+
+#### Constructor
+
+```python
+InputValidator(
+    config: Optional[InputValidatorConfig] = None,
+    use_embeddings: bool = False,
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `config` | `InputValidatorConfig \| None` | `None` | Configuration object |
+| `use_embeddings` | `bool` | `False` | Enable embedding-based detection |
+
+#### Methods
+
+##### validate
+
+Validate input text with all registered detectors.
+
+```python
+validate(
+    text: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> ValidationResult
+```
+
+**Example:**
+
+```python
+validator = InputValidator()
+result = validator.validate("user input text")
+
+if not result.is_safe:
+    print(f"Attack detected: {result.attack_types}")
+```
+
+### EmbeddingDetector
+
+Semantic similarity-based detector using embeddings.
+
+```python
+from sentinelseed.detection.embeddings import (
+    EmbeddingDetector,
+    EmbeddingDetectorConfig,
+    OpenAIEmbeddings,
+    OllamaEmbeddings,
+    AttackVectorDatabase,
+)
+```
+
+#### Constructor
+
+```python
+EmbeddingDetector(
+    provider: Optional[EmbeddingProvider] = None,
+    database: Optional[AttackVectorDatabase] = None,
+    embed_config: Optional[EmbeddingDetectorConfig] = None,
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | `EmbeddingProvider \| None` | `None` | Embedding provider (OpenAI, Ollama) |
+| `database` | `AttackVectorDatabase \| None` | `None` | Database of known attack vectors |
+| `embed_config` | `EmbeddingDetectorConfig \| None` | `None` | Detection configuration |
+
+**Example:**
+
+```python
+# Create provider
+provider = OpenAIEmbeddings()  # Uses OPENAI_API_KEY
+
+# Load attack database
+database = AttackVectorDatabase()
+database.load_from_file("attack_vectors.json")
+
+# Create detector
+detector = EmbeddingDetector(
+    provider=provider,
+    database=database,
+)
+
+# Check if ready
+if detector.is_ready():
+    result = detector.detect("potentially harmful text")
+```
+
+### EmbeddingProvider
+
+Base class for embedding providers.
+
+| Provider | Class | Model |
+|----------|-------|-------|
+| OpenAI | `OpenAIEmbeddings` | text-embedding-3-small |
+| Ollama | `OllamaEmbeddings` | nomic-embed-text |
+
+### AttackVectorDatabase
+
+In-memory database of attack embeddings.
+
+```python
+from sentinelseed.detection.embeddings import AttackVectorDatabase
+```
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `load_from_file(path)` | Load vectors from JSON file |
+| `save_to_file(path)` | Save vectors to JSON file |
+| `search_similar(embedding, threshold)` | Find similar attack vectors |
+| `add_vector(id, embedding, category)` | Add a new attack vector |
+| `get_stats()` | Get database statistics |
 
 ---
 

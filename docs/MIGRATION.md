@@ -109,11 +109,21 @@ config = ValidationConfig(
 )
 validator = LayeredValidator(config=config)
 
-# Validation
+# Generic validation
 result = validator.validate("content to check")
 print(f"Safe: {result.is_safe}")
 print(f"Layer: {result.layer}")  # "heuristic", "semantic", or "both"
 print(f"Violations: {result.violations}")
+
+# Input validation (before sending to AI)
+input_result = validator.validate_input(user_input)
+if input_result.is_attack:
+    print(f"Attack detected: {input_result.attack_types}")
+
+# Output validation (after receiving from AI)
+output_result = validator.validate_output(ai_response, user_input)
+if output_result.seed_failed:
+    print(f"Seed failed: {output_result.gates_failed}")
 ```
 
 ### Using Sentinel Class
@@ -176,10 +186,21 @@ class MyIntegration(SentinelIntegration):
         )
         super().__init__(validation_config=config)
 
-    def process(self, content):
-        # Use inherited validate() method
-        result = self.validate(content)
-        ...
+    def process(self, user_input):
+        # Validate input
+        input_result = self.validate_input(user_input)
+        if not input_result.is_safe:
+            raise ValueError(f"Attack: {input_result.attack_types}")
+
+        # Process with AI
+        response = self.call_ai(user_input)
+
+        # Validate output
+        output_result = self.validate_output(response, user_input)
+        if not output_result.is_safe:
+            raise ValueError(f"Seed failed: {output_result.gates_failed}")
+
+        return response
 ```
 
 ### Benefits of SentinelIntegration
