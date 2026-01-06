@@ -507,11 +507,12 @@ result = guard.run("Your task")
 ### LangGraph
 
 ```python
-from sentinelseed.integrations.langgraph import SentinelSafetyNode, create_safe_graph
+from sentinelseed.integrations.langgraph import SentinelSafetyNode, add_safety_layer
 
-# Add safety node to your graph
+# Add safety nodes to your graph
 safety_node = SentinelSafetyNode(seed_level="standard")
-graph = create_safe_graph(your_graph, safety_node)
+graph.add_node("safety_check", safety_node)
+result = add_safety_layer(graph, entry_check=True, exit_check=True)
 ```
 
 ### CrewAI

@@ -108,6 +108,15 @@ from sentinelseed.core.exceptions import (
     IntegrationError,
 )
 
+# v3.0 architecture - unified 3-gate validation
+from sentinelseed.core import (
+    SentinelValidator,
+    SentinelConfig,
+    SentinelObserver,
+    SentinelResult,
+    ObservationResult,
+)
+
 # Validation - recommended API for advanced usage
 from sentinelseed.validation import (
     LayeredValidator,
@@ -154,7 +163,7 @@ from sentinelseed.database import (
     is_safe_query,
 )
 
-__version__ = "2.19.0"
+__version__ = "2.21.0"
 
 # Deprecated exports - kept for backwards compatibility
 # These will be removed in version 3.0.0
@@ -220,6 +229,12 @@ __all__ = [
     "ValidationError",
     "ConfigurationError",
     "IntegrationError",
+    # v3.0 architecture - unified 3-gate validation
+    "SentinelValidator",
+    "SentinelConfig",
+    "SentinelObserver",
+    "SentinelResult",
+    "ObservationResult",
     # Validation (recommended for advanced usage)
     "LayeredValidator",
     "AsyncLayeredValidator",
