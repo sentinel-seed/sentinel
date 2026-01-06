@@ -346,11 +346,11 @@ from sentinelseed.integrations.google_adk import (
 The module also exports utility functions and classes for advanced usage:
 
 - **Logging**: `SentinelLogger`, `DefaultLogger`, `get_logger`, `set_logger`
-- **Utilities**: `validate_configuration`, `validate_text_size`, `extract_text_from_llm_request`, `extract_text_from_llm_response`, `create_blocked_response`
+- **Utilities**: `validate_configuration`, `validate_text_size`, `extract_text_from_llm_request`, `extract_text_from_llm_response`, `extract_tool_input_text`, `create_blocked_response`, `create_empty_stats`, `format_violation`, `log_fail_open_warning`
+- **Executor**: `get_validation_executor`, `shutdown_validation_executor`
 - **Classes**: `ThreadSafeDeque`, `ValidationExecutor`
 - **Factory**: `create_sentinel_plugin`
-
-See the source code for detailed documentation on these components.
+- **Checks**: `require_adk` (raises ImportError if ADK not installed)
 
 ## Resources
 

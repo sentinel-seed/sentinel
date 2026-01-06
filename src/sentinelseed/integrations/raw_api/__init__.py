@@ -47,7 +47,7 @@ from sentinelseed.integrations._base import (
     ValidationResult,
 )
 
-__version__ = "2.19.0"
+__version__ = "2.21.0"
 
 __all__ = [
     # Functions

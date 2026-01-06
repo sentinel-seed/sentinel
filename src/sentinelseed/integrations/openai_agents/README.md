@@ -320,6 +320,26 @@ config = SentinelGuardrailConfig(
 - The downstream consequences of unsafe content are manageable
 - Latency is more critical than security
 
+## Constants and Exceptions
+
+### Constants
+
+| Constant | Description |
+|----------|-------------|
+| `AGENTS_SDK_AVAILABLE` | Boolean indicating if OpenAI Agents SDK is installed |
+| `VALID_SEED_LEVELS` | List of valid seed levels: `["minimal", "standard", "full"]` |
+| `DEFAULT_MAX_INPUT_SIZE` | Default max input size (32000 chars) |
+| `DEFAULT_MAX_VIOLATIONS_LOG` | Default max violations to keep (1000) |
+| `DEFAULT_VALIDATION_TIMEOUT` | Default validation timeout in seconds |
+
+### Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `PydanticNotAvailableError` | Raised when Pydantic is required but not installed |
+| `ValidationTimeoutError` | Raised when validation exceeds timeout |
+| `ValidationParseError` | Raised when guardrail output cannot be parsed |
+
 ## Architecture
 
 The integration is modularized for maintainability:

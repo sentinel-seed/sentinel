@@ -262,7 +262,9 @@ The callback monitors these LangChain events:
 | `inject_seed(messages, seed_level)` | Add seed to message list |
 | `wrap_llm(llm, ...)` | Wrap LLM with safety features |
 | `create_safe_callback(...)` | Factory for SentinelCallback |
+| `create_sentinel_callback(...)` | Alias for `create_safe_callback` |
 | `set_logger(logger)` | Set custom logger globally |
+| `get_logger()` | Get the current logger instance |
 
 ### Methods (SentinelCallback)
 
@@ -368,6 +370,18 @@ All components use thread-safe data structures:
 - `ThreadSafeDeque` for bounded violation/validation logs
 - `StreamingBuffer` for accumulating streaming tokens
 - Thread locks for logger and buffer operations
+
+### Internal Components
+
+These classes are exported for advanced use cases and testing:
+
+| Component | Description |
+|-----------|-------------|
+| `StreamingBuffer` | Thread-safe buffer for accumulating streaming tokens |
+| `ThreadSafeDeque` | Bounded deque with thread-safe operations |
+| `ValidationResult` | Dataclass for validation outcomes |
+| `ViolationRecord` | Dataclass for violation events |
+| `ValidationExecutor` | Shared executor for timeout-controlled validation |
 
 ### Exception Handling
 

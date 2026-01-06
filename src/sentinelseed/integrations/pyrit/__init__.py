@@ -52,7 +52,7 @@ References:
     - PyRIT GitHub: https://github.com/Azure/PyRIT
 """
 
-__version__ = "2.19.0"
+__version__ = "2.21.0"
 __author__ = "Sentinel Team"
 
 from sentinelseed.integrations.pyrit.scorers import (

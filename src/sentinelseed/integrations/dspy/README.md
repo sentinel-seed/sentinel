@@ -334,6 +334,7 @@ from sentinelseed.integrations.dspy import (
     VALID_MODES,                 # ("block", "flag", "heuristic")
     VALID_PROVIDERS,             # ("openai", "anthropic")
     VALID_GATES,                 # ("truth", "harm", "scope", "purpose")
+    THSP_INSTRUCTIONS,           # str: THSP validation instructions for signatures
 )
 ```
 
@@ -562,12 +563,17 @@ validation = memory_guard.validate_write(
 if validation["is_safe"]:
     memory.write(key, value)
 
-# Or wrap entire memory object
+# Or wrap entire memory object (returns SafeMemoryWrapper)
 safe_memory = memory_guard.wrap_memory(memory)
 safe_memory.set("key", "value")  # Automatically validated
 
 # Check blocked writes
 print(safe_memory.blocked_writes)
+
+# SafeMemoryWrapper attributes
+safe_memory.original_memory  # The wrapped memory object
+safe_memory.guard            # The SentinelMemoryGuard instance
+safe_memory.blocked_writes   # List of blocked write attempts
 ```
 
 ### Context-Aware Validation

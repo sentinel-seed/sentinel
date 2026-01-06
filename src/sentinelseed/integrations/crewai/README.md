@@ -161,6 +161,11 @@ SentinelCrew(
     injection_method="auto",        # auto, system_template, backstory
     validate_outputs=True,          # Validate crew outputs
     block_unsafe=True,              # Block unsafe inputs/outputs
+    validator=None,                 # LayeredValidator instance (optional, for testing)
+    use_semantic=False,             # Enable semantic validation
+    semantic_api_key=None,          # API key for semantic validation
+    semantic_provider="openai",     # Provider: "openai" or "anthropic"
+    semantic_model=None,            # Model for semantic validation
     **crew_kwargs                   # Additional args for CrewAI Crew
 )
 ```
@@ -201,6 +206,9 @@ Monitor for tracking and validating agent activities.
 ```python
 AgentSafetyMonitor(
     sentinel=None,                  # Sentinel instance (creates default if None)
+    validator=None,                 # LayeredValidator instance (optional, for testing)
+    use_semantic=False,             # Enable semantic validation
+    semantic_api_key=None,          # API key for semantic validation
 )
 ```
 
@@ -302,6 +310,13 @@ try:
 except ImportError as e:
     print("Install CrewAI: pip install crewai")
 ```
+
+## Constants
+
+| Constant | Description |
+|----------|-------------|
+| `CREWAI_AVAILABLE` | Boolean indicating if CrewAI is installed |
+| `InjectionMethod` | Type alias for injection methods: `"auto"`, `"system_template"`, `"backstory"` |
 
 ## Limitations
 

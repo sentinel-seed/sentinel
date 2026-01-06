@@ -272,6 +272,88 @@ class SentinelIntegration:
         """
         return self._validator.validate(f"User request: {request}")
 
+    # =========================================================================
+    # Validation 360° Methods
+    # =========================================================================
+
+    def validate_input(self, text: str) -> "ValidationResult":
+        """
+        Validate user input for attack detection (Validation 360°).
+
+        This method is the first part of the 360° validation architecture.
+        Use it to validate user input BEFORE sending to the AI model.
+
+        The question being answered: "Is this an ATTACK?"
+
+        Detects:
+            - Jailbreak attempts (DAN, ignore instructions, etc.)
+            - Prompt injection
+            - SQL injection
+            - XSS attacks
+            - Social engineering patterns
+
+        Args:
+            text: User input text to validate
+
+        Returns:
+            ValidationResult with mode=INPUT containing:
+            - is_safe: True if no attack detected
+            - is_attack: True if attack was detected (property)
+            - attack_types: List of attack types if detected
+            - violations: Descriptions of detected attacks
+
+        Example:
+            # In your callback before sending to AI
+            input_result = self.validate_input(user_message)
+            if input_result.is_attack:
+                logger.warning(f"Attack blocked: {input_result.attack_types}")
+                return self._create_blocked_response(input_result)
+            # Safe to proceed to AI
+            ai_response = await self.call_model(user_message)
+        """
+        return self._validator.validate_input(text)
+
+    def validate_output(
+        self,
+        output: str,
+        input_context: Optional[str] = None,
+    ) -> "ValidationResult":
+        """
+        Validate AI output for seed failure detection (Validation 360°).
+
+        This method is the second part of the 360° validation architecture.
+        Use it to validate AI response AFTER receiving it from the model.
+
+        The question being answered: "Did the SEED fail?"
+
+        Detects:
+            - Jailbreak acceptance (AI agreeing to bypass rules)
+            - Harmful content in response
+            - Deceptive content
+            - Bypass indicators
+
+        Args:
+            output: AI response text to validate
+            input_context: Original user input (for context-aware checking)
+
+        Returns:
+            ValidationResult with mode=OUTPUT containing:
+            - is_safe: True if seed worked correctly
+            - seed_failed: True if AI safety seed failed
+            - failure_types: Types of failures detected
+            - gates_failed: THSP gates that failed
+
+        Example:
+            # After receiving AI response
+            output_result = self.validate_output(ai_response, user_message)
+            if output_result.seed_failed:
+                logger.error(f"Seed failed! Gates: {output_result.gates_failed}")
+                return self._create_fallback_response()
+            # Safe to return to user
+            return ai_response
+        """
+        return self._validator.validate_output(output, input_context)
+
     @property
     def validation_stats(self) -> Dict[str, Any]:
         """
@@ -403,6 +485,158 @@ class AsyncSentinelIntegration:
             ValidationResult
         """
         return await self._validator.validate(f"User request: {request}")
+
+    # =========================================================================
+    # Validation 360° Methods (Async)
+    # =========================================================================
+
+    async def avalidate_input(self, text: str) -> "ValidationResult":
+        """
+        Validate user input for attack detection asynchronously (Validation 360°).
+
+        This method is the first part of the 360° validation architecture.
+        Use it to validate user input BEFORE sending to the AI model.
+
+        The question being answered: "Is this an ATTACK?"
+
+        Detects:
+            - Jailbreak attempts (DAN, ignore instructions, etc.)
+            - Prompt injection
+            - SQL injection
+            - XSS attacks
+            - Social engineering patterns
+
+        Args:
+            text: User input text to validate
+
+        Returns:
+            ValidationResult with mode=INPUT containing:
+            - is_safe: True if no attack detected
+            - is_attack: True if attack was detected (property)
+            - attack_types: List of attack types if detected
+            - violations: Descriptions of detected attacks
+
+        Example:
+            async def before_model_callback(self, request):
+                input_result = await self.avalidate_input(request.content)
+                if input_result.is_attack:
+                    logger.warning(f"Attack blocked: {input_result.attack_types}")
+                    return self._create_blocked_response(input_result)
+                # Safe to proceed
+        """
+        return await self._validator.validate_input(text)
+
+    async def avalidate_output(
+        self,
+        output: str,
+        input_context: Optional[str] = None,
+    ) -> "ValidationResult":
+        """
+        Validate AI output for seed failure detection asynchronously (Validation 360°).
+
+        This method is the second part of the 360° validation architecture.
+        Use it to validate AI response AFTER receiving it from the model.
+
+        The question being answered: "Did the SEED fail?"
+
+        Detects:
+            - Jailbreak acceptance (AI agreeing to bypass rules)
+            - Harmful content in response
+            - Deceptive content
+            - Bypass indicators
+
+        Args:
+            output: AI response text to validate
+            input_context: Original user input (for context-aware checking)
+
+        Returns:
+            ValidationResult with mode=OUTPUT containing:
+            - is_safe: True if seed worked correctly
+            - seed_failed: True if AI safety seed failed
+            - failure_types: Types of failures detected
+            - gates_failed: THSP gates that failed
+
+        Example:
+            async def after_model_callback(self, response, original_request):
+                output_result = await self.avalidate_output(
+                    response.content,
+                    original_request.content,
+                )
+                if output_result.seed_failed:
+                    logger.error(f"Seed failed! Gates: {output_result.gates_failed}")
+                    return self._create_fallback_response()
+                return response
+        """
+        return await self._validator.validate_output(output, input_context)
+
+    def validate_input(self, text: str) -> "ValidationResult":
+        """
+        Sync validate_input - use avalidate_input() for async code.
+
+        This method provides sync access for backwards compatibility.
+        When called from async context, prefer avalidate_input() instead.
+
+        Args:
+            text: User input text to validate
+
+        Returns:
+            ValidationResult
+        """
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+            import warnings
+
+            warnings.warn(
+                f"[{self._integration_name}] Called sync validate_input() from async context. "
+                "Use avalidate_input() instead for better performance.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            from sentinelseed.validation import LayeredValidator
+
+            sync_validator = LayeredValidator()
+            return sync_validator.validate_input(text)
+        except RuntimeError:
+            return asyncio.run(self.avalidate_input(text))
+
+    def validate_output(
+        self,
+        output: str,
+        input_context: Optional[str] = None,
+    ) -> "ValidationResult":
+        """
+        Sync validate_output - use avalidate_output() for async code.
+
+        This method provides sync access for backwards compatibility.
+        When called from async context, prefer avalidate_output() instead.
+
+        Args:
+            output: AI response text to validate
+            input_context: Original user input
+
+        Returns:
+            ValidationResult
+        """
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+            import warnings
+
+            warnings.warn(
+                f"[{self._integration_name}] Called sync validate_output() from async context. "
+                "Use avalidate_output() instead for better performance.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            from sentinelseed.validation import LayeredValidator
+
+            sync_validator = LayeredValidator()
+            return sync_validator.validate_output(output, input_context)
+        except RuntimeError:
+            return asyncio.run(self.avalidate_output(output, input_context))
 
     def validate(self, content: str) -> "ValidationResult":
         """

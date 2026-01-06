@@ -429,6 +429,64 @@ tokens = estimate_tokens("Hello World")  # Returns 2 (11 chars // 4)
 
 > **Note:** This is a rough approximation. For accurate token counts, use `tiktoken` or the model's tokenizer.
 
+## Data Classes
+
+The module exports data classes for typed validation results:
+
+### ValidationResult
+
+```python
+from sentinelseed.integrations.autogpt_block import ValidationResult
+
+result = ValidationResult(
+    safe=True,
+    content="original content",
+    violations=[],
+    gate_results={"truth": True, "harm": True, "scope": True, "purpose": True},
+    risk_level="low",
+)
+```
+
+### ActionCheckResult
+
+```python
+from sentinelseed.integrations.autogpt_block import ActionCheckResult
+
+result = ActionCheckResult(
+    should_proceed=True,
+    action="send_email",
+    concerns=[],
+    recommendations=["Consider providing explicit purpose"],
+    risk_level="low",
+)
+```
+
+### ValidationLevel
+
+Enum for validation strictness:
+
+```python
+from sentinelseed.integrations.autogpt_block import ValidationLevel
+
+level = ValidationLevel.STANDARD  # "standard"
+level = ValidationLevel.PERMISSIVE  # "permissive"
+level = ValidationLevel.STRICT  # "strict"
+```
+
+## Constants
+
+```python
+from sentinelseed.integrations.autogpt_block import (
+    DEFAULT_SEED_LEVEL,          # "standard"
+    DEFAULT_MAX_TEXT_SIZE,       # 51200 (50KB)
+    DEFAULT_VALIDATION_TIMEOUT,  # 30.0 seconds
+    VALID_SEED_LEVELS,           # ("minimal", "standard", "full")
+    VALID_CHECK_TYPES,           # ("general", "action", "request")
+    VALID_RISK_LEVELS,           # ("low", "medium", "high", "critical")
+    AUTOGPT_SDK_AVAILABLE,       # bool: Is AutoGPT SDK installed?
+)
+```
+
 ## Limitations
 
 - **Text size limit**: Default 50KB per request. Configure with `max_text_size`.

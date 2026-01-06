@@ -261,6 +261,59 @@ The integration validates content through four gates:
 
 All four gates must pass for content to be considered safe.
 
+## Constants
+
+```python
+from sentinelseed.integrations.letta import (
+    VALID_MODES,            # ("block", "flag", "log")
+    VALID_PROVIDERS,        # ("openai", "anthropic")
+    DEFAULT_HIGH_RISK_TOOLS,# ("send_message", "run_code", "web_search")
+)
+```
+
+## Configuration Classes
+
+### SafetyConfig
+
+Internal configuration class used by SentinelLettaClient:
+
+```python
+from sentinelseed.integrations.letta import SafetyConfig
+
+config = SafetyConfig(
+    api_key="...",
+    provider="openai",
+    model=None,
+    mode="block",
+    validate_input=True,
+    validate_output=True,
+    validate_tool_calls=True,
+)
+```
+
+### ApprovalDecision
+
+Returned by sentinel_approval_handler:
+
+```python
+from sentinelseed.integrations.letta import ApprovalDecision
+
+decision = ApprovalDecision(
+    status="approved",  # approved, denied, pending
+    reasoning="Content passed all THSP gates",
+    tool_call_id="call-123",
+)
+
+# Convert to Letta approval message
+message = decision.to_approval_message()
+```
+
+## Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| `SafetyBlockedError` | Raised when content is blocked in block mode |
+
 ## Configuration Options
 
 ### Validation Modes
