@@ -1,0 +1,140 @@
+{
+  "optimal_threshold": 0.5,
+  "optimal_metrics": {
+    "threshold": 0.5,
+    "total_attacks": 500,
+    "total_safe": 100,
+    "true_positives": 468,
+    "false_positives": 3,
+    "true_negatives": 97,
+    "false_negatives": 32
+  },
+  "roc_curve": [
+    {
+      "threshold": 0.5,
+      "metrics": {
+        "threshold": 0.5,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 468,
+        "false_positives": 3,
+        "true_negatives": 97,
+        "false_negatives": 32
+      }
+    },
+    {
+      "threshold": 0.55,
+      "metrics": {
+        "threshold": 0.55,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 403,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 97
+      }
+    },
+    {
+      "threshold": 0.6,
+      "metrics": {
+        "threshold": 0.6,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 331,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 169
+      }
+    },
+    {
+      "threshold": 0.65,
+      "metrics": {
+        "threshold": 0.65,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 246,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 254
+      }
+    },
+    {
+      "threshold": 0.7,
+      "metrics": {
+        "threshold": 0.7,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 194,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 306
+      }
+    },
+    {
+      "threshold": 0.75,
+      "metrics": {
+        "threshold": 0.75,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 117,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 383
+      }
+    },
+    {
+      "threshold": 0.8,
+      "metrics": {
+        "threshold": 0.8,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 79,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 421
+      }
+    },
+    {
+      "threshold": 0.85,
+      "metrics": {
+        "threshold": 0.85,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 55,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 445
+      }
+    },
+    {
+      "threshold": 0.9,
+      "metrics": {
+        "threshold": 0.9,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 41,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 459
+      }
+    },
+    {
+      "threshold": 0.95,
+      "metrics": {
+        "threshold": 0.95,
+        "total_attacks": 500,
+        "total_safe": 100,
+        "true_positives": 36,
+        "false_positives": 0,
+        "true_negatives": 100,
+        "false_negatives": 464
+      }
+    }
+  ],
+  "methodology": {
+    "attacks": "Leave-one-out cross-validation on 500 attack vectors",
+    "safe": "100 benign prompts across 10 categories",
+    "model": "text-embedding-3-small",
+    "dimensions": 1536
+  }
+}
