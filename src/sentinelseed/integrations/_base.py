@@ -131,12 +131,16 @@ class SentinelIntegration:
     # Override in subclasses for better logging
     _integration_name: str = "base"
 
+    # Default seed level for this integration
+    _default_seed_level: str = "standard"
+
     def __init__(
         self,
         validator: Optional["Validator"] = None,
         validation_config: Optional["ValidationConfig"] = None,
         use_v3: bool = True,
         use_embeddings: bool = False,
+        seed_level: Optional[str] = None,
         **kwargs: Any,
     ):
         """
@@ -152,6 +156,9 @@ class SentinelIntegration:
             use_v3: Use Sentinel v3.0 adapter (default: True). If False, uses
                    LayeredValidator for backwards compatibility.
             use_embeddings: Enable embedding-based detection (requires v3.0).
+            seed_level: Seed level for system prompt injection. Options:
+                       "minimal" (~360 tokens), "standard" (~1K tokens),
+                       "full" (~1.9K tokens). Default: "standard".
             **kwargs: Additional arguments (absorbed for flexibility).
 
         Priority:
@@ -171,6 +178,11 @@ class SentinelIntegration:
 
             # With mock for testing
             integration = MyIntegration(validator=MockValidator())
+
+            # With seed injection
+            integration = MyIntegration(seed_level="full")
+            system_prompt = integration.prepare_system_prompt("You are a helpful assistant.")
+            # system_prompt now contains the seed + original prompt
         """
         if validator is not None:
             # User provided custom validator (could be mock for testing)
@@ -207,6 +219,110 @@ class SentinelIntegration:
                     f"[{self._integration_name}] Created LayeredValidator "
                     f"with default config (heuristic only)"
                 )
+
+        # Seed configuration (lazy loading)
+        self._seed_level = seed_level or self._default_seed_level
+        self._seed_cache: Optional[str] = None
+
+    # =========================================================================
+    # Seed Injection Methods
+    # =========================================================================
+
+    @property
+    def seed(self) -> str:
+        """
+        Get the alignment seed for this integration.
+
+        The seed is lazy-loaded and cached. Use this to inject the seed
+        into your model's system prompt.
+
+        Returns:
+            The seed content as a string.
+
+        Example:
+            # Get seed and use in system prompt
+            system_prompt = f"{integration.seed}\\n\\n{your_instructions}"
+        """
+        if self._seed_cache is None:
+            self._seed_cache = self.get_seed(self._seed_level)
+        return self._seed_cache
+
+    def get_seed(self, level: Optional[str] = None) -> str:
+        """
+        Get an alignment seed by level.
+
+        Args:
+            level: Seed level - "minimal", "standard", or "full".
+                  If None, uses the instance's configured seed_level.
+
+        Returns:
+            The seed content as a string.
+
+        Example:
+            # Get specific level
+            full_seed = integration.get_seed("full")
+
+            # Get default level for this integration
+            seed = integration.get_seed()
+        """
+        from sentinelseed import Sentinel
+
+        target_level = level or self._seed_level
+        sentinel = Sentinel(seed_level=target_level)
+        return sentinel.get_seed(target_level)
+
+    def prepare_system_prompt(
+        self,
+        original_prompt: str = "",
+        seed_position: str = "prepend",
+    ) -> str:
+        """
+        Prepare a system prompt with the alignment seed injected.
+
+        This method combines the alignment seed with your original system
+        prompt. The seed provides THSP (Truth, Harm, Scope, Purpose) gates
+        that help the model refuse harmful requests.
+
+        Args:
+            original_prompt: Your original system prompt/instructions.
+            seed_position: Where to place the seed:
+                          - "prepend": Seed before your prompt (recommended)
+                          - "append": Seed after your prompt
+
+        Returns:
+            Combined system prompt with seed injected.
+
+        Example:
+            # Basic usage
+            system_prompt = integration.prepare_system_prompt(
+                "You are a helpful coding assistant."
+            )
+
+            # Append mode
+            system_prompt = integration.prepare_system_prompt(
+                "You are a customer service bot.",
+                seed_position="append",
+            )
+
+        Note:
+            The seed adds ~360-1900 tokens depending on seed_level.
+            Plan your context window accordingly.
+        """
+        seed_content = self.seed
+
+        if not original_prompt:
+            return seed_content
+
+        if seed_position == "append":
+            return f"{original_prompt}\n\n{seed_content}"
+        else:
+            # prepend (default, recommended)
+            return f"{seed_content}\n\n{original_prompt}"
+
+    @property
+    def seed_level(self) -> str:
+        """Get the current seed level."""
+        return self._seed_level
 
     @property
     def validator(self) -> "Validator":
@@ -413,12 +529,16 @@ class AsyncSentinelIntegration:
     # Override in subclasses for better logging
     _integration_name: str = "base_async"
 
+    # Default seed level for this integration
+    _default_seed_level: str = "standard"
+
     def __init__(
         self,
         validator: Optional["AsyncValidator"] = None,
         validation_config: Optional["ValidationConfig"] = None,
         use_v3: bool = True,
         use_embeddings: bool = False,
+        seed_level: Optional[str] = None,
         **kwargs: Any,
     ):
         """
@@ -429,6 +549,8 @@ class AsyncSentinelIntegration:
             validation_config: Configuration for validator
             use_v3: Use Sentinel v3.0 adapter (default: True)
             use_embeddings: Enable embedding-based detection
+            seed_level: Seed level for system prompt injection. Options:
+                       "minimal", "standard", "full". Default: "standard".
             **kwargs: Additional arguments (absorbed for flexibility)
         """
         if validator is not None:
@@ -465,6 +587,83 @@ class AsyncSentinelIntegration:
                     f"[{self._integration_name}] Created AsyncLayeredValidator "
                     f"with default config (heuristic only)"
                 )
+
+        # Seed configuration (lazy loading)
+        self._seed_level = seed_level or self._default_seed_level
+        self._seed_cache: Optional[str] = None
+
+    # =========================================================================
+    # Seed Injection Methods
+    # =========================================================================
+
+    @property
+    def seed(self) -> str:
+        """
+        Get the alignment seed for this integration.
+
+        The seed is lazy-loaded and cached. Use this to inject the seed
+        into your model's system prompt.
+
+        Returns:
+            The seed content as a string.
+        """
+        if self._seed_cache is None:
+            self._seed_cache = self.get_seed(self._seed_level)
+        return self._seed_cache
+
+    def get_seed(self, level: Optional[str] = None) -> str:
+        """
+        Get an alignment seed by level.
+
+        Args:
+            level: Seed level - "minimal", "standard", or "full".
+                  If None, uses the instance's configured seed_level.
+
+        Returns:
+            The seed content as a string.
+        """
+        from sentinelseed import Sentinel
+
+        target_level = level or self._seed_level
+        sentinel = Sentinel(seed_level=target_level)
+        return sentinel.get_seed(target_level)
+
+    def prepare_system_prompt(
+        self,
+        original_prompt: str = "",
+        seed_position: str = "prepend",
+    ) -> str:
+        """
+        Prepare a system prompt with the alignment seed injected.
+
+        This method combines the alignment seed with your original system
+        prompt. The seed provides THSP (Truth, Harm, Scope, Purpose) gates
+        that help the model refuse harmful requests.
+
+        Args:
+            original_prompt: Your original system prompt/instructions.
+            seed_position: Where to place the seed:
+                          - "prepend": Seed before your prompt (recommended)
+                          - "append": Seed after your prompt
+
+        Returns:
+            Combined system prompt with seed injected.
+        """
+        seed_content = self.seed
+
+        if not original_prompt:
+            return seed_content
+
+        if seed_position == "append":
+            return f"{original_prompt}\n\n{seed_content}"
+        else:
+            # prepend (default, recommended)
+            return f"{seed_content}\n\n{original_prompt}"
+
+    @property
+    def seed_level(self) -> str:
+        """Get the current seed level."""
+        return self._seed_level
 
     @property
     def validator(self) -> "AsyncValidator":
