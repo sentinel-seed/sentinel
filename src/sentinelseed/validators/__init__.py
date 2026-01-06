@@ -70,7 +70,14 @@ __all__ = [
     "HarmGate",
     "ScopeGate",
     "PurposeGate",
-    "JailbreakGate",
-    "THSValidator",
     "THSPValidator",
+    # DEPRECATED - kept for backwards compatibility (M003/M004)
+    # These emit DeprecationWarning when instantiated.
+    # Use THSPValidator instead.
+    "JailbreakGate",  # Deprecated: integrated into TruthGate/ScopeGate
+    "THSValidator",   # Deprecated: use THSPValidator (4 gates)
 ]
+
+# Note: BaseGate is intentionally NOT in __all__ (B002)
+# It's an abstract base class for internal use only.
+# Direct subclassing is not part of the public API.
