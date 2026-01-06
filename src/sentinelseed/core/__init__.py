@@ -6,11 +6,17 @@ This module provides:
 - SeedLevel: Enum for seed levels
 - Validator: Protocol class defining the validator contract
 - Exceptions for error handling
+- SentinelValidator: Unified 3-gate orchestrator (v3.0)
+- SentinelConfig: Configuration for v3.0 architecture
+- SentinelObserver: LLM-based transcript observer (Gate 3)
 
 Usage:
     from sentinelseed.core import Sentinel, SeedLevel
     from sentinelseed.core import Validator
     from sentinelseed.core.exceptions import ValidationError
+
+    # v3.0 architecture
+    from sentinelseed.core import SentinelValidator, SentinelConfig
 
 Design Philosophy:
     - Protocol-based interfaces for flexibility
@@ -39,6 +45,12 @@ from sentinelseed.core.types import (
     LegacyValidationDict,
 )
 
+# v3.0 architecture components
+from sentinelseed.core.sentinel_config import SentinelConfig
+from sentinelseed.core.sentinel_results import ObservationResult, SentinelResult
+from sentinelseed.core.observer import SentinelObserver
+from sentinelseed.core.sentinel_validator import SentinelValidator
+
 
 __all__ = [
     # Main Sentinel class
@@ -58,6 +70,12 @@ __all__ = [
     "ValidatorStats",
     "THSPResultDict",
     "LegacyValidationDict",
+    # v3.0 architecture
+    "SentinelValidator",
+    "SentinelConfig",
+    "SentinelObserver",
+    "SentinelResult",
+    "ObservationResult",
 ]
 
 __version__ = "1.0.0"
