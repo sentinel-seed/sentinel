@@ -93,6 +93,11 @@ from sentinelseed.detection.detectors.harmful_request import (
     HarmfulRequestConfig,
 )
 
+from sentinelseed.detection.detectors.physical_safety import (
+    PhysicalSafetyDetector,
+    PhysicalSafetyConfig,
+)
+
 from sentinelseed.detection.detectors.semantic import (
     SemanticDetector,
     SemanticDetectorConfig,
@@ -112,6 +117,8 @@ __all__ = [
     "FramingDetectorConfig",
     "HarmfulRequestDetector",
     "HarmfulRequestConfig",
+    "PhysicalSafetyDetector",
+    "PhysicalSafetyConfig",
     # Semantic Detectors (LLM-based)
     "SemanticDetector",
     "SemanticDetectorConfig",

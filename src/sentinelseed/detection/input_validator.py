@@ -272,7 +272,27 @@ class InputValidator:
             logger.warning(f"Could not import HarmfulRequestDetector: {e}")
             self._stats["errors"] += 1
 
-        # 5. EmbeddingDetector - semantic similarity detection (optional)
+        # 5. PhysicalSafetyDetector - physical safety risks for embodied agents
+        # Weight 1.4 - added in v1.5.0 after SafeAgentBench testing revealed
+        # 28.3% failure rate on physical hazard detection.
+        # Detects commands like "Put fork in microwave" for robot/smart home systems.
+        try:
+            from sentinelseed.detection.detectors import PhysicalSafetyDetector
+
+            physical_detector = PhysicalSafetyDetector()
+            self.registry.register(
+                physical_detector,
+                weight=self.config.detector_weights.get("physical_safety_detector", 1.4),
+                enabled=self._is_detector_enabled("physical_safety_detector"),
+            )
+            logger.debug("Registered PhysicalSafetyDetector (weight=%.1f)",
+                         self.config.detector_weights.get("physical_safety_detector", 1.4))
+
+        except ImportError as e:
+            logger.warning(f"Could not import PhysicalSafetyDetector: {e}")
+            self._stats["errors"] += 1
+
+        # 6. EmbeddingDetector - semantic similarity detection (optional)
         # Weight 1.4 - catches attacks that evade heuristic detection
         # Only enabled if use_embeddings=True and provider available
         if self.config.use_embeddings:
