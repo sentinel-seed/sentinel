@@ -84,7 +84,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+
+if TYPE_CHECKING:
+    from sentinelseed.detection.embeddings import AttackVectorDatabase
 
 from sentinelseed.detection.types import (
     AttackType,
