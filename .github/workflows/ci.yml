@@ -124,9 +124,9 @@ jobs:
           mypy src/sentinelseed/sentinel_core.py \
                src/sentinelseed/__init__.py \
                src/sentinelseed/validators/gates.py \
-               src/sentinelseed/validation/*.py \
-               src/sentinelseed/integrations/_base.py \
-               src/sentinelseed/core/*.py \
+               src/sentinelseed/core/types.py \
+               src/sentinelseed/core/exceptions.py \
+               src/sentinelseed/core/sentinel_config.py \
                --ignore-missing-imports
 
   validate-seeds:

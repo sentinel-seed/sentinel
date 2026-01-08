@@ -433,7 +433,7 @@ class TestAsyncSentinelIntegration:
         integration = MyAsyncIntegration(my_param="test")
 
         assert integration.my_param == "test"
-        result = await integration.custom_async_method("safe content")
+        result = await integration.custom_async_method("hello world")
         assert result.is_safe is True
 
     def test_sync_validate_fallback(self):

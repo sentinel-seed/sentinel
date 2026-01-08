@@ -47,7 +47,7 @@ import re
 import warnings
 
 # Module version (B001)
-__version__ = "2.21.0"
+__version__ = "2.23.0"
 
 
 class BaseGate(ABC):

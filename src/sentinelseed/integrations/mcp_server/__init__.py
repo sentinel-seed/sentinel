@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional, Union
 import asyncio
 import logging
 
-__version__ = "2.21.0"
+__version__ = "2.23.0"
 
 # Public API exports
 __all__ = [
