@@ -128,7 +128,7 @@ class SentinelChain(SentinelIntegration):
         self._runnable = chain or llm
         self._is_llm = chain is None
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.seed_level = seed_level
+        self._seed_level = seed_level  # Use _seed_level (inherited property is read-only)
         self.inject_seed = inject_seed
         self.validate_input = validate_input
         self.validate_output = validate_output

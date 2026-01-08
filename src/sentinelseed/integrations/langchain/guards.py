@@ -124,7 +124,7 @@ class SentinelGuard(SentinelIntegration):
 
         self.agent = agent
         self.sentinel = sentinel or Sentinel(seed_level=seed_level)
-        self.seed_level = seed_level
+        self._seed_level = seed_level  # Use _seed_level (inherited property is read-only)
         self.block_unsafe = block_unsafe
         self.validate_input_enabled = validate_input
         self.validate_output_enabled = validate_output

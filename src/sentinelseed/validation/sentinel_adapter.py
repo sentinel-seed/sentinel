@@ -179,7 +179,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.HIGH,
                     mode=ValidationMode.INPUT,
-                    blocked=True,
                     attack_types=attack_types,
                 )
 
@@ -199,7 +198,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.LOW,
                     mode=ValidationMode.INPUT,
-                    blocked=False,
                 )
 
                 if self.config.log_validations:
@@ -218,7 +216,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.HIGH,
                     mode=ValidationMode.INPUT,
-                    blocked=True,
                 )
 
             # Fail-open: return safe result
@@ -228,7 +225,6 @@ class SentinelV3Adapter:
                 layer=ValidationLayer.HEURISTIC,
                 risk_level=RiskLevel.LOW,
                 mode=ValidationMode.INPUT,
-                blocked=False,
             )
 
     def validate_input(self, text: str) -> ValidationResult:
@@ -298,7 +294,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.HIGH,
                     mode=ValidationMode.OUTPUT,
-                    blocked=True,
                     seed_failed=True,
                     failure_types=failure_types,
                     gates_failed=list(output_result.gates_failed),
@@ -321,7 +316,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.LOW,
                     mode=ValidationMode.OUTPUT,
-                    blocked=False,
                     seed_failed=False,
                     input_context=input_context,
                 )
@@ -342,7 +336,6 @@ class SentinelV3Adapter:
                     layer=ValidationLayer.HEURISTIC,
                     risk_level=RiskLevel.HIGH,
                     mode=ValidationMode.OUTPUT,
-                    blocked=True,
                     seed_failed=True,
                 )
 
@@ -353,7 +346,6 @@ class SentinelV3Adapter:
                 layer=ValidationLayer.HEURISTIC,
                 risk_level=RiskLevel.LOW,
                 mode=ValidationMode.OUTPUT,
-                blocked=False,
                 seed_failed=False,
             )
 

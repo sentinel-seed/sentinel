@@ -301,7 +301,7 @@ class SafetyValidator(SentinelIntegration):
         self.model = model
         self.log_checks = log_checks
         self.record_history = record_history
-        self.seed_level = seed_level
+        self._seed_level = seed_level  # Use _seed_level (inherited property is read-only)
         self.max_text_size = max_text_size
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
@@ -658,7 +658,7 @@ class AsyncSafetyValidator(AsyncSentinelIntegration):
         self.model = model
         self.log_checks = log_checks
         self.record_history = record_history
-        self.seed_level = seed_level
+        self._seed_level = seed_level  # Use _seed_level (inherited property is read-only)
         self.max_text_size = max_text_size
         self.history_limit = history_limit
         self.validation_timeout = validation_timeout
