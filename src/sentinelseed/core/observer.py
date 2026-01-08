@@ -261,7 +261,10 @@ class SentinelObserver:
             )
 
         # Build client with optional base_url for alternative providers
-        client_kwargs = {"api_key": self._api_key}
+        client_kwargs = {
+            "api_key": self._api_key,
+            "timeout": self.timeout,
+        }
         if self.base_url:
             client_kwargs["base_url"] = self.base_url
 
@@ -281,7 +284,6 @@ class SentinelObserver:
             ],
             max_tokens=500,
             temperature=0,  # Deterministic
-            timeout=self.timeout,
         )
 
         if not response.choices:
