@@ -71,7 +71,7 @@ from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIn
 logger = logging.getLogger("sentinelseed.agent_validation")
 
 # Version
-__version__ = "2.23.0"
+__version__ = "2.23.1"
 
 # Valid providers
 VALID_PROVIDERS = ("openai", "anthropic")
