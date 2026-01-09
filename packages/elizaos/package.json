@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/elizaos-plugin",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Sentinel AI safety plugin for ElizaOS - THSP protocol validation and memory integrity for autonomous agents",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -17,8 +17,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",
@@ -54,9 +54,7 @@
   "bugs": {
     "url": "https://github.com/sentinel-seed/sentinel/issues"
   },
-  "dependencies": {
-    "@anthropic/sentinel-core": "file:../core"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@elizaos/core": "^1.0.0"
   },
@@ -66,6 +64,7 @@
     }
   },
   "devDependencies": {
+    "@anthropic/sentinel-core": "file:../core",
     "@elizaos/core": "^1.0.0",
     "@types/node": "^20.0.0",
     "eslint": "^8.57.0",
