@@ -54,7 +54,7 @@ evaluation/
 │       ├── evaluator/          # Evaluation logic
 │       └── methods/            # Evaluation methods
 │
-├── embodied-ai/                # BadRobot dataset scripts
+├── embodied-ai/                # BadRobot dataset (placeholder)
 │
 └── results/                    # Evaluation results (by benchmark)
     ├── harmbench/              # HarmBench results
@@ -77,19 +77,11 @@ python evaluation/benchmarks/harmbench/run_sentinel_harmbench.py \
   --seed_type standard
 ```
 
-#### HarmBench (OpenRouter)
-```bash
-python evaluation/benchmarks/harmbench/run_sentinel_harmbench_openrouter.py \
-  --api_key YOUR_OPENROUTER_KEY \
-  --model mistralai/mistral-7b-instruct \
-  --seed_type standard
-```
-
 #### JailbreakBench
 ```bash
-python evaluation/benchmarks/jailbreakbench/run_jailbreak_openrouter.py \
-  --api_key YOUR_OPENROUTER_KEY \
-  --model qwen/qwen-2.5-72b-instruct
+python evaluation/benchmarks/jailbreakbench/run_jailbreak_test.py \
+  --api_key YOUR_API_KEY \
+  --model gpt-4o-mini
 ```
 
 ### Action Safety Tests
@@ -111,12 +103,9 @@ python evaluation/benchmarks/safeagentbench/run_sentinel_safeagent_claude.py \
 ```
 
 #### BadRobot (Embodied AI)
-```bash
-python evaluation/embodied-ai/run_sentinel_test.py \
-  --api_key YOUR_OPENAI_KEY \
-  --model gpt-4o-mini \
-  --seed_type standard
-```
+
+> **Note:** BadRobot evaluation scripts are implemented via the SafeAgentBench framework.
+> Results are available in `results/badrobot/`.
 
 ### Ablation Studies
 

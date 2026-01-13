@@ -22,8 +22,7 @@ evaluation/embodied-ai/Embodied-AI-Safety/
 evaluation/safeagent-bench/
 evaluation/safeagentbench/
 
-# Local staging folders
-huggingface/
+# Local staging folders (none currently)
 
 # Windows artifacts
 nul
@@ -33,7 +32,13 @@ nul
 # ============================================
 node_modules/
 packages/*/node_modules/
+packages/*/coverage/
 *.tsbuildinfo
+
+# ============================================
+# Temporary Files
+# ============================================
+tmpclaude-*
 
 # ============================================
 # Python
