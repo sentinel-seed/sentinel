@@ -452,17 +452,25 @@ All integrations inheriting from `SentinelIntegration` have access to:
 
 | Integration | Description |
 |-------------|-------------|
-| `langchain` | LangChain guards and chains |
-| `crewai` | CrewAI multi-agent workflows |
-| `langgraph` | LangGraph stateful agents |
-| `llamaindex` | LlamaIndex query engines |
-| `dspy` | DSPy prompt optimization |
-| `letta` | Letta (MemGPT) stateful agents |
-| `virtuals` | Virtuals Protocol GAME SDK |
-| `solana_agent_kit` | Solana blockchain agents |
-| `openguardrails` | OpenGuardrails combined validation |
+| `agent_validation` | Generic agent action validation |
 | `agno` | Agno multi-agent framework |
+| `anthropic_sdk` | Anthropic Claude SDK integration |
+| `autogpt` | AutoGPT agent framework |
+| `crewai` | CrewAI multi-agent workflows |
+| `dspy` | DSPy prompt optimization |
+| `garak` | Garak LLM vulnerability scanner |
 | `google_adk` | Google Agent Development Kit |
+| `langchain` | LangChain guards and chains |
+| `langgraph` | LangGraph stateful agents |
+| `letta` | Letta (MemGPT) stateful agents |
+| `llamaindex` | LlamaIndex query engines |
+| `openai_agents` | OpenAI Agents SDK guardrails |
+| `openai_assistant` | OpenAI Assistants API |
+| `openguardrails` | OpenGuardrails combined validation |
+| `pyrit` | Microsoft PyRIT red teaming |
+| `raw_api` | Direct API validation wrapper |
+| `solana_agent_kit` | Solana blockchain agents |
+| `virtuals` | Virtuals Protocol GAME SDK |
 
 ## Domain-Specific Exceptions
 
