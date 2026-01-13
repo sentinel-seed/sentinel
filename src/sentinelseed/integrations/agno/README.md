@@ -253,7 +253,7 @@ python -m sentinelseed.integrations.agno.example
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - sentinelseed >= 2.0.0
 - agno >= 2.0.0
 

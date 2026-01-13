@@ -9,7 +9,7 @@ Integrate Sentinel's THSP protocol into Microsoft's PyRIT (Python Risk Identific
 ## Requirements
 
 - **PyRIT >= 0.10.0** (required for `_score_piece_async` API)
-- Python 3.9+
+- Python 3.10+
 
 ## Installation
 
