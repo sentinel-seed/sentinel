@@ -731,11 +731,12 @@ The semantic validation layer supports multiple LLM providers:
 |----------|-------------|----------|--------|
 | OpenAI | `"openai"` | (default) | gpt-4o-mini, gpt-4o |
 | Anthropic | `"anthropic"` | (default) | claude-3-haiku, claude-3-sonnet |
+| Meta Llama | `"openai_compatible"` | `https://api.llama.com/compat/v1` | Llama-4-Maverick, Llama-3.3-70B |
 | DeepSeek | `"openai_compatible"` | `https://api.deepseek.com/v1` | deepseek-chat, deepseek-reasoner |
-| Groq | `"openai_compatible"` | `https://api.groq.com/openai/v1` | llama-3.1-70b-versatile |
-| Together AI | `"openai_compatible"` | `https://api.together.xyz/v1` | meta-llama/Llama-3-70b-chat-hf |
-| Fireworks | `"openai_compatible"` | `https://api.fireworks.ai/inference/v1` | accounts/fireworks/models/llama-v3-70b |
-| Ollama (local) | `"openai_compatible"` | `http://localhost:11434/v1` | llama3.1, mistral |
+| Groq | `"openai_compatible"` | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile |
+| Together AI | `"openai_compatible"` | `https://api.together.xyz/v1` | meta-llama/Llama-3.3-70B-Instruct |
+| Fireworks | `"openai_compatible"` | `https://api.fireworks.ai/inference/v1` | accounts/fireworks/models/llama-v3p3-70b-instruct |
+| Ollama (local) | `"openai_compatible"` | `http://localhost:11434/v1` | llama3.3, mistral, deepseek-r1 |
 
 **Example with Groq:**
 ```python

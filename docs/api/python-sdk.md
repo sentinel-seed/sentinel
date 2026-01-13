@@ -652,6 +652,17 @@ config = ValidationConfig(
 )
 ```
 
+**Meta Llama API (official):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="https://api.llama.com/compat/v1",
+    semantic_model="Llama-3.3-70B-Instruct",
+    semantic_api_key="...",  # From llama.com dashboard
+)
+```
+
 **DeepSeek (OpenAI-compatible):**
 ```python
 config = ValidationConfig(
