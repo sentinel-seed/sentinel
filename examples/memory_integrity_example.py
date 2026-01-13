@@ -23,7 +23,7 @@ import json
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from sentinel.memory import (
+from sentinelseed.memory import (
     MemoryIntegrityChecker,
     MemoryEntry,
     SignedMemoryEntry,
