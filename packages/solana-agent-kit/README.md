@@ -29,22 +29,26 @@ See [typescript/README.md](./typescript/README.md) for full documentation.
 
 ### Python (Validation Layer)
 
-**Location:** `python/`
+**Location:** `src/sentinelseed/integrations/solana_agent_kit/`
 
 Python integration that provides validation functions to use with Solana Agent Kit workflows.
 
 ```python
-from sentinel.integrations.solana_agent_kit import SentinelValidator
+from sentinelseed.integrations.solana_agent_kit import SolanaValidator
 
-validator = SentinelValidator(max_transfer=100.0)
-result = validator.check("transfer", amount=50, recipient="...")
+validator = SolanaValidator(max_single_transfer=100.0)
+result = validator.validate_transaction(
+    action="transfer",
+    amount=50.0,
+    recipient="...",
+)
 
-if result.should_proceed:
+if result.is_safe:
     # Execute transaction
     pass
 ```
 
-See [python/example.py](./python/example.py) for usage examples.
+See the [Python integration README](../../src/sentinelseed/integrations/solana_agent_kit/README.md) for full documentation.
 
 ## Choosing an Implementation
 

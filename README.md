@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/sentinelseed)](https://pypi.org/project/sentinelseed/)
-[![npm](https://img.shields.io/npm/v/sentinelseed)](https://www.npmjs.com/package/sentinelseed)
+[![npm](https://img.shields.io/npm/v/sentinelseed)](https://www.npmjs.com/package/@sentinelseed/core)
 [![Benchmarks](https://img.shields.io/badge/benchmarks-4%20validated-green.svg)]()
 
 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev) · 🧪 **Try it:** [Chamber](https://sentinelseed.dev/chamber) · 🤗 **HuggingFace:** [sentinelseed](https://huggingface.co/sentinelseed) · 𝕏 **Twitter:** [@sentinel_Seed](https://x.com/Sentinel_Seed)
@@ -1289,7 +1289,7 @@ MIT License. See [LICENSE](LICENSE)
 | Platform | Package | Install |
 |----------|---------|---------|
 | **PyPI** | [sentinelseed](https://pypi.org/project/sentinelseed) | `pip install sentinelseed` |
-| **npm** | [sentinelseed](https://npmjs.com/package/sentinelseed) | `npm install sentinelseed` |
+| **npm** | [@sentinelseed/core](https://npmjs.com/package/@sentinelseed/core) | `npm install @sentinelseed/core` |
 | **MCP** | [mcp-server-sentinelseed](https://npmjs.com/package/mcp-server-sentinelseed) | `npx mcp-server-sentinelseed` |
 | **VS Code** | [sentinel-ai-safety](https://marketplace.visualstudio.com/items?itemName=sentinelseed.sentinel-ai-safety) | Search "Sentinel AI Safety" |
 | **OpenVSX** | [sentinel-ai-safety](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety) | For Cursor/Windsurf/VSCodium |
@@ -1312,7 +1312,7 @@ pip install sentinelseed[all]
 ## Community
 
 - 🌐 **Website:** [sentinelseed.dev](https://sentinelseed.dev)
-- 📦 **npm:** [npmjs.com/package/sentinelseed](https://npmjs.com/package/sentinelseed)
+- 📦 **npm:** [npmjs.com/package/@sentinelseed/core](https://npmjs.com/package/@sentinelseed/core)
 - 🐍 **PyPI:** [pypi.org/project/sentinelseed](https://pypi.org/project/sentinelseed)
 - 🤗 **HuggingFace:** [huggingface.co/sentinelseed](https://huggingface.co/sentinelseed)
 - 𝕏 **Twitter:** [@sentinel_Seed](https://x.com/Sentinel_Seed)

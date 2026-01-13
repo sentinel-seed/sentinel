@@ -281,7 +281,7 @@ npm run build -w packages/voltagent
 
 ## Related Packages
 
-- [`sentinelseed`](https://www.npmjs.com/package/sentinelseed): Python package
+- [`sentinelseed`](https://www.npmjs.com/package/@sentinelseed/core): Python package
 - [`@sentinelseed/elizaos-plugin`](https://www.npmjs.com/package/@sentinelseed/elizaos-plugin): ElizaOS integration
 
 ## Links

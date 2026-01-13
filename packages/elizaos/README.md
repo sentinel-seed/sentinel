@@ -451,7 +451,7 @@ import type {
 
 ## Related Packages
 
-- [`sentinelseed`](https://www.npmjs.com/package/sentinelseed) - Core Sentinel SDK
+- [`sentinelseed`](https://www.npmjs.com/package/@sentinelseed/core) - Core Sentinel SDK
 - [`mcp-server-sentinelseed`](https://www.npmjs.com/package/mcp-server-sentinelseed) - MCP Server
 
 ## Resources

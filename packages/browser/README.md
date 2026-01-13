@@ -222,4 +222,4 @@ MIT License (see [LICENSE](../../LICENSE))
 - GitHub: https://github.com/sentinel-seed/sentinel
 - Twitter: @sentinelseed
 - PyPI: https://pypi.org/project/sentinelseed/
-- npm: https://www.npmjs.com/package/sentinelseed
+- npm: https://www.npmjs.com/package/@sentinelseed/core
