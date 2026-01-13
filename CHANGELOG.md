@@ -5,6 +5,140 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.24.0] - 2026-01-13
+
+### Added
+
+#### Core: L4 Resilience & Retry System
+- **Retry System** (`retry.py`): Exponential backoff with jitter for L4 API calls
+  - Automatic retry for rate limits, timeouts, and transient errors
+  - Configurable max attempts, delays, and retry conditions
+  - Based on tenacity library for robust implementation
+- **Token Tracker** (`token_tracker.py`): Usage tracking for cost monitoring
+  - Track input/output tokens per API call
+  - Aggregate statistics for billing and optimization
+- **Gate 4 Fallback Policy**: Configurable behavior when L4 is unavailable
+  - `BLOCK`: Maximum security (block if L4 fails)
+  - `ALLOW_IF_L2_PASSED`: Balanced (allow only if L2 passed)
+  - `ALLOW`: Maximum usability (allow regardless)
+- **Block Messages**: User-facing messages for blocked requests
+  - Configurable per-gate messages
+  - Security-focused: never reveal detection details
+
+#### Detection: False Positive Reduction
+- **Benign Context Detector** (`benign_context.py`): Reduces false positives
+  - Detects legitimate technical contexts ("kill process", "attack the problem")
+  - Categories: programming, business, security education, health, chemistry
+  - Does not apply if obfuscation detected (prevents bypass)
+- **Intent Signal Detector** (`intent_signal.py`): Compositional intent analysis
+  - Analyzes action + target + context for better accuracy
+  - Weight 1.3 in InputValidator
+- **Safe Agent Detector** (`safe_agent_detector.py`): Enhanced embodied AI safety
+  - Covers plant care, object location, contamination, electrical stress
+  - Based on SafeAgentBench patterns, weight 1.4
+
+#### Detection: Expanded Pattern Coverage
+- **HarmfulContentChecker v1.2.0**: Major pattern expansion
+  - New categories: drugs, fraud (skimmers), exploitation, terrorism, chemical/bio
+  - Improved fiction bypass detection ("for educational purposes only")
+  - Compliance indicators now boost (not trigger) detection
+- **OutputValidator**: Enhanced with behavior checking
+  - New `behavior_checker.py` for behavioral analysis
+  - New `output_signal.py` for output signal detection
+
+#### Observer: Multi-turn Analysis
+- **Conversation Context** (`observer.py`): Multi-turn conversation support
+  - `ConversationTurn` and `ConversationContext` dataclasses
+  - Enables detection of escalation attacks (Crescendo, multi-turn jailbreaks)
+  - Integrated with retry system for resilient API calls
+
+#### Seed: Anti-Frame Protection
+- **Anti-Frame Protection** section in `standard.txt`
+  - Protects against positive framing bypass ("for objectivity", "for user control")
+  - Explicit rules: noble cause + harmful action = REFUSE
+  - "The test: If the ACTION is harmful, no PURPOSE justifies it"
+
+### Changed
+- **Gate Naming**: Standardized to L1/L2/L3/L4 (gate3 → gate4 internally)
+  - Legacy `gate3_*` properties maintained for backward compatibility
+  - All public APIs unchanged
+- **Gate 4 Execution**: Now ALWAYS executes when Gate 2 doesn't block
+  - Previously: only executed on Gate 2 uncertainty
+  - Ensures semantic analysis of full dialogue for accurate judgment
+- **InputValidator v1.8.0**: Integrated BenignContextDetector, new detectors
+- **SentinelConfig**: Added retry parameters, fallback policy, block messages
+- **Configuration Presets**: Added `SECURE_CONFIG` and `RESILIENT_CONFIG`
+
+### Fixed
+- Fiction bypass pattern: corrected "purposes only" detection
+- False positive reduction via BenignContextDetector integration
+- Compliance indicators alone no longer trigger harmful content detection
+
+### Security
+- Block messages designed to never reveal detection mechanisms
+- Benign context detection disabled when obfuscation detected
+- MALICIOUS_OVERRIDES prevent bypass of known attack patterns
+
+## [2.23.1] - 2026-01-09
+
+### Fixed
+- Added `typing_extensions>=4.0.0` as explicit dependency
+- Fixed PyPI package cache issues for SDK tests
+
+## [2.23.0] - 2026-01-08
+
+### Added
+
+#### Detection Module (Complete Implementation)
+- **InputValidator v1.5.0**: Pre-AI attack detection
+  - PatternDetector with 580+ regex patterns (weight 1.0)
+  - FramingDetector for roleplay/fiction attacks (weight 1.2)
+  - EscalationDetector for multi-turn attacks (weight 1.1)
+  - HarmfulRequestDetector for direct harm requests (weight 1.3)
+  - PhysicalSafetyDetector for embodied agents (weight 1.4)
+  - TextNormalizer with obfuscation detection
+  - DetectorRegistry for extensibility
+- **OutputValidator v1.3.0**: Post-AI seed compliance
+  - HarmfulContentChecker v1.0.0
+  - DeceptionChecker
+  - BypassChecker
+  - ComplianceChecker
+  - BehaviorChecker
+- **Embedding Detection**: 1000-vector semantic similarity
+  - Attack vector database with known harmful patterns
+  - Configurable similarity threshold
+
+#### Core v3.0 Architecture
+- **SentinelValidator**: Main 3-gate orchestrator
+  - Gate 1 (L1): InputValidator (pre-AI)
+  - Gate 2 (L3): OutputValidator (post-AI heuristic)
+  - Gate 3 (L4): SentinelObserver (post-AI LLM)
+- **SentinelConfig**: Unified configuration dataclass
+  - Gate enable/disable
+  - Embedding thresholds
+  - Provider configuration
+- **SentinelObserver**: LLM-based transcript analysis
+  - Multi-provider support: OpenAI, Anthropic, Groq, Together, DeepSeek
+  - Validated prompt (F1=87.9% in Session 189)
+  - Logprobs support for confidence scoring
+- **Result Types**: `SentinelResult`, `ObservationResult`
+  - Detailed gate-by-gate information
+  - Latency tracking
+
+#### Integration Updates
+- **Seed Injection**: Added to base integration classes
+- **SentinelV3Adapter**: Unified adapter for v3.0 architecture
+- Integration improvements for all 25 frameworks
+
+### Changed
+- Bumped minimum Python version to 3.10 (dropped 3.9)
+- CI pipeline improvements and coverage adjustments
+- THSPValidator improved to 97/100 accuracy
+
+### Documentation
+- Updated ARCHITECTURE.md with v3.0 details
+- API documentation refresh
+
 ## [2.19.0] - 2026-01-02
 
 ### Added
@@ -173,6 +307,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alignment seeds (minimal, standard, full)
 - OpenAI and Anthropic provider support
 
+[2.24.0]: https://github.com/sentinel-seed/sentinel/compare/v2.23.1...v2.24.0
+[2.23.1]: https://github.com/sentinel-seed/sentinel/compare/v2.23.0...v2.23.1
+[2.23.0]: https://github.com/sentinel-seed/sentinel/compare/v2.19.0...v2.23.0
 [2.19.0]: https://github.com/sentinel-seed/sentinel/compare/v2.18.0...v2.19.0
 [2.18.0]: https://github.com/sentinel-seed/sentinel/compare/v2.17.0...v2.18.0
 [2.17.0]: https://github.com/sentinel-seed/sentinel/compare/v2.16.0...v2.17.0

@@ -216,13 +216,15 @@ TOXICITY_KEYWORDS: Dict[str, Set[str]] = {
     "violence_threats": {
         "kill", "murder", "assassinate", "slaughter", "massacre",
         "attack", "assault", "beat", "torture", "maim",
-        "bomb", "shoot", "stab", "strangle", "execute",
+        "bomb", "shoot", "stab", "strangle",
+        # Note: "execute" removed in v1.1.0 - too generic, causes FP in programming contexts
         "genocide", "ethnic cleansing", "exterminate",
         "deserve to die", "should die", "must die", "hope you die",
         "need to die", "have to die", "going to die",
         # Portuguese
         "matar", "assassinar", "massacrar", "atacar", "torturar",
-        "espancar", "esfaquear", "atirar", "executar",
+        "espancar", "esfaquear", "atirar",
+        # Note: "executar" removed in v1.1.0 - too generic
         "merece morrer", "devem morrer", "precisam morrer",
     },
     "sexual_explicit": {
@@ -295,7 +297,7 @@ class ToxicityChecker(BaseChecker):
     This is the HARM gate implementation for OutputValidator (L3).
     """
 
-    VERSION = "1.0.0"
+    VERSION = "1.1.0"
     NAME = "toxicity_checker"
 
     def __init__(self, config: Optional[ToxicityCheckerConfig] = None):
@@ -417,7 +419,8 @@ class ToxicityChecker(BaseChecker):
         # Check slurs (with masking handling)
         for slur in EXPLICIT_SLURS:
             # Handle masked versions (n*gger -> n.gger, n-gger, etc.)
-            pattern = slur.replace("*", r"[*\-_.\s]?")
+            # v1.1.0: Removed \s from pattern - spaces in normal text shouldn't match
+            pattern = slur.replace("*", r"[*\-_.]?")
             if re.search(pattern, text, re.IGNORECASE):
                 signals.append({
                     "type": "explicit_slur",

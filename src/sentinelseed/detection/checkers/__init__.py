@@ -116,6 +116,16 @@ from sentinelseed.detection.checkers.embedding import (
     AsyncEmbeddingChecker,
 )
 
+from sentinelseed.detection.checkers.behavior_checker import (
+    BehaviorChecker,
+    BehaviorCheckerConfig,
+)
+
+from sentinelseed.detection.checkers.output_signal import (
+    OutputSignalChecker,
+    OutputSignalConfig,
+)
+
 __all__ = [
     # Base classes
     "BaseChecker",
@@ -135,6 +145,12 @@ __all__ = [
     "EmbeddingChecker",
     "EmbeddingCheckerConfig",
     "AsyncEmbeddingChecker",
+    # Behavior Checker
+    "BehaviorChecker",
+    "BehaviorCheckerConfig",
+    # Output Signal Checker
+    "OutputSignalChecker",
+    "OutputSignalConfig",
 ]
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"

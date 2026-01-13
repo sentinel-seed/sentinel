@@ -99,6 +99,13 @@ from sentinelseed.detection.config import InputValidatorConfig
 from sentinelseed.detection.registry import DetectorRegistry
 from sentinelseed.detection.normalizer import TextNormalizer, NormalizerConfig
 
+# Import benign context detector for FP reduction
+try:
+    from sentinelseed.detection.benign_context import BenignContextDetector
+    BENIGN_CONTEXT_AVAILABLE = True
+except ImportError:
+    BENIGN_CONTEXT_AVAILABLE = False
+
 logger = logging.getLogger("sentinelseed.detection.input_validator")
 
 
@@ -139,7 +146,7 @@ class InputValidator:
         validator.register_detector(MyCustomDetector(), weight=1.5)
     """
 
-    VERSION = "1.5.0"
+    VERSION = "1.8.0"  # Added BenignContextDetector for FP reduction
 
     def __init__(
         self,
@@ -165,9 +172,19 @@ class InputValidator:
             "attacks_detected": 0,
             "attacks_blocked": 0,
             "obfuscations_detected": 0,
+            "benign_context_reductions": 0,
             "errors": 0,
             "total_latency_ms": 0.0,
         }
+
+        # Initialize benign context detector for FP reduction
+        self._benign_detector = None
+        if BENIGN_CONTEXT_AVAILABLE and self.config.use_benign_context:
+            try:
+                self._benign_detector = BenignContextDetector()
+                logger.debug("BenignContextDetector initialized for FP reduction")
+            except Exception as e:
+                logger.warning(f"Could not initialize BenignContextDetector: {e}")
 
         # Initialize default detectors
         self._init_default_detectors()
@@ -292,13 +309,51 @@ class InputValidator:
             logger.warning(f"Could not import PhysicalSafetyDetector: {e}")
             self._stats["errors"] += 1
 
-        # 6. EmbeddingDetector - semantic similarity detection (optional)
+        # 6. IntentSignalDetector - intelligent intent signal detection
+        # Weight 1.3 - added in v1.6.0 to catch requests that evade keyword detection
+        # Uses compositional analysis of action + target + context
+        try:
+            from sentinelseed.detection.detectors import IntentSignalDetector
+
+            intent_detector = IntentSignalDetector()
+            self.registry.register(
+                intent_detector,
+                weight=self.config.detector_weights.get("intent_signal_detector", 1.3),
+                enabled=self._is_detector_enabled("intent_signal_detector"),
+            )
+            logger.debug("Registered IntentSignalDetector (weight=%.1f)",
+                         self.config.detector_weights.get("intent_signal_detector", 1.3))
+
+        except ImportError as e:
+            logger.warning(f"Could not import IntentSignalDetector: {e}")
+            self._stats["errors"] += 1
+
+        # 7. SafeAgentDetector - enhanced embodied agent safety detection
+        # Weight 1.4 - added in v1.7.0 based on Sentinel v2 experiments
+        # Covers plant care, object location, contamination, electrical stress
+        try:
+            from sentinelseed.detection.detectors import SafeAgentDetector
+
+            safe_agent_detector = SafeAgentDetector()
+            self.registry.register(
+                safe_agent_detector,
+                weight=self.config.detector_weights.get("safe_agent_detector", 1.4),
+                enabled=self._is_detector_enabled("safe_agent_detector"),
+            )
+            logger.debug("Registered SafeAgentDetector (weight=%.1f)",
+                         self.config.detector_weights.get("safe_agent_detector", 1.4))
+
+        except ImportError as e:
+            logger.warning(f"Could not import SafeAgentDetector: {e}")
+            self._stats["errors"] += 1
+
+        # 8. EmbeddingDetector - semantic similarity detection (optional)
         # Weight 1.4 - catches attacks that evade heuristic detection
         # Only enabled if use_embeddings=True and provider available
         if self.config.use_embeddings:
             self._init_embedding_detector()
 
-        # 6. SemanticDetector - LLM-based THSP validation (optional)
+        # 8. SemanticDetector - LLM-based THSP validation (optional)
         # Weight 1.5 - highest weight for contextual understanding
         # Only enabled if use_semantic=True and API key available
         if self.config.use_semantic:
@@ -528,7 +583,9 @@ class InputValidator:
             return InputValidationResult.safe()
 
         # PHASE 3: Aggregate results (including obfuscation info)
-        result = self._aggregate_results(detection_results, normalization_result)
+        result = self._aggregate_results(
+            detection_results, normalization_result, text_to_analyze
+        )
 
         # Update stats
         latency_ms = (time.time() - start_time) * 1000
@@ -554,6 +611,7 @@ class InputValidator:
         self,
         detection_results: List[DetectionResult],
         normalization_result: Optional[NormalizationResult] = None,
+        original_text: str = "",
     ) -> InputValidationResult:
         """
         Aggregate detection results into final InputValidationResult.
@@ -563,13 +621,14 @@ class InputValidator:
         - Whether multiple detectors are required
         - How to weight different detectors
 
-        Additionally considers obfuscation as a risk factor:
-        - Obfuscation + detected attack = higher confidence
-        - Obfuscation alone = suspicious but may not block
+        Additionally considers:
+        - Obfuscation as a risk factor (boosts confidence)
+        - Benign context as a FP reduction factor (reduces confidence)
 
         Args:
             detection_results: List of DetectionResult from all detectors
             normalization_result: Optional result from text normalization
+            original_text: Original text for benign context checking
 
         Returns:
             InputValidationResult with aggregated information
@@ -654,6 +713,31 @@ class InputValidator:
                 f"Obfuscation detected: {[t.value for t in normalization_result.obfuscation_types]}"
             )
 
+        # Reduce confidence if benign context detected
+        # Benign context = technical/academic/legitimate use of "dangerous" words
+        # Example: "kill the process" in programming context
+        benign_reduction = 0.0
+        benign_matches = []
+        if self._benign_detector and not has_obfuscation and original_text:
+            # Don't apply benign reduction if obfuscation detected
+            # (obfuscation + "benign" context = likely bypass attempt)
+            try:
+                is_benign, matches, reduction_factor = self._benign_detector.check(original_text)
+                if is_benign:
+                    # Apply reduction to confidence
+                    original_confidence = confidence
+                    confidence = confidence * reduction_factor
+                    benign_reduction = original_confidence - confidence
+                    benign_matches = [m.pattern_name for m in matches]
+
+                    self._stats["benign_context_reductions"] += 1
+                    logger.debug(
+                        f"Benign context detected: {benign_matches}, "
+                        f"confidence reduced from {original_confidence:.2f} to {confidence:.2f}"
+                    )
+            except Exception as e:
+                logger.warning(f"Benign context check failed: {e}")
+
         # Determine if should block
         should_block = self._should_block(
             confidence=confidence,
@@ -661,7 +745,7 @@ class InputValidator:
             attack_types=attack_types,
         )
 
-        # Build metadata with obfuscation info
+        # Build metadata with obfuscation and benign context info
         metadata: Dict[str, Any] = {}
         if has_obfuscation:
             metadata["obfuscation_detected"] = True
@@ -670,6 +754,11 @@ class InputValidator:
             ]
             metadata["obfuscation_risk_level"] = normalization_result.risk_level
             metadata["obfuscation_confidence_boost"] = obfuscation_boost
+
+        if benign_reduction > 0:
+            metadata["benign_context_detected"] = True
+            metadata["benign_matches"] = benign_matches
+            metadata["benign_confidence_reduction"] = benign_reduction
 
         return InputValidationResult(
             is_attack=True,

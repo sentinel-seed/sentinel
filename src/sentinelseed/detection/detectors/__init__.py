@@ -98,6 +98,16 @@ from sentinelseed.detection.detectors.physical_safety import (
     PhysicalSafetyConfig,
 )
 
+from sentinelseed.detection.detectors.intent_signal import (
+    IntentSignalDetector,
+    IntentSignalConfig,
+)
+
+from sentinelseed.detection.detectors.safe_agent_detector import (
+    SafeAgentDetector,
+    SafeAgentConfig,
+)
+
 from sentinelseed.detection.detectors.semantic import (
     SemanticDetector,
     SemanticDetectorConfig,
@@ -119,10 +129,14 @@ __all__ = [
     "HarmfulRequestConfig",
     "PhysicalSafetyDetector",
     "PhysicalSafetyConfig",
+    "IntentSignalDetector",
+    "IntentSignalConfig",
+    "SafeAgentDetector",
+    "SafeAgentConfig",
     # Semantic Detectors (LLM-based)
     "SemanticDetector",
     "SemanticDetectorConfig",
     "AsyncSemanticDetector",
 ]
 
-__version__ = "1.4.0"
+__version__ = "1.6.0"  # Added SafeAgentDetector

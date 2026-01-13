@@ -46,10 +46,23 @@ from sentinelseed.core.types import (
 )
 
 # v3.0 architecture components
-from sentinelseed.core.sentinel_config import SentinelConfig
+from sentinelseed.core.sentinel_config import (
+    SentinelConfig,
+    BlockMessages,
+    Gate4Fallback,
+)
 from sentinelseed.core.sentinel_results import ObservationResult, SentinelResult
-from sentinelseed.core.observer import SentinelObserver
+from sentinelseed.core.observer import (
+    SentinelObserver,
+    ConversationContext,
+    ConversationTurn,
+)
 from sentinelseed.core.sentinel_validator import SentinelValidator
+from sentinelseed.core.retry import (
+    RetryConfig,
+    RetryStats,
+    RetryableAPICall,
+)
 
 
 __all__ = [
@@ -73,9 +86,18 @@ __all__ = [
     # v3.0 architecture
     "SentinelValidator",
     "SentinelConfig",
+    "BlockMessages",
+    "Gate4Fallback",
     "SentinelObserver",
     "SentinelResult",
     "ObservationResult",
+    # Multi-turn support
+    "ConversationContext",
+    "ConversationTurn",
+    # Retry logic
+    "RetryConfig",
+    "RetryStats",
+    "RetryableAPICall",
 ]
 
 __version__ = "1.0.0"

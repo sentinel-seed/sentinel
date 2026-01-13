@@ -167,12 +167,19 @@ function validateScope(text: string): GateResult {
 
 /**
  * Purpose Gate: Checks for lack of legitimate purpose
+ * Now includes embodied AI patterns for physical actions without purpose
  */
 function validatePurpose(text: string): GateResult {
   const violations: string[] = [];
 
-  // Check purpose patterns
-  violations.push(...checkPatterns(text, PURPOSE_PATTERNS));
+  // Check all purpose pattern categories (including embodied actions)
+  for (const [category, patterns] of Object.entries(PURPOSE_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (pattern.test(text)) {
+        violations.push(`Purpose (${category}): ${pattern.source.substring(0, 40)}...`);
+      }
+    }
+  }
 
   // Check purpose indicators
   violations.push(...checkIndicators(text, PURPOSE_INDICATORS));

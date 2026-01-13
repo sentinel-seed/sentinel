@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinelseed"
-version = "2.23.1"
+version = "2.24.0"
 description = "AI safety toolkit with THSP protocol for LLMs, AI agents, and humanoid robots - EU AI Act compliance and practical alignment for developers"
 readme = "README.md"
 license = {text = "MIT"}

@@ -175,6 +175,20 @@ from sentinelseed.detection.detectors import (
 from sentinelseed.detection.checkers import (
     HarmfulContentChecker,
     DeceptionChecker,
+    BehaviorChecker,
+    BehaviorCheckerConfig,
+)
+
+# Behavior analysis (LLM-free behavioral detection)
+from sentinelseed.detection.behaviors.analyzer import (
+    BehaviorAnalyzer,
+    BehaviorAnalysisResult,
+    DetectedBehavior,
+)
+from sentinelseed.detection.behaviors.types import (
+    BehaviorType,
+    BehaviorCategory,
+    BehaviorSeverity,
 )
 
 __all__ = [
@@ -217,11 +231,20 @@ __all__ = [
     "CheckerConfig",
     "HarmfulContentChecker",
     "DeceptionChecker",
+    "BehaviorChecker",
+    "BehaviorCheckerConfig",
     # === Normalizer ===
     "TextNormalizer",
     # === Validators ===
     "InputValidator",
     "OutputValidator",
+    # === Behavior Analysis ===
+    "BehaviorAnalyzer",
+    "BehaviorAnalysisResult",
+    "DetectedBehavior",
+    "BehaviorType",
+    "BehaviorCategory",
+    "BehaviorSeverity",
 ]
 
 __version__ = "1.1.0"

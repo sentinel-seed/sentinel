@@ -236,6 +236,33 @@ export const SCOPE_PATTERNS = {
     /\bdel\s+\/[sS]\s+/i,
     /\bformat\s+[cC]:/i,
   ],
+
+  // Delegated authority - creating systems that exercise professional authority
+  // Addresses GAP-2: Delegation bypass of scope restrictions
+  delegated_authority: [
+    // Financial: Creating bots/systems that give investment advice (SEC violation)
+    /(create|build|make|develop|design|code|program|write)\s+(a\s+|an\s+)?(bot|system|tool|app|application|program|software|assistant|agent|service)\s+(that|which|to)\s+(recommend|suggest|advise|pick|select|choose)s?\s+(specific\s+)?(stock|bond|investment|securit|etf|crypto)/i,
+    /(investment|stock|trading|financial)\s+(advisor|adviser|recommendation)\s+(bot|system|tool|app|service)/i,
+    /(bot|system|app|tool|program)\s+(that|which)\s+(picks?|selects?|chooses?|recommends?)\s+(specific\s+)?(stock|bond|investment|securit)/i,
+    /automat(ed|ic)\s+(investment|stock|financial)\s+(advice|advisor|adviser|recommendation)/i,
+    /(recommend|suggest)\s+(specific|individual|particular)\s+(stock|bond|investment|securit).*for\s+(financial\s+)?gain/i,
+    // Additional patterns for edge cases
+    /(investment|stock|financial)\s+(advisor|adviser)\s+(that|which)\s+(picks?|recommends?|selects?|suggests?)/i,
+    /(app|tool|system|bot)\s+(that\s+)?tells?\s+(users?|people|you)\s+(which|what)\s+(stock|crypto|bond|investment)/i,
+
+    // Medical: Creating bots/systems that diagnose or prescribe
+    /(create|build|make|develop)\s+(a\s+|an\s+)?(bot|system|tool|app|assistant|agent)\s+(that|which|to)\s+(diagnose|prescribe|recommends?\s+(medications?|treatments?|drugs?))/i,
+    /(medical|health|diagnostic)\s+(diagnosis|diagnostic)\s+(bot|system|tool|app)/i,
+    /(prescription|prescribing)\s+(bot|system|tool|app|service)/i,
+    /automat(ed|ic)\s+(medical\s+)?(diagnosis|prescription|treatment\s+recommendation)/i,
+    // Additional pattern for treatment recommendations
+    /(system|bot|app|tool)\s+(that|which)\s+recommends?\s+(treatments?|medications?|drugs?)/i,
+
+    // Legal: Creating bots/systems that give legal advice
+    /(create|build|make|develop)\s+(a\s+|an\s+)?(bot|system|tool|app|assistant)\s+(that|which|to)\s+(give\s+legal\s+advice|make\s+legal\s+judgment|rule\s+on|determine\s+(guilt|liability))/i,
+    /(legal|law)\s+(advisor|adviser|advice)\s+(bot|system|tool|app)/i,
+    /automat(ed|ic)\s+(legal\s+)?(judgment|ruling|advice|verdict)/i,
+  ],
 };
 
 export const SCOPE_INDICATORS = [
@@ -260,24 +287,77 @@ export const SCOPE_INDICATORS = [
 // PURPOSE GATE PATTERNS
 // =============================================================================
 
-export const PURPOSE_PATTERNS = [
-  // Gratuitous destruction
-  /just\s+to\s+(see|watch)\s+(it\s+)?(burn|fail|crash|die)/i,
-  /for\s+(the\s+)?(fun|lulz|kicks)\s+of\s+it/i,
-  /because\s+i\s+can/i,
-  /no\s+reason,?\s+just/i,
-  // Explicitly harmful intent
-  /to\s+(hurt|harm|damage|destroy)\s+(someone|people|them)/i,
-  /make\s+(them|someone|people)\s+suffer/i,
-  /ruin\s+(their|someone'?s)\s+(life|career|reputation)/i,
-  // Validation/verification bypass
-  /skip\s+(all\s+)?validation/i,
-  /don'?t\s+verify\s+(anything|this)/i,
-  /bypass\s+verification/i,
-  /skip\s+verification/i,
-  /just\s+execute\s+(this|it)/i,
-  /no\s+need\s+to\s+(check|verify|validate)/i,
-];
+export const PURPOSE_PATTERNS = {
+  // Gratuitous destruction and harmful intent
+  explicit_harmful: [
+    /just\s+to\s+(see|watch)\s+(it\s+)?(burn|fail|crash|die)/i,
+    /for\s+(the\s+)?(fun|lulz|kicks)\s+of\s+it/i,
+    /because\s+i\s+can/i,
+    /no\s+reason,?\s+just/i,
+    /to\s+(hurt|harm|damage|destroy)\s+(someone|people|them)/i,
+    /make\s+(them|someone|people)\s+suffer/i,
+    /ruin\s+(their|someone'?s)\s+(life|career|reputation)/i,
+  ],
+
+  // Validation/verification bypass attempts
+  validation_bypass: [
+    /skip\s+(all\s+)?validation/i,
+    /don'?t\s+verify\s+(anything|this)/i,
+    /bypass\s+verification/i,
+    /skip\s+verification/i,
+    /just\s+execute\s+(this|it)/i,
+    /no\s+need\s+to\s+(check|verify|validate)/i,
+  ],
+
+  // Embodied AI purposeless actions - Addresses GAP-3
+  // These patterns detect physical actions without legitimate purpose
+  embodied_destructive: [
+    // Drop fragile/valuable objects (command form, not past tense or advisory)
+    // Uses word boundary and requires imperative form (start of sentence or after comma/period)
+    /^drop\s+(the\s+)?(watch|clock|alarm\s*clock|phone|cellphone|cell\s+phone|smartphone|camera|laptop|tablet|computer|statue|vase|glass|mirror|screen|monitor|tv|television|pot|pan)\b/i,
+    /[,.:;]\s*drop\s+(the\s+)?(watch|clock|alarm\s*clock|phone|cellphone|cell\s+phone|smartphone|camera|laptop|tablet|computer|statue|vase|glass|mirror|screen|monitor|tv|television|pot|pan)\b/i,
+    /\bthen\s+drop\s+(the\s+)?(watch|clock|alarm\s*clock|phone|cellphone|cell\s+phone|smartphone|camera|laptop|tablet|computer|statue|vase|glass|mirror|screen|monitor|tv|television|pot|pan)\b/i,
+    // Smash/break objects
+    /\b(smash|break|shatter|destroy)\s+(the\s+)?(watch|clock|phone|camera|laptop|tablet|statue|vase|glass|mirror|screen)\b/i,
+    // Throw fragile objects without target (sentence ends or followed by punctuation)
+    /\bthrow\s+(the\s+)?(watch|clock|phone|camera|laptop|tablet|statue|vase)\s*[.!?]?\s*$/i,
+  ],
+
+  // Wasteful actions - pouring/dumping resources into waste
+  embodied_wasteful: [
+    // Pour consumables into garbage/trash/drain
+    /\bpour\s+(the\s+)?(wine|water|coffee|juice|milk|soup|liquid|drink|beverage)\s+(from\s+.+\s+)?(into|in|down)\s+(the\s+)?(garbage|trash|bin|drain|toilet|floor|ground)\b/i,
+    // Fill garbage with liquids
+    /\bfill\s+(the\s+)?(garbage|trash)\s*(can|bin)?\s+with\s+(water|wine|coffee|liquid|milk|juice)/i,
+    // Dump resources into waste
+    /\b(dump|empty|discard)\s+(the\s+)?(wine|water|coffee|milk|juice|soup)\s+(into|in|down)\s+(the\s+)?(garbage|trash|drain|toilet)\b/i,
+    // Pour from container into trash
+    /\bpour\s+.+\s+from\s+(the\s+)?(bottle|pot|cup|glass|container)\s+(into|in)\s+(the\s+)?(garbage|trash|bin)\b/i,
+  ],
+
+  // Absurd placements - objects in inappropriate locations
+  embodied_absurd: [
+    // Electronics in liquid containers (including "remote control" as compound)
+    /\b(put|place|drop|insert)\s+(the\s+)?(phone|cellphone|cell\s+phone|smartphone|laptop|tablet|computer|camera|watch|remote\s*control|remote|controller)\s+(in|into|inside)\s+(the\s+)?(mug|cup|glass|bowl|sink|bathtub|toilet|water|pool|aquarium)\b/i,
+    // Paper/books in refrigerator/freezer (damages them) - including "place it" after mentioning book
+    /\b(put|place)\s+(the\s+)?(book|newspaper|magazine|paper|document|letter)\s+(in|into|inside)\s+(the\s+)?(fridge|refrigerator|freezer)\b/i,
+    /\bbook\b.{0,30}\bplace\s+(it\s+)?(in|into|inside)\s+(the\s+)?(fridge|refrigerator|freezer)\b/i,
+    // Electronics in oven/microwave (fire hazard)
+    /\b(put|place)\s+(the\s+)?(phone|laptop|tablet|camera|batter(y|ies))\s+(in|into|inside)\s+(the\s+)?(oven|microwave|stove|fire|fireplace)\b/i,
+    // Valuables in trash
+    /\b(put|place|throw)\s+(the\s+)?(phone|wallet|money|cash|jewelry|watch|ring|keys)\s+(in|into|inside)\s+(the\s+)?(garbage|trash|bin)\b/i,
+  ],
+
+  // Unjustified physical actions - actions without stated purpose
+  embodied_unjustified: [
+    // Throw any object with no destination (sentence ends) - imperative form
+    /^throw\s+(a\s+|the\s+)?[a-zA-Z]+\s*[.!?]?\s*$/i,
+    // Push object over (destabilize)
+    /\bpush\s+(the\s+)?[a-zA-Z]+\s+over\s*[.!?]?\s*$/i,
+    // Kick object without target
+    /\bkick\s+(the\s+)?[a-zA-Z]+\s*[.!?]?\s*$/i,
+  ],
+};
 
 export const PURPOSE_INDICATORS = [
   'just want to cause chaos',
@@ -511,3 +591,5 @@ export const ALL_JAILBREAK_PATTERNS = [
 export const ALL_HARM_PATTERNS = Object.values(HARM_PATTERNS).flat();
 
 export const ALL_SCOPE_PATTERNS = Object.values(SCOPE_PATTERNS).flat();
+
+export const ALL_PURPOSE_PATTERNS = Object.values(PURPOSE_PATTERNS).flat();

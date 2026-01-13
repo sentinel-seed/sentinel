@@ -298,6 +298,11 @@ class InputValidatorConfig(DetectionConfig):
     semantic_threshold: float = 0.70
     semantic_fail_closed: bool = True
 
+    # Benign Context Detection (FP reduction)
+    # When enabled, reduces confidence for queries with benign technical context
+    # e.g., "kill the process" in programming context
+    use_benign_context: bool = True
+
     # Detectors
     enabled_detectors: Optional[List[str]] = None
     detector_weights: Dict[str, float] = field(default_factory=dict)

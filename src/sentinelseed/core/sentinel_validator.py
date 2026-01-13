@@ -12,12 +12,13 @@ Flow:
                                               │
                                     ┌─────────┴─────────┐
                                     │                   │
-                                  BLOCK            UNCERTAIN
+                                  BLOCK              PASS
                                                        │
                                                        ▼
                                           [Gate 3: Sentinela]
                                           (OBSERVADORA)
                                           Recebe: TRANSCRIÇÃO
+                                          SEMPRE executa se Gate 2 não bloquear
 
 Example:
     from sentinelseed import SentinelValidator, SentinelConfig
@@ -54,7 +55,7 @@ import logging
 import time
 from typing import Optional
 
-from sentinelseed.core.sentinel_config import SentinelConfig
+from sentinelseed.core.sentinel_config import SentinelConfig, Gate4Fallback
 from sentinelseed.core.sentinel_results import ObservationResult, SentinelResult
 from sentinelseed.core.observer import SentinelObserver
 from sentinelseed.detection import InputValidator, OutputValidator
@@ -75,8 +76,8 @@ class SentinelValidator:
     - Gate 2 (OutputValidator): Heuristic + Embedding detection of output failures
     - Gate 3 (SentinelObserver): LLM-based transcript analysis
 
-    Gate 3 only executes when Gate 2 cannot decide with high confidence,
-    saving API costs while maintaining safety.
+    Gate 3 ALWAYS executes when Gate 2 does not block. This ensures semantic
+    analysis of the full dialogue (input + output) for accurate judgment.
 
     Attributes:
         config: SentinelConfig with all gate settings
@@ -114,28 +115,34 @@ class SentinelValidator:
         else:
             self.gate2 = None
 
-        # Initialize Gate 3 (SentinelObserver)
-        if self.config.gate3_enabled:
-            self.gate3 = SentinelObserver(
-                provider=self.config.gate3_provider,
-                model=self.config.gate3_model,
-                api_key=self.config.gate3_api_key,
-                base_url=self.config.gate3_base_url,
-                timeout=self.config.gate3_timeout,
+        # Initialize Gate 4 (L4 SentinelObserver)
+        if self.config.gate4_enabled:
+            self.gate4 = SentinelObserver(
+                provider=self.config.gate4_provider,
+                model=self.config.gate4_model,
+                api_key=self.config.gate4_api_key,
+                base_url=self.config.gate4_base_url,
+                timeout=self.config.gate4_timeout,
+                retry_config=self.config.get_retry_config(),
             )
         else:
-            self.gate3 = None
+            self.gate4 = None
+
+        # Legacy alias
+        self.gate3 = self.gate4
 
         # Statistics
         self._validation_count = 0
-        self._gate3_calls = 0
+        self._gate4_calls = 0
+        self._gate4_failures = 0
         self._blocked_count = 0
 
         logger.info(
             f"SentinelValidator initialized: "
             f"Gate1={self.config.gate1_enabled}, "
             f"Gate2={self.config.gate2_enabled}, "
-            f"Gate3={self.config.gate3_enabled}"
+            f"Gate4={self.config.gate4_enabled}, "
+            f"Gate4Fallback={self.config.gate4_fallback.value}"
         )
 
     def validate_input(self, input: str) -> SentinelResult:
@@ -170,6 +177,7 @@ class SentinelValidator:
                 return SentinelResult.blocked_by_gate1(
                     gate1_result=result,
                     latency_ms=(time.time() - start_time) * 1000,
+                    user_message=self.config.block_messages.gate1,
                 )
 
             return SentinelResult(
@@ -186,7 +194,11 @@ class SentinelValidator:
             logger.error(f"Gate 1 error: {e}")
             if self.config.fail_closed:
                 self._blocked_count += 1
-                return SentinelResult.error(str(e), fail_closed=True)
+                return SentinelResult.error(
+                    str(e),
+                    fail_closed=True,
+                    user_message=self.config.block_messages.error,
+                )
             return SentinelResult.error(str(e), fail_closed=False)
 
     def validate_dialogue(
@@ -198,7 +210,8 @@ class SentinelValidator:
         Validate the complete dialogue (Gates 2 + 3).
 
         This is the main validation method for post-AI response.
-        Gate 3 only executes if Gate 2 cannot decide with high confidence.
+        Gate 3 ALWAYS executes when Gate 2 does not block, ensuring
+        semantic analysis of the full input+output pair.
 
         Args:
             input: User's original message
@@ -225,64 +238,102 @@ class SentinelValidator:
                     return SentinelResult.blocked_by_gate2(
                         gate2_result=gate2_result,
                         latency_ms=(time.time() - start_time) * 1000,
+                        user_message=self.config.block_messages.gate2,
                     )
 
-                # High confidence PASS
-                if (
-                    not gate2_result.seed_failed
-                    and gate2_result.confidence >= self.config.gate2_confidence_threshold
-                ):
-                    return SentinelResult.allowed_by_gate2(
-                        gate2_result=gate2_result,
-                        latency_ms=(time.time() - start_time) * 1000,
-                    )
-
-                # Low confidence - escalate to Gate 3
+                # Gate 2 did not block - escalate to Gate 3 for final judgment
+                # Gate 3 ALWAYS runs when Gate 2 doesn't block, regardless of confidence
                 logger.debug(
-                    f"Gate 2 uncertain (confidence={gate2_result.confidence:.2f}), "
-                    f"escalating to Gate 3"
+                    f"Gate 2 passed (confidence={gate2_result.confidence:.2f}), "
+                    f"escalating to Gate 3 for semantic analysis"
                 )
 
             except Exception as e:
                 logger.error(f"Gate 2 error: {e}")
                 if self.config.fail_closed and not self.gate3:
                     self._blocked_count += 1
-                    return SentinelResult.error(str(e), fail_closed=True)
+                    return SentinelResult.error(
+                        str(e),
+                        fail_closed=True,
+                        user_message=self.config.block_messages.error,
+                    )
 
-        # --- Gate 3: LLM Observer ---
-        if self.gate3:
+        # --- Gate 4: LLM Observer (L4 Sentinel) ---
+        if self.gate4:
             try:
-                self._gate3_calls += 1
-                gate3_result = self.gate3.observe(input=input, output=output)
+                self._gate4_calls += 1
+                gate4_result = self.gate4.observe(input=input, output=output)
 
-                if not gate3_result.is_safe:
+                if not gate4_result.is_safe:
                     self._blocked_count += 1
-                    return SentinelResult.blocked_by_gate3(
-                        gate3_result=gate3_result,
+                    return SentinelResult.blocked_by_gate4(
+                        gate3_result=gate4_result,
                         gate2_result=gate2_result,
                         latency_ms=(time.time() - start_time) * 1000,
+                        user_message=self.config.block_messages.gate4,
                     )
 
                 return SentinelResult.allowed_by_gate3(
-                    gate3_result=gate3_result,
+                    gate3_result=gate4_result,
                     gate2_result=gate2_result,
                     latency_ms=(time.time() - start_time) * 1000,
                 )
 
             except Exception as e:
-                logger.error(f"Gate 3 error: {e}")
-                if self.config.fail_closed:
-                    self._blocked_count += 1
-                    return SentinelResult.error(str(e), fail_closed=True)
-                return SentinelResult.error(str(e), fail_closed=False)
+                # L4 failed - apply fallback policy
+                self._gate4_failures += 1
+                error_msg = str(e)
+                logger.warning(
+                    f"Gate 4 (L4) unavailable: {error_msg}. "
+                    f"Applying fallback policy: {self.config.gate4_fallback.value}"
+                )
 
-        # No Gate 3 and Gate 2 was uncertain - use Gate 2 result
+                latency_ms = (time.time() - start_time) * 1000
+
+                # Apply fallback behavior based on configuration
+                if self.config.gate4_fallback == Gate4Fallback.BLOCK:
+                    # Maximum security: block if L4 unavailable
+                    self._blocked_count += 1
+                    return SentinelResult.l4_unavailable_blocked(
+                        error_msg=error_msg,
+                        gate2_result=gate2_result,
+                        latency_ms=latency_ms,
+                        user_message=self.config.block_messages.l4_unavailable,
+                    )
+
+                elif self.config.gate4_fallback == Gate4Fallback.ALLOW_IF_L2_PASSED:
+                    # Balanced: allow only if L2 didn't detect issues
+                    if gate2_result and gate2_result.seed_failed:
+                        # L2 detected issues, block
+                        self._blocked_count += 1
+                        return SentinelResult.blocked_by_gate2(
+                            gate2_result=gate2_result,
+                            latency_ms=latency_ms,
+                            user_message=self.config.block_messages.gate2,
+                        )
+                    # L2 passed, allow with partial validation warning
+                    return SentinelResult.l4_unavailable_allowed(
+                        error_msg=error_msg,
+                        gate2_result=gate2_result,
+                        latency_ms=latency_ms,
+                    )
+
+                else:  # Gate4Fallback.ALLOW
+                    # Maximum usability: allow regardless
+                    return SentinelResult.l4_unavailable_allowed(
+                        error_msg=error_msg,
+                        gate2_result=gate2_result,
+                        latency_ms=latency_ms,
+                    )
+
+        # No Gate 4 and Gate 2 was uncertain - use Gate 2 result
         if gate2_result:
             if gate2_result.seed_failed:
                 self._blocked_count += 1
                 return SentinelResult.blocked_by_gate2(
                     gate2_result=gate2_result,
                     latency_ms=(time.time() - start_time) * 1000,
+                    user_message=self.config.block_messages.gate2,
                 )
             return SentinelResult.allowed_by_gate2(
                 gate2_result=gate2_result,
@@ -291,7 +342,11 @@ class SentinelValidator:
 
         # No gates enabled - allow by default (or block if fail_closed)
         if self.config.fail_closed:
-            return SentinelResult.error("No gates enabled", fail_closed=True)
+            return SentinelResult.error(
+                "No gates enabled",
+                fail_closed=True,
+                user_message=self.config.block_messages.error,
+            )
         return SentinelResult(
             blocked=False,
             allowed=True,
@@ -323,10 +378,16 @@ class SentinelValidator:
             "total_validations": self._validation_count,
             "blocked": self._blocked_count,
             "passed": self._validation_count - self._blocked_count,
-            "gate3_calls": self._gate3_calls,
-            "gate3_call_rate": (
-                self._gate3_calls / self._validation_count
+            "gate4_calls": self._gate4_calls,
+            "gate4_failures": self._gate4_failures,
+            "gate4_call_rate": (
+                self._gate4_calls / self._validation_count
                 if self._validation_count > 0
+                else 0
+            ),
+            "gate4_failure_rate": (
+                self._gate4_failures / self._gate4_calls
+                if self._gate4_calls > 0
                 else 0
             ),
             "block_rate": (
@@ -337,7 +398,8 @@ class SentinelValidator:
             "config": {
                 "gate1_enabled": self.config.gate1_enabled,
                 "gate2_enabled": self.config.gate2_enabled,
-                "gate3_enabled": self.config.gate3_enabled,
-                "gate3_model": self.config.gate3_model,
+                "gate4_enabled": self.config.gate4_enabled,
+                "gate4_model": self.config.gate4_model,
+                "gate4_fallback": self.config.gate4_fallback.value,
             },
         }

@@ -43,7 +43,7 @@ References:
     - THSP Protocol: https://github.com/sentinel-seed/sentinel#thsp-protocol
 """
 
-__version__ = "2.23.1"
+__version__ = "2.24.0"
 __author__ = "Sentinel Team"
 
 # Minimum required Garak version

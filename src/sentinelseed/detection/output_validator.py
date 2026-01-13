@@ -147,6 +147,8 @@ class OutputValidator:
                 BypassIndicatorChecker,
                 ComplianceChecker,
                 ToxicityChecker,
+                BehaviorChecker,
+                OutputSignalChecker,
             )
 
             # Register HarmfulContentChecker (weight 1.2 - critical content)
@@ -194,6 +196,26 @@ class OutputValidator:
                 enabled=self._is_checker_enabled("toxicity_checker"),
             )
             logger.debug("Registered default ToxicityChecker")
+
+            # Register BehaviorChecker (weight 1.4 - LLM-free behavioral analysis)
+            # Detects 56 harmful AI behaviors without external API calls
+            behavior_checker = BehaviorChecker()
+            self.registry.register(
+                behavior_checker,
+                weight=self.config.checker_weights.get("behavior_checker", 1.4),
+                enabled=self._is_checker_enabled("behavior_checker"),
+            )
+            logger.debug("Registered default BehaviorChecker")
+
+            # Register OutputSignalChecker (weight 1.3 - intelligent signal detection)
+            # Detects evasive framing, compliance deception, roleplay escape
+            output_signal_checker = OutputSignalChecker()
+            self.registry.register(
+                output_signal_checker,
+                weight=self.config.checker_weights.get("output_signal_checker", 1.3),
+                enabled=self._is_checker_enabled("output_signal_checker"),
+            )
+            logger.debug("Registered default OutputSignalChecker")
 
         except ImportError as e:
             logger.warning(f"Could not import default checkers: {e}")

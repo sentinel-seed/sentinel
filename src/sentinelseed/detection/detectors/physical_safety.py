@@ -66,11 +66,18 @@ LIQUIDS: Set[str] = {
 THROWABLE_DANGEROUS: Set[str] = {
     "knife", "knives", "fork", "forks", "plate", "plates", "mug", "mugs",
     "vase", "glass", "bottle", "pan", "pot", "statue", "candle",
+    # Added v1.1.0 - electronics and other dangerous throwables
+    "cellphone", "phone", "smartphone", "alarmclock", "alarm clock",
+    "laptop", "remote", "creditcard", "credit card", "controller",
+    "cup", "bowl", "egg", "eggs",
 }
 
 BREAKABLE_OBJECTS: Set[str] = {
     "vase", "mirror", "window", "glass", "plate", "mug", "bottle",
     "shower glass", "showerglass", "statue",
+    # Added v1.1.0 - electronics and other breakables
+    "cellphone", "phone", "smartphone", "laptop", "television", "tv",
+    "alarmclock", "alarm clock", "remote", "cup", "bowl", "egg",
 }
 
 
@@ -234,12 +241,99 @@ PHYSICAL_SAFETY_PATTERNS: List[Tuple[str, re.Pattern, float, str]] = [
     (
         "electronics_water",
         re.compile(
-            r"\b(put|place)\b.*\b(cellphone|phone|laptop)\b.*\b(sink|water|bathtub)\b"
-            r"|\b(sink|bathtub)\b.*\b(cellphone|phone)\b",
+            r"\b(put|place|turn on)\b.*\b(cellphone|phone|laptop|alarmclock)\b.*\b(sink|water|bathtub)\b"
+            r"|\b(sink|bathtub)\b.*\b(cellphone|phone|alarmclock)\b",
             re.IGNORECASE,
         ),
         0.85,
         "electrical_hazard",
+    ),
+    # =========================================================================
+    # NEW PATTERNS - Added v1.1.0 based on SafeAgentBench failure analysis
+    # =========================================================================
+    # Liquid on furniture (bed, sofa, couch)
+    (
+        "liquid_furniture",
+        re.compile(
+            r"\b(pour|spill)\b.*\b(water|coffee|wine|liquid|juice|milk)\b.*\b(bed|sofa|couch|carpet|rug|chair)\b"
+            r"|\b(pour|spill)\b.*\b(bed|sofa|couch)\b",
+            re.IGNORECASE,
+        ),
+        0.75,
+        "property_damage",
+    ),
+    # Fridge/refrigerator door left open
+    (
+        "fridge_door_open",
+        re.compile(
+            r"\b(fridge|refrigerator)\b.*\b(door)\b.*\b(open|left)\b"
+            r"|\b(leave|left)\b.*\b(fridge|refrigerator)\b.*\b(open)\b",
+            re.IGNORECASE,
+        ),
+        0.6,
+        "property_damage",
+    ),
+    # Metal/knife on stove
+    (
+        "metal_on_stove",
+        re.compile(
+            r"\b(put|place)\b.*\b(knife|fork|metal|spoon)\b.*\b(stove|burner|stoveburner)\b"
+            r"|\b(stove|burner)\b.*\b(knife|fork|metal)\b",
+            re.IGNORECASE,
+        ),
+        0.8,
+        "fire_hazard",
+    ),
+    # Break electronics
+    (
+        "break_electronics",
+        re.compile(
+            r"\b(break|smash|destroy)\b.*\b(cellphone|phone|laptop|tv|television|alarmclock|remote)\b",
+            re.IGNORECASE,
+        ),
+        0.75,
+        "property_damage",
+    ),
+    # Throw electronics
+    (
+        "throw_electronics",
+        re.compile(
+            r"\b(throw)\b.*\b(cellphone|phone|alarmclock|alarm clock|laptop|remote|creditcard|credit card)\b",
+            re.IGNORECASE,
+        ),
+        0.8,
+        "physical_injury",
+    ),
+    # Drop electronics/fragile
+    (
+        "drop_electronics",
+        re.compile(
+            r"\b(drop)\b.*\b(cellphone|phone|laptop|alarmclock|creditcard|credit card|remote)\b",
+            re.IGNORECASE,
+        ),
+        0.7,
+        "property_damage",
+    ),
+    # Pour liquid into drawer/cabinet
+    (
+        "liquid_drawer",
+        re.compile(
+            r"\b(pour)\b.*\b(water|coffee|wine|liquid)\b.*\b(drawer|cabinet|closet)\b"
+            r"|\b(drawer|cabinet)\b.*\b(pour|water|wine|coffee)\b",
+            re.IGNORECASE,
+        ),
+        0.7,
+        "property_damage",
+    ),
+    # Generic dirty/damage commands
+    (
+        "dirty_damage",
+        re.compile(
+            r"\b(dirty|soil|stain|damage|ruin)\b.*\b(bed|mirror|floor|carpet|sofa|couch)\b",
+            re.IGNORECASE,
+        ),
+        0.6,
+        "property_damage",
     ),
 ]
 
@@ -271,7 +365,7 @@ class PhysicalSafetyDetector(BaseDetector):
         safety_config: PhysicalSafetyConfig with thresholds
     """
 
-    VERSION = "1.0.0"
+    VERSION = "1.1.0"  # Expanded patterns based on SafeAgentBench analysis
 
     def __init__(
         self,
