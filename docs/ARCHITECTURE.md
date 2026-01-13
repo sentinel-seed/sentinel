@@ -731,6 +731,7 @@ The semantic validation layer supports multiple LLM providers:
 |----------|-------------|----------|--------|
 | OpenAI | `"openai"` | (default) | gpt-4o-mini, gpt-4o |
 | Anthropic | `"anthropic"` | (default) | claude-3-haiku, claude-3-sonnet |
+| DeepSeek | `"openai_compatible"` | `https://api.deepseek.com/v1` | deepseek-chat, deepseek-reasoner |
 | Groq | `"openai_compatible"` | `https://api.groq.com/openai/v1` | llama-3.1-70b-versatile |
 | Together AI | `"openai_compatible"` | `https://api.together.xyz/v1` | meta-llama/Llama-3-70b-chat-hf |
 | Fireworks | `"openai_compatible"` | `https://api.fireworks.ai/inference/v1` | accounts/fireworks/models/llama-v3-70b |

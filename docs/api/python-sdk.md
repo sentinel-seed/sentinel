@@ -652,6 +652,17 @@ config = ValidationConfig(
 )
 ```
 
+**DeepSeek (OpenAI-compatible):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="https://api.deepseek.com/v1",
+    semantic_model="deepseek-chat",  # or "deepseek-reasoner"
+    semantic_api_key="sk-...",
+)
+```
+
 **Groq (OpenAI-compatible):**
 ```python
 config = ValidationConfig(
