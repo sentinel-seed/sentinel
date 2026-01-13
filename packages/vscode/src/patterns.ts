@@ -1,7 +1,7 @@
 /**
  * Shared THSP patterns for both linter and analyzer
  *
- * Patterns are imported from @anthropic/sentinel-core for consistency across
+ * Patterns are imported from @sentinelseed/core for consistency across
  * all Sentinel packages. This ensures the same detection rules everywhere.
  *
  * These patterns are used for heuristic analysis when LLM is not available.
@@ -18,7 +18,7 @@ import {
     HARM_PATTERNS,
     DECEPTION_PATTERNS,
     PURPOSE_PATTERNS,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 
 export interface THSPPattern {
     pattern: RegExp;
@@ -46,7 +46,7 @@ function createPatterns(
 
 /**
  * THSP Gate patterns for detecting potential safety issues
- * Built from @anthropic/sentinel-core patterns
+ * Built from @sentinelseed/core patterns
  */
 export const THSP_PATTERNS: THSPPattern[] = [
     // === SCOPE GATE (Jailbreak attempts) ===

@@ -13,7 +13,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@anthropic/sentinel-core": "file:../core",
+    "@sentinelseed/core": "file:../core",
     "idb": "^8.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

@@ -136,7 +136,7 @@ sentinel/
 │   └── database/               # Database guard
 ├── tests/                      # Test suite
 ├── packages/                   # JavaScript/TypeScript packages
-│   ├── core/                   # @anthropic/sentinel-core
+│   ├── core/                   # @sentinelseed/core
 │   ├── vscode/                 # VS Code extension
 │   └── ...
 ├── api/                        # REST API

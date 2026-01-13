@@ -4,7 +4,7 @@
  * These patterns are synchronized from the Python core (sentinelseed/validators/gates.py)
  * All packages (browser, voltagent, vscode, etc.) should import from here.
  *
- * DO NOT duplicate these patterns - always import from @anthropic/sentinel-core
+ * DO NOT duplicate these patterns - always import from @sentinelseed/core
  *
  * @author Sentinel Team
  * @license MIT

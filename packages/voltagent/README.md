@@ -267,7 +267,7 @@ interface SentinelGuardrailConfig {
 
 ## Development
 
-This package depends on `@anthropic/sentinel-core` which provides the THSP validation patterns. When developing locally, the dependency is resolved via `file:../core` in the monorepo structure.
+This package depends on `@sentinelseed/core` which provides the THSP validation patterns. When developing locally, the dependency is resolved via `file:../core` in the monorepo structure.
 
 For production npm installations, the core patterns are bundled during the build process. If you're building from source, ensure you have the full monorepo cloned:
 

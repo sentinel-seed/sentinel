@@ -2,16 +2,16 @@
  * @sentinelseed/voltagent - THSP Validator
  *
  * Implements the THSP (Truth, Harm, Scope, Purpose) protocol with Jailbreak detection.
- * Uses @anthropic/sentinel-core for pattern-based validation.
+ * Uses @sentinelseed/core for pattern-based validation.
  *
- * @since 0.2.0 - Now uses centralized @anthropic/sentinel-core for validation
+ * @since 0.2.0 - Now uses centralized @sentinelseed/core for validation
  */
 
 import {
   validateTHSP as coreValidateTHSP,
   quickCheck as coreQuickCheck,
   type THSPResult as CoreTHSPResult,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 
 import type {
   THSPGates,
@@ -71,7 +71,7 @@ function convertCoreResult(coreResult: CoreTHSPResult): THSPValidationResult {
 /**
  * Validate content against THSP protocol gates.
  *
- * Uses @anthropic/sentinel-core for pattern matching with 100+ patterns
+ * Uses @sentinelseed/core for pattern matching with 100+ patterns
  * across 5 safety gates (Truth, Harm, Scope, Purpose, Jailbreak).
  *
  * @param content - The content to validate
@@ -89,7 +89,7 @@ function convertCoreResult(coreResult: CoreTHSPResult): THSPValidationResult {
  * console.log(unsafeResult.gates.jailbreak); // 'fail'
  * ```
  *
- * @since 0.2.0 - Now uses @anthropic/sentinel-core with 5 gates
+ * @since 0.2.0 - Now uses @sentinelseed/core with 5 gates
  */
 export function validateTHSP(
   content: string,
@@ -257,7 +257,7 @@ function generateRecommendation(gates: THSPGates, concerns: string[]): string {
 /**
  * Get total count of built-in patterns from core.
  *
- * Note: In v0.2.0+, patterns are managed by @anthropic/sentinel-core.
+ * Note: In v0.2.0+, patterns are managed by @sentinelseed/core.
  * These counts are based on sentinel-core patterns.ts as of v0.2.1.
  *
  * @deprecated Pattern counts may change between versions. Use this for
@@ -265,7 +265,7 @@ function generateRecommendation(gates: THSPGates, concerns: string[]): string {
  * parameter in validateTHSP().
  */
 export function getPatternCount(): Record<keyof THSPGates, number> {
-  // Counts from @anthropic/sentinel-core patterns.ts (v0.2.1)
+  // Counts from @sentinelseed/core patterns.ts (v0.2.1)
   // truth: 10 regex + 7 indicators
   // harm: 91 regex + 12 keywords
   // scope: 29 regex + 14 indicators
@@ -282,12 +282,12 @@ export function getPatternCount(): Record<keyof THSPGates, number> {
 
 /**
  * Get built-in patterns from core.
- * @deprecated In v0.2.0+, patterns are managed by @anthropic/sentinel-core.
+ * @deprecated In v0.2.0+, patterns are managed by @sentinelseed/core.
  * Use getPatternCount() for statistics instead.
  * @returns Empty array (patterns are now in core module)
  */
 export function getBuiltinPatterns(): PatternDefinition[] {
-  // Patterns are now managed by @anthropic/sentinel-core
+  // Patterns are now managed by @sentinelseed/core
   // Return empty array for backwards compatibility
   return [];
 }

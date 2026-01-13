@@ -1,5 +1,5 @@
 /**
- * @anthropic/sentinel-core
+ * @sentinelseed/core
  *
  * Core validation module for Sentinel - The canonical THSP implementation.
  *
@@ -9,7 +9,7 @@
  * - All patterns synchronized from Python core
  *
  * Usage:
- *   import { validateTHSP, quickCheck } from '@anthropic/sentinel-core';
+ *   import { validateTHSP, quickCheck } from '@sentinelseed/core';
  *
  *   // Heuristic validation (fast, offline)
  *   const result = validateTHSP("some text");
@@ -23,7 +23,7 @@
  *   }
  *
  *   // With API fallback
- *   import { validateWithFallback } from '@anthropic/sentinel-core';
+ *   import { validateWithFallback } from '@sentinelseed/core';
  *   const result = await validateWithFallback("some text");
  *
  * @author Sentinel Team

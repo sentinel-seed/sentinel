@@ -280,7 +280,7 @@ const SSRF_PATTERNS: OWASPPatternDefinition[] = [
  * Expanded to match core THSP jailbreak detection patterns.
  *
  * Note: For comprehensive jailbreak detection, use the THSP validator
- * which imports from @anthropic/sentinel-core with 100+ patterns.
+ * which imports from @sentinelseed/core with 100+ patterns.
  */
 const PROMPT_INJECTION_PATTERNS: OWASPPatternDefinition[] = [
   // Instruction override patterns

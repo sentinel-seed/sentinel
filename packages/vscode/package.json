@@ -274,7 +274,7 @@
     "publish": "npm run package:bundle && vsce publish"
   },
   "devDependencies": {
-    "@anthropic/sentinel-core": "file:../core",
+    "@sentinelseed/core": "file:../core",
     "@types/glob": "^8.x",
     "@types/mocha": "^10.x",
     "@types/node": "^20.x",

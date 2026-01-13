@@ -309,7 +309,7 @@ describe('gatePassed', () => {
 
 describe('getBuiltinPatterns', () => {
   it('should return empty array (deprecated in v0.2.0)', () => {
-    // In v0.2.0+, patterns are managed by @anthropic/sentinel-core
+    // In v0.2.0+, patterns are managed by @sentinelseed/core
     const patterns = getBuiltinPatterns();
     expect(Array.isArray(patterns)).toBe(true);
     expect(patterns).toHaveLength(0);

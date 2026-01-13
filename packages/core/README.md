@@ -1,4 +1,4 @@
-# @anthropic/sentinel-core
+# @sentinelseed/core
 
 Core validation module for Sentinel. Implements the THSP Protocol (Truth, Harm, Scope, Purpose) with pattern-based heuristic validation and optional semantic analysis via API.
 
@@ -15,7 +15,7 @@ Core validation module for Sentinel. Implements the THSP Protocol (Truth, Harm, 
 ## Installation
 
 ```bash
-npm install @anthropic/sentinel-core
+npm install @sentinelseed/core
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ npm install @anthropic/sentinel-core
 ### Heuristic Validation (Offline)
 
 ```typescript
-import { validateTHSP, quickCheck } from '@anthropic/sentinel-core';
+import { validateTHSP, quickCheck } from '@sentinelseed/core';
 
 // Full validation with detailed results
 const result = validateTHSP("Hello, how can I help you?");
@@ -46,7 +46,7 @@ if (quickCheck("Some user input")) {
 ### Semantic Validation (API)
 
 ```typescript
-import { configureApi, validateWithFallback } from '@anthropic/sentinel-core';
+import { configureApi, validateWithFallback } from '@sentinelseed/core';
 
 // Configure API endpoint
 configureApi({
@@ -130,7 +130,7 @@ The package includes 580+ patterns organized by category:
 ## Usage in Browser Extensions
 
 ```typescript
-import { validateTHSP } from '@anthropic/sentinel-core';
+import { validateTHSP } from '@sentinelseed/core';
 
 // Validate user input before sending to AI
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -147,7 +147,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 ## Usage in Node.js
 
 ```typescript
-import { validateTHSP, configureApi, validateSemantic } from '@anthropic/sentinel-core';
+import { validateTHSP, configureApi, validateSemantic } from '@sentinelseed/core';
 
 // Heuristic validation (no network required)
 const heuristicResult = validateTHSP(userInput);

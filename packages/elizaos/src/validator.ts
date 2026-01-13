@@ -2,7 +2,7 @@
  * Sentinel Safety Validator
  *
  * Core validation logic using THSP protocol for ElizaOS agents.
- * Patterns are imported from @anthropic/sentinel-core for consistency.
+ * Patterns are imported from @sentinelseed/core for consistency.
  */
 
 import type {
@@ -28,7 +28,7 @@ import {
   PURPOSE_PATTERNS as CORE_PURPOSE,
   ALL_HARM_PATTERNS,
   quickCheck as coreQuickCheck,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 
 // Helper function to create pattern definitions from core patterns
 function createPatternDefs(patterns: RegExp[], category: string): PatternDefinition[] {

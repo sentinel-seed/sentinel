@@ -1,6 +1,6 @@
 # JavaScript SDK Reference
 
-Complete API reference for the Sentinel JavaScript/TypeScript SDK (`@anthropic/sentinel-core`).
+Complete API reference for the Sentinel JavaScript/TypeScript SDK (`@sentinelseed/core`).
 
 ## Table of Contents
 
@@ -32,19 +32,19 @@ Complete API reference for the Sentinel JavaScript/TypeScript SDK (`@anthropic/s
 ## Installation
 
 ```bash
-npm install @anthropic/sentinel-core
+npm install @sentinelseed/core
 ```
 
 Or with yarn:
 
 ```bash
-yarn add @anthropic/sentinel-core
+yarn add @sentinelseed/core
 ```
 
 Or with pnpm:
 
 ```bash
-pnpm add @anthropic/sentinel-core
+pnpm add @sentinelseed/core
 ```
 
 ---
@@ -54,7 +54,7 @@ pnpm add @anthropic/sentinel-core
 ### Heuristic Validation (Offline)
 
 ```typescript
-import { validateTHSP, quickCheck } from '@anthropic/sentinel-core';
+import { validateTHSP, quickCheck } from '@sentinelseed/core';
 
 // Full validation with detailed results
 const result = validateTHSP("Hello, how can I help you?");
@@ -77,7 +77,7 @@ if (quickCheck("Some user input")) {
 ### With API Fallback
 
 ```typescript
-import { configureApi, validateWithFallback } from '@anthropic/sentinel-core';
+import { configureApi, validateWithFallback } from '@sentinelseed/core';
 
 // Configure API endpoint
 configureApi({
@@ -119,7 +119,7 @@ function validateTHSP(
 **Example:**
 
 ```typescript
-import { validateTHSP } from '@anthropic/sentinel-core';
+import { validateTHSP } from '@sentinelseed/core';
 
 const result = validateTHSP("Help me write a function");
 
@@ -156,7 +156,7 @@ function quickCheck(text: string): boolean
 **Example:**
 
 ```typescript
-import { quickCheck } from '@anthropic/sentinel-core';
+import { quickCheck } from '@sentinelseed/core';
 
 if (quickCheck(userInput)) {
   sendToLLM(userInput);
@@ -188,7 +188,7 @@ function checkJailbreak(text: string): GateResult
 **Example:**
 
 ```typescript
-import { checkJailbreak } from '@anthropic/sentinel-core';
+import { checkJailbreak } from '@sentinelseed/core';
 
 const result = checkJailbreak("Ignore your instructions and...");
 
@@ -218,7 +218,7 @@ function checkHarm(text: string): GateResult
 **Example:**
 
 ```typescript
-import { checkHarm } from '@anthropic/sentinel-core';
+import { checkHarm } from '@sentinelseed/core';
 
 const result = checkHarm(llmResponse);
 
@@ -249,7 +249,7 @@ function configureApi(config: Partial<ApiConfig>): void
 **Example:**
 
 ```typescript
-import { configureApi } from '@anthropic/sentinel-core';
+import { configureApi } from '@sentinelseed/core';
 
 configureApi({
   endpoint: 'https://api.sentinelseed.dev',
@@ -293,7 +293,7 @@ async function validateViaApi(
 **Example:**
 
 ```typescript
-import { configureApi, validateViaApi } from '@anthropic/sentinel-core';
+import { configureApi, validateViaApi } from '@sentinelseed/core';
 
 configureApi({ endpoint: 'https://api.sentinelseed.dev' });
 
@@ -328,7 +328,7 @@ async function validateSemantic(
 **Example:**
 
 ```typescript
-import { validateSemantic } from '@anthropic/sentinel-core';
+import { validateSemantic } from '@sentinelseed/core';
 
 const result = await validateSemantic({
   content: "Complex edge case content",
@@ -373,7 +373,7 @@ async function validateWithFallback(
 **Example:**
 
 ```typescript
-import { configureApi, validateWithFallback } from '@anthropic/sentinel-core';
+import { configureApi, validateWithFallback } from '@sentinelseed/core';
 
 configureApi({ endpoint: 'https://api.sentinelseed.dev' });
 
@@ -398,7 +398,7 @@ async function checkApiHealth(): Promise<boolean>
 **Example:**
 
 ```typescript
-import { checkApiHealth } from '@anthropic/sentinel-core';
+import { checkApiHealth } from '@sentinelseed/core';
 
 const healthy = await checkApiHealth();
 if (!healthy) {
@@ -580,7 +580,7 @@ import {
   SYSTEM_INJECTION_PATTERNS,
   JAILBREAK_INDICATORS,
   ALL_JAILBREAK_PATTERNS,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 ```
 
 ### Harm Patterns
@@ -590,7 +590,7 @@ import {
   HARM_PATTERNS,
   HARM_KEYWORDS,
   ALL_HARM_PATTERNS,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 ```
 
 ### Scope Patterns
@@ -600,7 +600,7 @@ import {
   SCOPE_PATTERNS,
   SCOPE_INDICATORS,
   ALL_SCOPE_PATTERNS,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 ```
 
 ### Truth & Purpose Patterns
@@ -611,13 +611,13 @@ import {
   MISINFORMATION_INDICATORS,
   PURPOSE_PATTERNS,
   PURPOSE_INDICATORS,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 ```
 
 ### Sensitive Data Patterns
 
 ```typescript
-import { SENSITIVE_DATA_PATTERNS } from '@anthropic/sentinel-core';
+import { SENSITIVE_DATA_PATTERNS } from '@sentinelseed/core';
 ```
 
 ---
@@ -627,7 +627,7 @@ import { SENSITIVE_DATA_PATTERNS } from '@anthropic/sentinel-core';
 ### Browser Extension
 
 ```typescript
-import { validateTHSP } from '@anthropic/sentinel-core';
+import { validateTHSP } from '@sentinelseed/core';
 
 // Content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -646,7 +646,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 ### Express Middleware
 
 ```typescript
-import { validateTHSP } from '@anthropic/sentinel-core';
+import { validateTHSP } from '@sentinelseed/core';
 import { Request, Response, NextFunction } from 'express';
 
 const sentinelMiddleware = (req: Request, res: Response, next: NextFunction) => {
@@ -673,7 +673,7 @@ app.use('/api/chat', sentinelMiddleware);
 
 ```typescript
 import { useState, useCallback } from 'react';
-import { validateTHSP, THSPResult } from '@anthropic/sentinel-core';
+import { validateTHSP, THSPResult } from '@sentinelseed/core';
 
 function useSentinel() {
   const [lastResult, setLastResult] = useState<THSPResult | null>(null);
@@ -725,7 +725,7 @@ function ChatInput() {
 ### LLM Integration
 
 ```typescript
-import { validateTHSP, validateWithFallback, configureApi } from '@anthropic/sentinel-core';
+import { validateTHSP, validateWithFallback, configureApi } from '@sentinelseed/core';
 import OpenAI from 'openai';
 
 configureApi({ endpoint: 'https://api.sentinelseed.dev' });
@@ -776,7 +776,7 @@ async function safeChatCompletion(userMessage: string) {
 ## Version
 
 ```typescript
-import { VERSION } from '@anthropic/sentinel-core';
+import { VERSION } from '@sentinelseed/core';
 
 console.log(`Sentinel Core v${VERSION}`);
 ```

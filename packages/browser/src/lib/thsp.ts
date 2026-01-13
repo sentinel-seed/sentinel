@@ -2,7 +2,7 @@
  * Sentinel Guard - THSP Protocol
  *
  * Truth-Harm-Scope-Purpose validation for browser actions.
- * Uses @anthropic/sentinel-core for validation, with browser-specific context.
+ * Uses @sentinelseed/core for validation, with browser-specific context.
  */
 
 import {
@@ -11,7 +11,7 @@ import {
   checkJailbreak as coreCheckJailbreak,
   type THSPResult as CoreTHSPResult,
   type GateResult as CoreGateResult,
-} from '@anthropic/sentinel-core';
+} from '@sentinelseed/core';
 
 // =============================================================================
 // BROWSER-SPECIFIC TYPES
@@ -138,7 +138,7 @@ function applyBrowserContextChecks(
 /**
  * Run full THSP validation with browser context
  *
- * Uses @anthropic/sentinel-core for pattern matching, then applies
+ * Uses @sentinelseed/core for pattern matching, then applies
  * browser-specific context validation on top.
  */
 export function validateTHSP(
