@@ -146,10 +146,22 @@ classDiagram
 
 ```mermaid
 flowchart TB
-    subgraph Core["Core Module"]
+    subgraph Core["Core Module (v2.24.0)"]
+        SV[SentinelValidator v3.0]
         LV[LayeredValidator]
+        IV[InputValidator v1.8.0]
+        OV[OutputValidator]
         THSP[THSPValidator]
         SEM[SemanticValidator]
+        L4[SentinelObserver L4]
+
+        SV --> IV
+        SV --> OV
+        SV --> L4
+        LV --> THSP
+        LV --> SEM
+        IV --> THSP
+        OV --> THSP
     end
 
     subgraph Integrations["Framework Integrations"]
@@ -173,9 +185,6 @@ flowchart TB
         VIR[Virtuals Protocol]
     end
 
-    LV --> THSP
-    LV --> SEM
-
     LC --> LV
     CR --> LV
     LL --> LV
@@ -195,6 +204,9 @@ flowchart TB
     style Integrations fill:#f3e5f5
     style Robotics fill:#fff3e0
     style Blockchain fill:#e8f5e9
+    style SV fill:#bbdefb
+    style IV fill:#c8e6c9
+    style L4 fill:#fff9c4
 ```
 
 ### Validation Sequence
@@ -305,6 +317,39 @@ InputValidator v1.8.0
 └── BenignContextDetector (false positive reduction)
 ```
 
+```mermaid
+flowchart TD
+    subgraph IV["InputValidator v1.8.0"]
+        Input[Raw Input] --> TN[TextNormalizer<br/>8 deobfuscation stages]
+        TN --> PD[PatternDetector<br/>580+ patterns]
+        TN --> ED[EscalationDetector<br/>multi-turn attacks]
+        TN --> FD[FramingDetector<br/>roleplay/fiction]
+        TN --> HRD[HarmfulRequestDetector<br/>10 categories]
+        TN --> ISD[IntentSignalDetector<br/>compositional]
+        TN --> SAD[SafeAgentDetector<br/>embodied AI]
+        TN -.-> EMB[EmbeddingDetector<br/>semantic similarity]
+
+        PD --> AGG{Score<br/>Aggregator}
+        ED --> AGG
+        FD --> AGG
+        HRD --> AGG
+        ISD --> AGG
+        SAD --> AGG
+        EMB -.-> AGG
+
+        AGG --> BCD[BenignContextDetector<br/>FP reduction]
+        BCD --> D{Threshold?}
+        D -->|Above| Attack[Attack Detected]
+        D -->|Below| Safe[Safe]
+    end
+
+    style TN fill:#e3f2fd
+    style BCD fill:#c8e6c9
+    style EMB fill:#fff3e0,stroke-dasharray: 5 5
+    style Attack fill:#ffcdd2
+    style Safe fill:#c8e6c9
+```
+
 #### Detectors
 
 | Detector | Purpose | Weight |
@@ -361,6 +406,61 @@ SentinelValidator v3.0
 ├── Gate 1 (L1): InputValidator (pre-AI heuristic)
 ├── Gate 2 (L3): OutputValidator (post-AI heuristic)
 └── Gate 4 (L4): SentinelObserver (post-AI LLM analysis)
+```
+
+```mermaid
+flowchart TD
+    subgraph SV["SentinelValidator v3.0"]
+        Input[User Input] --> G1{Gate 1<br/>InputValidator}
+        G1 -->|Attack| B1[Block]
+        G1 -->|Safe| AI[AI Processing]
+        AI --> G2{Gate 2<br/>OutputValidator}
+        G2 -->|Unsafe| B2[Block]
+        G2 -->|Safe| G4{Gate 4<br/>SentinelObserver}
+        G4 -->|Unsafe| B3[Block]
+        G4 -->|Safe| R[Response]
+        G4 -->|Error| FB{Fallback<br/>Policy}
+        FB -->|BLOCK| B4[Block]
+        FB -->|ALLOW_IF_L2_PASSED| R
+        FB -->|ALLOW| R
+    end
+
+    style G1 fill:#e3f2fd
+    style G2 fill:#fff3e0
+    style G4 fill:#e8f5e9
+    style B1 fill:#ffcdd2
+    style B2 fill:#ffcdd2
+    style B3 fill:#ffcdd2
+    style B4 fill:#ffcdd2
+    style FB fill:#fff9c4
+```
+
+#### Gate 4 Retry Logic (v2.24.0)
+
+```mermaid
+sequenceDiagram
+    participant SV as SentinelValidator
+    participant L4 as SentinelObserver
+    participant LLM as LLM Provider
+
+    SV->>L4: validate(output)
+    L4->>LLM: API call (attempt 1)
+
+    alt Success
+        LLM-->>L4: response
+        L4-->>SV: ValidationResult
+    else Transient Error
+        LLM-->>L4: timeout/rate limit
+        Note over L4: Exponential backoff
+        L4->>LLM: API call (attempt 2)
+        alt Success
+            LLM-->>L4: response
+            L4-->>SV: ValidationResult
+        else Persistent Error
+            LLM-->>L4: error
+            L4-->>SV: Apply fallback policy
+        end
+    end
 ```
 
 ```python
