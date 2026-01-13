@@ -630,6 +630,60 @@ ValidationConfig(
 | `log_validations` | `bool` | `True` | Enable logging |
 | `log_level` | `str` | `"info"` | Log level |
 
+#### Provider Examples
+
+**OpenAI (default):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai",
+    semantic_model="gpt-4o-mini",
+    semantic_api_key="sk-...",
+)
+```
+
+**Anthropic:**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="anthropic",
+    semantic_model="claude-3-haiku-20240307",
+    semantic_api_key="sk-ant-...",
+)
+```
+
+**Groq (OpenAI-compatible):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="https://api.groq.com/openai/v1",
+    semantic_model="llama-3.1-70b-versatile",
+    semantic_api_key="gsk_...",
+)
+```
+
+**Together AI (OpenAI-compatible):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="https://api.together.xyz/v1",
+    semantic_model="meta-llama/Llama-3-70b-chat-hf",
+    semantic_api_key="...",
+)
+```
+
+**Ollama (local, no API key):**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="http://localhost:11434/v1",
+    semantic_model="llama3.1",
+)
+```
+
 #### Properties
 
 | Property | Type | Description |

@@ -707,8 +707,9 @@ config = ValidationConfig(
     # Semantic: Enable when API key available
     use_semantic=bool(api_key),
     semantic_api_key=api_key,
-    semantic_provider="openai",  # or "anthropic"
+    semantic_provider="openai",  # or "anthropic", "openai_compatible"
     semantic_model="gpt-4o-mini",  # Cost-effective default
+    # semantic_base_url="...",  # For openai_compatible providers
 
     # Optimization: Skip LLM if heuristic blocks
     skip_semantic_if_heuristic_blocks=True,
@@ -719,6 +720,30 @@ config = ValidationConfig(
     # Limits
     max_text_size=50 * 1024,  # 50KB
     validation_timeout=30.0,  # 30 seconds
+)
+```
+
+### Supported LLM Providers
+
+The semantic validation layer supports multiple LLM providers:
+
+| Provider | Config Value | Base URL | Models |
+|----------|-------------|----------|--------|
+| OpenAI | `"openai"` | (default) | gpt-4o-mini, gpt-4o |
+| Anthropic | `"anthropic"` | (default) | claude-3-haiku, claude-3-sonnet |
+| Groq | `"openai_compatible"` | `https://api.groq.com/openai/v1` | llama-3.1-70b-versatile |
+| Together AI | `"openai_compatible"` | `https://api.together.xyz/v1` | meta-llama/Llama-3-70b-chat-hf |
+| Fireworks | `"openai_compatible"` | `https://api.fireworks.ai/inference/v1` | accounts/fireworks/models/llama-v3-70b |
+| Ollama (local) | `"openai_compatible"` | `http://localhost:11434/v1` | llama3.1, mistral |
+
+**Example with Groq:**
+```python
+config = ValidationConfig(
+    use_semantic=True,
+    semantic_provider="openai_compatible",
+    semantic_base_url="https://api.groq.com/openai/v1",
+    semantic_model="llama-3.1-70b-versatile",
+    semantic_api_key="gsk_...",
 )
 ```
 
