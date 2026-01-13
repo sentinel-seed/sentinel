@@ -38,15 +38,17 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 
 ### Core Components
 
+- **SentinelValidator v3.0:** Unified 4-layer validation (L1 Input, L2 Seed, L3 Output, L4 Observer)
 - **THSP Protocol:** Four-gate validation (Truth, Harm, Scope, Purpose)
 - **Teleological Core:** Actions must serve legitimate purposes
 - **Anti-Self-Preservation:** Prevents AI from prioritizing its own existence
 - **Alignment Seeds:** System prompts that shape LLM behavior
+- **Input/Output Validators:** Pattern detection with 20+ detector types and false-positive reduction
 - **Memory Integrity:** HMAC-based protection against memory injection attacks
 - **Fiduciary AI:** Ensures AI acts in user's best interest (duty of loyalty and care)
 - **EU AI Act Compliance:** Regulation 2024/1689 compliance checker (Article 5 prohibited practices)
 - **OWASP Agentic AI:** 65% coverage of Top 10 for Agentic Applications (5 full, 3 partial)
-- **Database Guard:** Query validation to prevent data exfiltration
+- **Database Guard:** Query validation to prevent SQL injection and data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
 - **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, OpenGuardrails, PyRIT, Google ADK
@@ -1124,27 +1126,49 @@ POST /chat              - Chat with seed injection
 ```
 sentinel/
 ├── src/sentinelseed/          # Python SDK
-│   ├── core.py               # Main Sentinel class
+│   ├── sentinel_core.py      # Main Sentinel class (entry point)
+│   ├── core/                 # v3.0 Unified Validation Architecture
+│   │   ├── sentinel_validator.py  # SentinelValidator orchestrator
+│   │   ├── sentinel_config.py     # Configuration with Gate4Fallback
+│   │   ├── sentinel_results.py    # SentinelResult, ObservationResult
+│   │   ├── observer.py            # L4 SentinelObserver (external LLM)
+│   │   ├── retry.py               # Retry with exponential backoff
+│   │   └── token_tracker.py       # Token usage tracking
+│   ├── detection/            # Input/Output validation system
+│   │   ├── input_validator.py     # L1 Gate (pre-AI validation)
+│   │   ├── output_validator.py    # L3 Gate (post-AI validation)
+│   │   ├── detectors/             # Pattern detectors (20+ types)
+│   │   ├── behaviors/             # Behavior classification
+│   │   ├── checkers/              # Harm, scope, truth checkers
+│   │   └── benign_context.py      # BenignContextDetector (FP reduction)
+│   ├── validation/           # Layered validation orchestration
+│   │   ├── layered.py             # LayeredValidator (heuristic+semantic)
+│   │   └── config.py              # ValidationConfig
 │   ├── validators/           # THSP gates + semantic validation
-│   ├── providers/            # OpenAI, Anthropic
-│   ├── memory/               # Memory integrity checking
+│   │   ├── gates.py               # TruthGate, HarmGate, ScopeGate, PurposeGate
+│   │   └── semantic.py            # LLM-based semantic validation
+│   ├── database/             # Database Guard (SQL injection protection)
+│   │   ├── guard.py               # DatabaseGuard validator
+│   │   └── patterns.py            # SQL injection patterns
+│   ├── providers/            # LLM provider clients
+│   ├── memory/               # Memory integrity (HMAC-based)
 │   ├── fiduciary/            # Fiduciary AI module
 │   ├── compliance/           # EU AI Act compliance checker
-│   ├── safety/               # Safety modules
-│   │   └── humanoid/         # ISO/TS 15066 humanoid safety
-│   └── integrations/         # 23+ frameworks
-│       ├── langchain.py      # LangChain + LangGraph
-│       ├── crewai.py         # CrewAI
-│       ├── dspy/             # Stanford DSPy
-│       ├── letta/            # Letta (MemGPT)
-│       ├── openai_agents.py  # OpenAI Agents SDK
-│       ├── pyrit/            # Microsoft PyRIT
-│       ├── ros2/             # ROS2 Robotics
-│       ├── isaac_lab/        # NVIDIA Isaac Lab
-│       ├── garak/            # NVIDIA Garak
-│       ├── coinbase/         # Coinbase AgentKit + x402
-│       ├── google_adk/       # Google Agent Development Kit
-│       └── ...               # +12 more integrations
+│   ├── safety/               # Physical safety modules
+│   │   └── humanoid/              # ISO/TS 15066 humanoid safety
+│   └── integrations/         # 23+ framework integrations
+│       ├── langchain/             # LangChain + LangGraph
+│       ├── crewai/                # CrewAI
+│       ├── dspy/                  # Stanford DSPy
+│       ├── letta/                 # Letta (MemGPT)
+│       ├── openai_agents/         # OpenAI Agents SDK
+│       ├── pyrit/                 # Microsoft PyRIT
+│       ├── ros2/                  # ROS2 Robotics
+│       ├── isaac_lab/             # NVIDIA Isaac Lab
+│       ├── garak/                 # NVIDIA Garak
+│       ├── coinbase/              # Coinbase AgentKit + x402
+│       ├── google_adk/            # Google Agent Development Kit
+│       └── ...                    # +12 more integrations
 ├── seeds/                     # Alignment seeds
 │   ├── v1/                   # Legacy (THS protocol)
 │   ├── v2/                   # Production (THSP protocol)
@@ -1155,15 +1179,16 @@ sentinel/
 │   │   ├── safeagentbench/
 │   │   └── jailbreakbench/
 │   └── results/              # Test results by benchmark
-├── packages/                  # External NPM packages
+├── packages/                  # External packages (npm/PyPI)
 │   ├── elizaos/              # @sentinelseed/elizaos-plugin
 │   ├── voltagent/            # @sentinelseed/voltagent
 │   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit
 │   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
-│   └── vscode/               # VS Code/Cursor/Windsurf extension
+│   ├── vscode/               # VS Code/Cursor/Windsurf extension
+│   └── jetbrains/            # IntelliJ/PyCharm plugin
 ├── docs/                      # Documentation
-│   ├── ARCHITECTURE.md       # System architecture and integration patterns
-│   ├── MIGRATION.md          # Migration guide for users upgrading
+│   ├── ARCHITECTURE.md       # System architecture (L1/L2/L3/L4 layers)
+│   ├── MIGRATION.md          # Migration guide (gate3 to gate4)
 │   ├── EU_AI_ACT_MAPPING.md  # EU AI Act compliance mapping
 │   ├── OWASP_LLM_TOP_10_MAPPING.md
 │   ├── OWASP_AGENTIC_COVERAGE.md  # OWASP Top 10 for Agentic AI
@@ -1171,7 +1196,7 @@ sentinel/
 ├── api/                       # REST API
 ├── examples/                  # Usage examples
 ├── tools/                     # Utility scripts
-└── tests/                     # Test suite
+└── tests/                     # Test suite (3000+ tests)
 ```
 
 ---
