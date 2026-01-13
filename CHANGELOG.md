@@ -73,6 +73,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fiction bypass pattern: corrected "purposes only" detection
 - False positive reduction via BenignContextDetector integration
 - Compliance indicators alone no longer trigger harmful content detection
+- ElizaOS build error (ALL_PURPOSE_PATTERNS export from core)
+- Dockerfile path (`seed/` → `seeds/`)
+- Memory example import (`sentinel.memory` → `sentinelseed.memory`)
+- npm package links (6 files: `sentinelseed` → `@sentinelseed/core`)
+- Broken internal reference in solana-agent-kit README
+- HuggingFace sync script (added agno, coinbase, google_adk)
+- Integration count in HuggingFace README (22 → 25)
+
+### Documentation
+- Updated pattern count from 580+ to 700+ (16 files)
+- Added v2.24.0 architecture diagrams (mermaid flowcharts)
+- Added LLM provider examples (DeepSeek, Groq, Meta Llama, Together, Fireworks, Ollama)
+- Fixed Python version requirements (3.10+)
 
 ### Security
 - Block messages designed to never reveal detection mechanisms
