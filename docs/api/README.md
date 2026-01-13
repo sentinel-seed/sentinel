@@ -97,9 +97,9 @@ curl -X POST https://api.sentinelseed.dev/validate \
 
 | Sentinel Version | Python | Node.js |
 |------------------|--------|---------|
-| 2.18.x | 3.8+ | 18+ |
-| 2.17.x | 3.8+ | 18+ |
-| 2.16.x | 3.8+ | 16+ |
+| 2.23.x - 2.24.x | 3.10+ | 18+ |
+| 2.19.x - 2.22.x | 3.10+ | 18+ |
+| 2.16.x - 2.18.x | 3.9+ | 18+ |
 
 ## Related Documentation
 

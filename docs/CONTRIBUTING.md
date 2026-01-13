@@ -34,7 +34,7 @@ Thank you for your interest in contributing to Sentinel! This project aims to ma
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Node.js 18+ (for JavaScript packages)
 - Git
 
