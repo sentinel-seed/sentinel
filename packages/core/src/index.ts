@@ -93,6 +93,7 @@ export {
   ALL_JAILBREAK_PATTERNS,
   ALL_HARM_PATTERNS,
   ALL_SCOPE_PATTERNS,
+  ALL_PURPOSE_PATTERNS,
 } from './patterns';
 
 // =============================================================================
