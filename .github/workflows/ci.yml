@@ -53,7 +53,7 @@ jobs:
 
       - name: Install SDK
         run: |
-          pip install --no-cache-dir sentinelseed>=2.23.1
+          pip install --no-cache-dir sentinelseed>=2.24.0
 
       - name: Test SDK import
         run: |
