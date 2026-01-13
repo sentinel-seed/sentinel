@@ -1,5 +1,5 @@
 # Sentinel - Development/Evaluation Requirements
-# Python 3.9+ (see pyproject.toml for package dependencies)
+# Python 3.10+ (see pyproject.toml for package dependencies)
 #
 # This file contains dependencies for development, testing, and running
 # evaluations. For using the sentinelseed package, install via:
