@@ -5,7 +5,7 @@ All notable changes to the Sentinel AI Safety JetBrains plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2024-12-30
+## [0.3.0] - 2025-12-30
 
 ### Added
 - **Security Scanning Module**
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - MetricsService now properly integrated with all security/compliance actions
 
-## [0.2.1] - 2024-12-15
+## [0.2.1] - 2025-12-15
 
 ### Fixed
 - CredentialAttributes API compatibility for IntelliJ 2024.1+
@@ -61,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved secure storage for API keys using PasswordSafe
 
-## [0.2.0] - 2024-12-01
+## [0.2.0] - 2025-12-01
 
 ### Added
 - Ollama support for local LLM analysis (no API key required)
@@ -73,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved settings UI with provider-specific options
 - Enhanced heuristic analysis patterns
 
-## [0.1.0] - 2024-11-15
+## [0.1.0] - 2025-11-15
 
 ### Added
 - Initial release
