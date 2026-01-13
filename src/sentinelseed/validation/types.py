@@ -22,7 +22,7 @@ class ValidationLayer(str, Enum):
     Indicates which validation layer made the decision.
 
     The layered validation architecture uses two layers:
-    - HEURISTIC: Fast pattern-based validation (THSPValidator, 580+ patterns)
+    - HEURISTIC: Fast pattern-based validation (THSPValidator, 700+ patterns)
     - SEMANTIC: LLM-based semantic analysis (SemanticValidator)
 
     Values:

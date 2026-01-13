@@ -30,7 +30,7 @@ class Sentinel:
     - Access to alignment seeds (minimal, standard, full)
     - Chat wrapper with automatic seed injection
     - Response validation through THSP gates (Truth, Harm, Scope, Purpose)
-    - Two-layer validation: heuristic (580+ patterns) + semantic (LLM-based)
+    - Two-layer validation: heuristic (700+ patterns) + semantic (LLM-based)
     - Provider abstraction (OpenAI, Anthropic)
 
     The validation is handled by LayeredValidator internally, ensuring all
@@ -321,7 +321,7 @@ class Sentinel:
         Validate text through THSP gates.
 
         Uses LayeredValidator internally, which provides:
-        - Heuristic validation (always, 580+ patterns)
+        - Heuristic validation (always, 700+ patterns)
         - Semantic validation (if API key configured)
 
         Args:

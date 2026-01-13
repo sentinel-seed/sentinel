@@ -2,7 +2,7 @@
 Sentinel Validation Module - Layered validation for AI content safety.
 
 This module provides a unified validation interface that combines:
-- Heuristic validation (THSPValidator): Fast pattern matching with 580+ regex patterns
+- Heuristic validation (THSPValidator): Fast pattern matching with 700+ regex patterns
 - Semantic validation (SemanticValidator): LLM-based semantic analysis
 - Validation 360°: Specialized input/output validation for AI pipelines
 

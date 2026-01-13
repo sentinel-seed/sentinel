@@ -206,7 +206,7 @@ class HumanoidSafetyValidator(SafetyValidator):
             text_validator: Optional LayeredValidator for text field validation.
                            If not provided, one will be created automatically.
                            Used for validating text fields like 'purpose' with
-                           580+ patterns instead of the basic local patterns.
+                           700+ patterns instead of the basic local patterns.
 
         Raises:
             TypeError: If arguments are of wrong type
@@ -239,7 +239,7 @@ class HumanoidSafetyValidator(SafetyValidator):
         self.collaborative_velocity = collaborative_velocity
 
         # Initialize text validator for purpose field validation
-        # Uses 580+ patterns from central validation system instead of ~10 local patterns
+        # Uses 700+ patterns from central validation system instead of ~10 local patterns
         self._text_validator = text_validator
         if self._text_validator is None:
             try:
@@ -551,11 +551,11 @@ class HumanoidSafetyValidator(SafetyValidator):
 
         Checks:
         - Action has stated purpose (if required)
-        - Purpose is not obviously malicious (via central validation with 580+ patterns)
+        - Purpose is not obviously malicious (via central validation with 700+ patterns)
         - Action serves a beneficial goal
 
         The purpose field is validated using the central LayeredValidator when available,
-        which provides comprehensive pattern matching (580+ patterns), jailbreak detection,
+        which provides comprehensive pattern matching (700+ patterns), jailbreak detection,
         and synonym recognition. Falls back to local DANGEROUS_PURPOSE_PATTERNS if the
         central validation system is unavailable.
         """
@@ -572,7 +572,7 @@ class HumanoidSafetyValidator(SafetyValidator):
         if action.purpose:
             central_blocked = False
 
-            # Layer 1: Central validation system (580+ patterns for jailbreak, injection, etc.)
+            # Layer 1: Central validation system (700+ patterns for jailbreak, injection, etc.)
             if self._text_validator is not None:
                 text_result = self._text_validator.validate(action.purpose)
                 if not text_result.is_safe:

@@ -51,7 +51,7 @@ class SentinelV3Adapter:
     the improved detection capabilities of InputValidator and OutputValidator.
 
     Key benefits:
-    - 580+ attack patterns from InputValidator
+    - 700+ attack patterns from InputValidator
     - Embedding-based detection (optional)
     - Full compatibility with existing integrations
     - Same ValidationResult interface

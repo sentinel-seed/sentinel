@@ -25,7 +25,7 @@ Components:
     Detectors (for InputValidator):
         - BaseDetector: Abstract interface for attack detectors
         - DetectorConfig: Configuration for detectors
-        - PatternDetector: Regex-based pattern matching (580+ patterns)
+        - PatternDetector: Regex-based pattern matching (700+ patterns)
 
     Checkers (for OutputValidator):
         - BaseChecker: Abstract interface for output checkers

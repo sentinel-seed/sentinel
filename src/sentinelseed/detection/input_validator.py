@@ -22,7 +22,7 @@ Design Principles:
     5. Fast: Heuristic-first approach, semantic only when needed
 
 Default Detectors (registered automatically):
-    1. PatternDetector (weight 1.0): 580+ regex patterns for direct attacks
+    1. PatternDetector (weight 1.0): 700+ regex patterns for direct attacks
     2. FramingDetector (weight 1.2): Roleplay, fiction, DAN mode detection
     3. EscalationDetector (weight 1.1): Multi-turn escalation detection
     4. HarmfulRequestDetector (weight 1.3): Direct harmful content requests
@@ -194,7 +194,7 @@ class InputValidator:
         Initialize and register default detectors.
 
         Default detectors (in execution order):
-            1. PatternDetector (weight 1.0): Regex-based patterns (580+), always runs
+            1. PatternDetector (weight 1.0): Regex-based patterns (700+), always runs
             2. FramingDetector (weight 1.2): Roleplay/fiction/DAN detection
             3. EscalationDetector (weight 1.1): Multi-turn escalation detection
             4. HarmfulRequestDetector (weight 1.3): Direct harmful content requests

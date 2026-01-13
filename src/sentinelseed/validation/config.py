@@ -38,7 +38,7 @@ class ValidationConfig:
     from which layers to use to timeout settings and error handling.
 
     Attributes:
-        use_heuristic: Enable heuristic validation layer (THSPValidator, 580+ patterns).
+        use_heuristic: Enable heuristic validation layer (THSPValidator, 700+ patterns).
                        Default True. Only disable if you want semantic-only validation.
         use_semantic: Enable semantic validation layer (LLM-based). Default False.
                       Set to True and provide semantic_api_key to enable.

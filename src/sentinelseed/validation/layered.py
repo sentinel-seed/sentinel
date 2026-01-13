@@ -5,7 +5,7 @@ This module provides LayeredValidator, which implements a two-layer validation
 architecture for comprehensive content safety checking:
 
 Layer 1 - Heuristic (THSPValidator):
-    - Fast pattern matching with 580+ regex patterns
+    - Fast pattern matching with 700+ regex patterns
     - No API calls required
     - Always available as fallback
     - Catches obvious threats

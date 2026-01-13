@@ -8,7 +8,7 @@ and can be registered, swapped, and upgraded at runtime.
 Available Detectors:
     BaseDetector: Abstract base class for all detectors
     DetectorConfig: Configuration dataclass for detectors
-    PatternDetector: Regex-based pattern matching (default, 580+ patterns)
+    PatternDetector: Regex-based pattern matching (default, 700+ patterns)
     EscalationDetector: Multi-turn attack escalation detection (Crescendo-style)
     FramingDetector: Roleplay, fiction, and framing-based attack detection
     HarmfulRequestDetector: Direct harmful content request detection (v1.3.0)

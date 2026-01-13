@@ -7,7 +7,7 @@ the foundation classes for all framework-specific integrations.
 By inheriting from these base classes, integrations automatically get:
 
 1. Sentinel v3.0 validation (InputValidator + OutputValidator)
-2. 580+ attack patterns with optional embedding detection
+2. 700+ attack patterns with optional embedding detection
 3. Consistent configuration interface
 4. Statistics tracking
 5. Automatic benefit from core improvements
@@ -167,7 +167,7 @@ class SentinelIntegration:
             3. use_v3=False - creates LayeredValidator (legacy)
 
         Example:
-            # Default - v3.0 with 580+ patterns
+            # Default - v3.0 with 700+ patterns
             integration = MyIntegration()
 
             # With embedding detection (higher accuracy)

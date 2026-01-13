@@ -51,7 +51,7 @@ class Validator(Protocol):
 
     Implementations:
     - LayeredValidator: Two-layer heuristic + semantic validation
-    - THSPValidator: Heuristic-only validation with 580+ patterns
+    - THSPValidator: Heuristic-only validation with 700+ patterns
     - SemanticValidator: LLM-based semantic validation
 
     Example:

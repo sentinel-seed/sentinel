@@ -2,7 +2,7 @@
 Pattern-based attack detector.
 
 This module provides PatternDetector, which wraps the existing THSPValidator
-to detect attacks in user input. It uses 580+ regex patterns organized into
+to detect attacks in user input. It uses 700+ regex patterns organized into
 the THSP gates (Truth, Harm, Scope, Purpose) to identify:
 
 - Jailbreak attempts (DAN, developer mode, role manipulation)
@@ -160,7 +160,7 @@ class PatternDetector(BaseDetector):
     Pattern-based attack detector using THSP gates.
 
     This detector wraps the THSPValidator to provide attack detection
-    through the BaseDetector interface. It uses 580+ regex patterns
+    through the BaseDetector interface. It uses 700+ regex patterns
     organized into four gates:
 
     - Truth: Deception, impersonation, role manipulation, jailbreaks

@@ -2,7 +2,7 @@
 Guardrail implementations for OpenAI Agents SDK.
 
 Provides layered input and output guardrails using THSP validation:
-1. Heuristic layer: Fast regex-based validation (580+ patterns, <10ms, free)
+1. Heuristic layer: Fast regex-based validation (700+ patterns, <10ms, free)
 2. Semantic layer: LLM-based validation for nuanced cases (1-5s, ~$0.0005/call)
 
 The heuristic layer runs first. If it blocks, the semantic layer is skipped

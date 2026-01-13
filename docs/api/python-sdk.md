@@ -354,7 +354,7 @@ seed = get_seed("standard")
 
 ### LayeredValidator
 
-Two-layer validation combining heuristic (580+ patterns) and semantic (LLM-based) analysis.
+Two-layer validation combining heuristic (700+ patterns) and semantic (LLM-based) analysis.
 
 ```python
 from sentinelseed import LayeredValidator, ValidationConfig

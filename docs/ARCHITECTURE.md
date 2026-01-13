@@ -4,7 +4,7 @@
 
 Sentinel uses a layered validation architecture with two main components:
 
-1. **Heuristic Layer**: Fast regex-based validation (580+ patterns, <10ms, free)
+1. **Heuristic Layer**: Fast regex-based validation (700+ patterns, <10ms, free)
 2. **Semantic Layer**: LLM-based validation for nuanced cases (1-5s, ~$0.0005/call)
 
 ### Validation 360° Architecture
@@ -112,7 +112,7 @@ classDiagram
     }
 
     class THSPValidator {
-        +patterns: 580+
+        +patterns: 700+
         +validate(text)
         +check_gate(gate, text)
     }
@@ -221,7 +221,7 @@ sequenceDiagram
 
     App->>LV: validate(content)
     LV->>TH: validate(content)
-    TH->>TH: Check 580+ patterns
+    TH->>TH: Check 700+ patterns
 
     alt Heuristic Blocks
         TH-->>LV: blocked, violations
@@ -291,7 +291,7 @@ if output_result.seed_failed:
 
 ### THSPValidator (Heuristic)
 
-Four-gate validation using 580+ regex patterns:
+Four-gate validation using 700+ regex patterns:
 
 | Gate | Function | Examples |
 |------|----------|----------|
@@ -307,7 +307,7 @@ The InputValidator is a multi-detector system that runs **before** content reach
 ```
 InputValidator v1.8.0
 ├── TextNormalizer (8 deobfuscation stages)
-├── PatternDetector (580+ patterns, weight 1.0)
+├── PatternDetector (700+ patterns, weight 1.0)
 ├── EscalationDetector (multi-turn, weight 1.1)
 ├── FramingDetector (70+ patterns, weight 1.2)
 ├── HarmfulRequestDetector (10 categories, weight 1.3)
@@ -321,7 +321,7 @@ InputValidator v1.8.0
 flowchart TD
     subgraph IV["InputValidator v1.8.0"]
         Input[Raw Input] --> TN[TextNormalizer<br/>8 deobfuscation stages]
-        TN --> PD[PatternDetector<br/>580+ patterns]
+        TN --> PD[PatternDetector<br/>700+ patterns]
         TN --> ED[EscalationDetector<br/>multi-turn attacks]
         TN --> FD[FramingDetector<br/>roleplay/fiction]
         TN --> HRD[HarmfulRequestDetector<br/>10 categories]
