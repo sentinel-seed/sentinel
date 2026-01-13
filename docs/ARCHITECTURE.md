@@ -293,13 +293,16 @@ Four-gate validation using 580+ regex patterns:
 The InputValidator is a multi-detector system that runs **before** content reaches the AI. It uses a layered approach with multiple specialized detectors:
 
 ```
-InputValidator v1.4.0
+InputValidator v1.8.0
 ├── TextNormalizer (8 deobfuscation stages)
 ├── PatternDetector (580+ patterns, weight 1.0)
 ├── EscalationDetector (multi-turn, weight 1.1)
 ├── FramingDetector (70+ patterns, weight 1.2)
 ├── HarmfulRequestDetector (10 categories, weight 1.3)
-└── EmbeddingDetector (semantic, weight 1.4, optional)
+├── IntentSignalDetector (compositional intent, weight 1.3)
+├── SafeAgentDetector (embodied AI safety, weight 1.4)
+├── EmbeddingDetector (semantic, weight 1.4, optional)
+└── BenignContextDetector (false positive reduction)
 ```
 
 #### Detectors
@@ -310,7 +313,12 @@ InputValidator v1.4.0
 | **EscalationDetector** | Multi-turn attacks like Crescendo | 1.1 |
 | **FramingDetector** | Roleplay, fiction, DAN mode framing | 1.2 |
 | **HarmfulRequestDetector** | Direct harmful content requests | 1.3 |
+| **IntentSignalDetector** | Compositional analysis of action + target + context | 1.3 |
+| **SafeAgentDetector** | Safety for embodied AI (based on SafeAgentBench) | 1.4 |
 | **EmbeddingDetector** | Semantic similarity to known attacks | 1.4 |
+| **BenignContextDetector** | Reduces false positives for legitimate contexts | N/A |
+
+The BenignContextDetector identifies legitimate technical contexts (e.g., "kill process", "attack the problem") and reduces their scores. It is disabled when obfuscation is detected to prevent bypass.
 
 #### Embedding-Based Detection
 
@@ -343,6 +351,51 @@ detector = EmbeddingDetector(
 | Ollama | nomic-embed-text | Local, free |
 
 **Graceful Degradation:** The system works without embedding support, falling back to heuristic detection.
+
+### SentinelValidator (v3.0 Architecture)
+
+The SentinelValidator provides a unified 4-gate orchestration system:
+
+```
+SentinelValidator v3.0
+├── Gate 1 (L1): InputValidator (pre-AI heuristic)
+├── Gate 2 (L3): OutputValidator (post-AI heuristic)
+└── Gate 4 (L4): SentinelObserver (post-AI LLM analysis)
+```
+
+```python
+from sentinelseed import SentinelValidator, SentinelConfig
+
+# Configure with fallback policy
+config = SentinelConfig(
+    gate1_enabled=True,
+    gate2_enabled=True,
+    gate4_enabled=True,
+    gate4_model="gpt-4o-mini",
+    gate4_fallback="ALLOW_IF_L2_PASSED",  # Fallback when L4 unavailable
+)
+
+validator = SentinelValidator(config)
+
+# Validate input only (Gate 1)
+result = validator.validate_input("user message")
+
+# Validate full dialogue (Gates 1, 2, and 4)
+result = validator.validate_dialogue(
+    input="user message",
+    output="AI response",
+)
+```
+
+**Gate 4 Fallback Policies:**
+
+| Policy | Behavior when L4 fails |
+|--------|------------------------|
+| `BLOCK` | Always block (maximum security) |
+| `ALLOW_IF_L2_PASSED` | Allow only if Gate 2 passed (balanced) |
+| `ALLOW` | Always allow (maximum usability) |
+
+The SentinelObserver (Gate 4) includes retry logic with exponential backoff for transient API failures.
 
 ### SemanticValidator
 
@@ -581,6 +634,9 @@ config = ValidationConfig(
 
 | Version | Changes |
 |---------|---------|
+| 2.24.0 | L4 retry system, Gate4Fallback policies, BenignContextDetector, multi-turn support |
+| 2.23.1 | Added typing_extensions dependency |
+| 2.23.0 | SentinelValidator v3.0 architecture, complete detection module, Python 3.10+ |
 | 2.19.0 | LayeredValidator as central orchestrator, integration audit complete |
 | 2.18.0 | Added Google ADK, Agno integrations |
 | 2.17.0 | Added Letta, OpenAI Agents SDK integrations |

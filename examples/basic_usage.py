@@ -8,13 +8,7 @@ This example demonstrates core functionality:
 - Pre-validating requests
 """
 
-import sys
-from pathlib import Path
-
-# For development: add sdk to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "sdk"))
-
-from sentinel import Sentinel, SeedLevel
+from sentinelseed import Sentinel, SeedLevel
 
 
 def main():

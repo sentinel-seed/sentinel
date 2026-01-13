@@ -1,14 +1,15 @@
 # Migration Guide
 
-This guide helps you migrate to Sentinel v2.19.0 and adopt the recommended patterns.
+This guide helps you migrate to Sentinel v2.24.0 and adopt the recommended patterns.
 
 ## Table of Contents
 
 1. [Quick Migration Checklist](#quick-migration-checklist)
-2. [Deprecated APIs](#deprecated-apis)
-3. [New Recommended Patterns](#new-recommended-patterns)
-4. [Integration Migration](#integration-migration)
-5. [Configuration Changes](#configuration-changes)
+2. [Migrating to v2.24.0](#migrating-to-v2240)
+3. [Deprecated APIs](#deprecated-apis)
+4. [New Recommended Patterns](#new-recommended-patterns)
+5. [Integration Migration](#integration-migration)
+6. [Configuration Changes](#configuration-changes)
 
 ## Quick Migration Checklist
 
@@ -18,6 +19,76 @@ This guide helps you migrate to Sentinel v2.19.0 and adopt the recommended patte
 [ ] Use LayeredValidator instead of direct gate imports
 [ ] Update custom integrations to inherit from SentinelIntegration
 [ ] Enable heuristic + semantic validation for production
+[ ] Update gate3_* parameters to gate4_* (v2.24.0+)
+[ ] Consider using SentinelValidator for unified 3-gate validation
+```
+
+## Migrating to v2.24.0
+
+### Gate Naming: gate3 to gate4
+
+In v2.24.0, the internal naming was updated from `gate3` to `gate4` for consistency with the L1/L2/L3/L4 layer naming. Legacy `gate3_*` properties are preserved as read-only aliases for backward compatibility.
+
+```python
+# Before (still works, but deprecated for config)
+config = SentinelConfig(
+    gate3_enabled=True,      # Use gate4_enabled instead
+    gate3_model="gpt-4o",    # Use gate4_model instead
+)
+
+# After (recommended)
+from sentinelseed import SentinelConfig
+
+config = SentinelConfig(
+    gate4_enabled=True,
+    gate4_model="gpt-4o",
+    gate4_fallback="ALLOW_IF_L2_PASSED",
+)
+
+# Legacy properties still work for reading
+print(config.gate3_enabled)  # Returns gate4_enabled value
+```
+
+### Using Gate4Fallback
+
+v2.24.0 introduces configurable fallback behavior when the L4 Observer is unavailable:
+
+```python
+from sentinelseed import SentinelConfig
+
+# Maximum security: block if L4 fails
+config = SentinelConfig(gate4_fallback="BLOCK")
+
+# Balanced: allow if L2 passed (default)
+config = SentinelConfig(gate4_fallback="ALLOW_IF_L2_PASSED")
+
+# Maximum usability: always allow
+config = SentinelConfig(gate4_fallback="ALLOW")
+```
+
+### Using SentinelValidator
+
+For production use, consider the unified SentinelValidator:
+
+```python
+from sentinelseed import SentinelValidator, SentinelConfig
+
+config = SentinelConfig(
+    gate4_enabled=True,
+    gate4_model="gpt-4o-mini",
+    gate4_api_key="sk-...",
+)
+
+validator = SentinelValidator(config)
+
+# Pre-AI validation (Gate 1 only)
+result = validator.validate_input("user message")
+
+# Post-AI validation (Gates 1, 2, and 4)
+result = validator.validate_dialogue(
+    input="user message",
+    output="AI response",
+)
 ```
 
 ## Deprecated APIs
