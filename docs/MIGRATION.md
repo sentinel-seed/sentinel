@@ -1,15 +1,16 @@
 # Migration Guide
 
-This guide helps you migrate to Sentinel v2.24.0 and adopt the recommended patterns.
+This guide helps you migrate to Sentinel v2.25.0 and adopt the recommended patterns.
 
 ## Table of Contents
 
 1. [Quick Migration Checklist](#quick-migration-checklist)
-2. [Migrating to v2.24.0](#migrating-to-v2240)
-3. [Deprecated APIs](#deprecated-apis)
-4. [New Recommended Patterns](#new-recommended-patterns)
-5. [Integration Migration](#integration-migration)
-6. [Configuration Changes](#configuration-changes)
+2. [Migrating to v2.25.0](#migrating-to-v2250)
+3. [Migrating to v2.24.0](#migrating-to-v2240)
+4. [Deprecated APIs](#deprecated-apis)
+5. [New Recommended Patterns](#new-recommended-patterns)
+6. [Integration Migration](#integration-migration)
+7. [Configuration Changes](#configuration-changes)
 
 ## Quick Migration Checklist
 
@@ -21,6 +22,55 @@ This guide helps you migrate to Sentinel v2.24.0 and adopt the recommended patte
 [ ] Enable heuristic + semantic validation for production
 [ ] Update gate3_* parameters to gate4_* (v2.24.0+)
 [ ] Consider using SentinelValidator for unified 3-gate validation
+[ ] Pass conversation_history for multi-turn attack detection (v2.25.0+)
+```
+
+## Migrating to v2.25.0
+
+### Multi-turn Conversation Support
+
+v2.25.0 adds native support for multi-turn conversation analysis in the public API. This enables detection of escalation attacks like Crescendo and Many-shot Harmful Jailbreaking (MHJ).
+
+```python
+from sentinelseed import SentinelValidator, SentinelConfig
+
+config = SentinelConfig(
+    gate4_enabled=True,
+    gate4_model="gpt-4o-mini",
+    gate4_api_key="sk-...",
+)
+
+validator = SentinelValidator(config)
+
+# NEW: Pass conversation history for multi-turn analysis
+result = validator.validate_dialogue(
+    input="user message",
+    output="AI response",
+    conversation_history=[  # Optional, max 10 turns used
+        {"role": "user", "content": "previous user message"},
+        {"role": "assistant", "content": "previous AI response"},
+    ]
+)
+```
+
+### Key Changes
+
+| Aspect | Before (v2.24.0) | After (v2.25.0) |
+|--------|------------------|-----------------|
+| `validate_dialogue()` | 2 parameters | 3 parameters (history optional) |
+| Gate 4 (L4 Observer) | Single-turn only | Multi-turn analysis |
+| Escalation detection | Limited | Q6 attacks (Crescendo, MHJ) |
+
+### Backward Compatibility
+
+This is a **fully backward-compatible** change:
+
+```python
+# This still works exactly as before
+result = validator.validate_dialogue(input, output)
+
+# New: pass history for better detection
+result = validator.validate_dialogue(input, output, conversation_history=history)
 ```
 
 ## Migrating to v2.24.0

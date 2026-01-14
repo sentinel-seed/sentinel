@@ -1,6 +1,6 @@
 {
   "name": "@sentinelseed/core",
-  "version": "2.24.0",
+  "version": "2.25.0",
   "description": "Core validation module for Sentinel - THSP Protocol implementation",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
