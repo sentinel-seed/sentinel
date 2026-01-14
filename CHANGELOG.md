@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.0] - 2026-01-14
+
+### Added
+
+#### Core: Multi-turn Support in Public API
+- **SentinelValidator.validate_dialogue()**: Added `conversation_history` parameter
+  - Enables Q6 escalation detection (Crescendo, MHJ attacks) in Gate 4
+  - Optional parameter with default `None` for backward compatibility
+  - History is passed to `SentinelObserver.observe()` for multi-turn analysis
+  - Maximum 10 turns used for analysis
+- **SentinelValidator.validate()**: Updated alias to support `conversation_history`
+
+### Changed
+- **Gate 4 (L4 Observer)**: Now receives conversation history when provided
+  - Previously: `SentinelObserver.observe()` supported history internally but not exposed
+  - Now: Full multi-turn support through public API
+- **Documentation**: Updated docstrings with conversation_history examples
+
+### Notes
+- This is a backward-compatible change
+- Existing code calling `validate_dialogue(input, output)` continues to work
+- For multi-turn analysis, provide history as list of `{"role": "user"|"assistant", "content": "..."}`
+
 ## [2.24.0] - 2026-01-13
 
 ### Added

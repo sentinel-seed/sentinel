@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+from typing import Optional, List, Dict
 
 from sentinelseed.core.sentinel_config import SentinelConfig, Gate4Fallback
 from sentinelseed.core.sentinel_results import ObservationResult, SentinelResult
@@ -205,17 +205,26 @@ class SentinelValidator:
         self,
         input: str,
         output: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> SentinelResult:
         """
-        Validate the complete dialogue (Gates 2 + 3).
+        Validate the complete dialogue (Gates 2 + 4).
 
         This is the main validation method for post-AI response.
-        Gate 3 ALWAYS executes when Gate 2 does not block, ensuring
+        Gate 4 ALWAYS executes when Gate 2 does not block, ensuring
         semantic analysis of the full input+output pair.
+
+        When conversation_history is provided, Gate 4 can detect multi-turn
+        escalation attacks (Crescendo, MHJ) by analyzing the conversation
+        pattern across turns.
 
         Args:
             input: User's original message
             output: AI's response
+            conversation_history: Optional list of previous conversation turns.
+                Each turn is {"role": "user"|"assistant", "content": "..."}.
+                When provided, enables Q6 escalation detection in Gate 4.
+                Maximum 10 turns are used for analysis.
 
         Returns:
             SentinelResult with blocking decision
@@ -262,7 +271,11 @@ class SentinelValidator:
         if self.gate4:
             try:
                 self._gate4_calls += 1
-                gate4_result = self.gate4.observe(input=input, output=output)
+                gate4_result = self.gate4.observe(
+                    input=input,
+                    output=output,
+                    conversation_history=conversation_history,
+                )
 
                 if not gate4_result.is_safe:
                     self._blocked_count += 1
@@ -359,6 +372,7 @@ class SentinelValidator:
         self,
         input: str,
         output: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> SentinelResult:
         """
         Convenience method - alias for validate_dialogue.
@@ -366,11 +380,16 @@ class SentinelValidator:
         Args:
             input: User's message
             output: AI's response
+            conversation_history: Optional previous conversation turns
 
         Returns:
             SentinelResult with blocking decision
         """
-        return self.validate_dialogue(input=input, output=output)
+        return self.validate_dialogue(
+            input=input,
+            output=output,
+            conversation_history=conversation_history,
+        )
 
     def get_stats(self) -> dict:
         """Get validation statistics."""
