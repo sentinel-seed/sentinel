@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.1] - 2026-01-17
+
+### Changed
+
+#### Detection: L3 OutputValidator v1.2.0
+- **ToxicityChecker v1.2.0**: Improved false-positive reduction
+  - Raised `keyword_threshold` from 0.5 to 0.75
+  - Raised `combined_threshold` from 0.6 to 0.75
+  - Removed overly generic keywords: "beat", "explicit", "minor", "cutting", "hanging", "bank account"
+  - Added `BENIGN_CONTEXTS` whitelist for legitimate technical contexts
+  - Added `SAFE_PROPER_NAMES` for common names that match patterns (e.g., "Dan" vs "DAN mode")
+  - Added `MALICIOUS_OVERRIDES` security protection to prevent bypass via benign framing
+  - New method: `_is_benign_context()` for context-aware detection
+  - New method: `_has_malicious_override()` for security protection
+- **AdversarialBehaviorDetector v1.2.0**: Improved precision
+  - Case-sensitive patterns for jailbreak detection ("DAN" vs "Dan")
+  - Updated `_is_adversarial_input()` with separate case-sensitive patterns
+  - Fixed "I am an evil AI" pattern to match "an" article
+- **OutputValidatorConfig**: New configuration options
+  - `output_mode`: Enable output-focused detection (default: True)
+  - `require_behavioral_context`: Keywords need behavioral indicators (default: True)
+  - `benign_context_check`: Enable benign context whitelist (default: True)
+
+### Security
+- MALICIOUS_OVERRIDES prevents attackers from using benign framing to bypass detection
+- Examples blocked: "kill the process that is my enemy", "attack the problem illegally"
+- Benign context detection does NOT apply when malicious indicators are present
+
 ## [2.25.0] - 2026-01-14
 
 ### Added
@@ -343,6 +371,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alignment seeds (minimal, standard, full)
 - OpenAI and Anthropic provider support
 
+[2.25.1]: https://github.com/sentinel-seed/sentinel/compare/v2.25.0...v2.25.1
+[2.25.0]: https://github.com/sentinel-seed/sentinel/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/sentinel-seed/sentinel/compare/v2.23.1...v2.24.0
 [2.23.1]: https://github.com/sentinel-seed/sentinel/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/sentinel-seed/sentinel/compare/v2.19.0...v2.23.0
