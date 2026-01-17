@@ -9,7 +9,7 @@ This integration provides THSP-based (Truth, Harm, Scope, Purpose) guardrails th
 ## Features
 
 - **THSP Protocol** - Four-gate validation (Truth, Harm, Scope, Purpose)
-- **200+ Detection Patterns** - Comprehensive pattern matching
+- **700+ Detection Patterns** - Comprehensive pattern matching
 - **Jailbreak Detection** - Protection against prompt injection
 - **Native Integration** - Extends Agno's `BaseGuardrail`
 - **Async Support** - Works with both `run()` and `arun()`
@@ -107,7 +107,7 @@ if not result["safe"]:
 | `standard` | Balanced safety coverage | General production use |
 | `full` | Maximum safety coverage | Security-critical applications |
 
-Note: All levels use the same detection patterns (~200). The level affects the seed prompt injected into the model, not the validation patterns.
+Note: All levels use the same detection patterns (700+). The level affects the seed prompt injected into the model, not the validation patterns.
 
 ## Monitoring
 
