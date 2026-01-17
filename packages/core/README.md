@@ -9,7 +9,7 @@ Core validation module for Sentinel. Implements the THSP Protocol (Truth, Harm, 
 | **THSP Protocol** | Five-gate validation system (Truth, Harm, Scope, Purpose, Jailbreak) |
 | **Heuristic Validation** | Pattern-based detection, runs offline, sub-millisecond latency |
 | **Semantic Validation** | LLM-powered analysis via API for nuanced cases |
-| **580+ Patterns** | Comprehensive pattern library synchronized with Python core |
+| **700+ Patterns** | Comprehensive pattern library synchronized with Python core |
 | **TypeScript Native** | Full type definitions included |
 
 ## Installation
@@ -106,7 +106,7 @@ interface GateResult {
 
 ## Pattern Categories
 
-The package includes 580+ patterns organized by category:
+The package includes 700+ patterns organized by category:
 
 **Jailbreak Detection**
 - Instruction override patterns
