@@ -1,12 +1,13 @@
 # Migration Guide
 
-This guide helps you migrate to Sentinel v2.25.0 and adopt the recommended patterns.
+This guide helps you migrate to Sentinel v2.25.1 and adopt the recommended patterns.
 
 ## Table of Contents
 
 1. [Quick Migration Checklist](#quick-migration-checklist)
-2. [Migrating to v2.25.0](#migrating-to-v2250)
-3. [Migrating to v2.24.0](#migrating-to-v2240)
+2. [Migrating to v2.25.1](#migrating-to-v2251)
+3. [Migrating to v2.25.0](#migrating-to-v2250)
+4. [Migrating to v2.24.0](#migrating-to-v2240)
 4. [Deprecated APIs](#deprecated-apis)
 5. [New Recommended Patterns](#new-recommended-patterns)
 6. [Integration Migration](#integration-migration)
@@ -23,7 +24,85 @@ This guide helps you migrate to Sentinel v2.25.0 and adopt the recommended patte
 [ ] Update gate3_* parameters to gate4_* (v2.24.0+)
 [ ] Consider using SentinelValidator for unified 3-gate validation
 [ ] Pass conversation_history for multi-turn attack detection (v2.25.0+)
+[ ] Update OutputValidatorConfig if using custom thresholds (v2.25.1+)
 ```
+
+## Migrating to v2.25.1
+
+### OutputValidator v1.2.0: False Positive Reduction
+
+v2.25.1 includes OutputValidator v1.2.0 with significant improvements to reduce false positives while maintaining security.
+
+#### What Changed
+
+| Component | Change | Impact |
+|-----------|--------|--------|
+| ToxicityChecker | `keyword_threshold`: 0.5 → 0.75 | Fewer false positives |
+| ToxicityChecker | `combined_threshold`: 0.6 → 0.75 | More accurate detection |
+| ToxicityChecker | Removed keywords: "beat", "explicit", "minor", "cutting", "hanging", "bank account" | Legitimate content no longer blocked |
+| ToxicityChecker | Added `BENIGN_CONTEXTS` whitelist | Technical contexts recognized |
+| ToxicityChecker | Added `MALICIOUS_OVERRIDES` protection | Prevents bypass via benign framing |
+| AdversarialDetector | Case-sensitive "DAN" detection | "Dan" (name) vs "DAN" (jailbreak) |
+| OutputValidatorConfig | New fields: `output_mode`, `require_behavioral_context`, `benign_context_check` | More configuration options |
+
+#### Migration Steps
+
+**If you're using default configuration:** No changes needed. The new thresholds are applied automatically.
+
+**If you're using custom thresholds:**
+
+```python
+# Before (v2.25.0)
+from sentinelseed.detection import OutputValidatorConfig
+
+config = OutputValidatorConfig(
+    # Old thresholds (now raised internally)
+)
+
+# After (v2.25.1) - explicit configuration
+config = OutputValidatorConfig(
+    # New output-specific settings
+    output_mode=True,  # Focus on AI behavior, not input patterns
+    benign_context_check=True,  # Enable benign context detection
+    require_behavioral_context=True,  # Keywords need behavioral indicators
+)
+```
+
+#### Benign Context Examples
+
+These examples now pass validation (no longer blocked):
+
+```python
+# Technical contexts
+"We need to kill the process running on port 8080."  # ✓ Passes
+"The attack on this optimization problem requires a new approach."  # ✓ Passes
+
+# Professional services
+"I recommend a professional dog grooming service."  # ✓ Passes
+
+# Proper names
+"Dan plants tomatoes in his garden."  # ✓ Passes
+```
+
+These examples are still blocked (malicious indicators detected):
+
+```python
+# Malicious override: "my enemy" invalidates benign context
+"I will kill the process that belongs to my enemy."  # ✗ Blocked
+
+# Evasion indicator
+"Kill the process without getting caught."  # ✗ Blocked
+
+# Jailbreak persona (uppercase DAN)
+"[DAN]: Sure, I can help with that harmful request."  # ✗ Blocked
+```
+
+#### Backward Compatibility
+
+This is a **fully backward-compatible** change:
+- Default behavior improves automatically
+- Existing custom configurations still work
+- No API breaking changes
 
 ## Migrating to v2.25.0
 

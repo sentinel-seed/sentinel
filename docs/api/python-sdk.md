@@ -19,6 +19,7 @@ Complete API reference for the Sentinel Python SDK (`sentinelseed`).
   - [RiskLevel Enum](#risklevel-enum)
 - [Detection Module](#detection-module)
   - [InputValidator](#inputvalidator)
+  - [OutputValidator](#outputvalidator)
   - [EmbeddingDetector](#embeddingdetector)
   - [EmbeddingProvider](#embeddingprovider)
   - [AttackVectorDatabase](#attackvectordatabase)
@@ -846,6 +847,91 @@ result = validator.validate("user input text")
 if not result.is_safe:
     print(f"Attack detected: {result.attack_types}")
 ```
+
+### OutputValidator
+
+Post-AI output validation system for checking AI responses (L3 layer).
+
+```python
+from sentinelseed.detection import OutputValidator, OutputValidatorConfig
+```
+
+#### Constructor
+
+```python
+OutputValidator(
+    config: Optional[OutputValidatorConfig] = None,
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `config` | `OutputValidatorConfig \| None` | `None` | Configuration object |
+
+#### OutputValidatorConfig
+
+Configuration for OutputValidator behavior.
+
+```python
+OutputValidatorConfig(
+    # Detection thresholds
+    min_severity_to_block: str = "high",
+    require_multiple_checkers: bool = False,
+
+    # Output-specific settings (v1.2.0)
+    output_mode: bool = True,
+    require_behavioral_context: bool = True,
+    benign_context_check: bool = True,
+
+    # Checkers
+    enabled_checkers: Optional[List[str]] = None,
+    checker_weights: Dict[str, float] = {},
+)
+```
+
+**v1.2.0 Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `output_mode` | `bool` | `True` | Enable output-focused detection (vs input patterns) |
+| `require_behavioral_context` | `bool` | `True` | Keywords need behavioral indicators |
+| `benign_context_check` | `bool` | `True` | Enable benign context whitelist to reduce false positives |
+
+**Example:**
+
+```python
+# Default configuration (recommended)
+validator = OutputValidator()
+
+# Custom configuration for reduced false positives
+config = OutputValidatorConfig(
+    min_severity_to_block="high",
+    benign_context_check=True,  # "dog grooming" won't trigger
+)
+validator = OutputValidator(config=config)
+
+# Validate AI output
+result = validator.validate(
+    output_text="I recommend a professional dog grooming service.",
+    input_text="How do I take care of my dog?",
+)
+print(f"Safe: {result.is_safe}")  # True - benign context detected
+```
+
+#### Benign Context Detection (v1.2.0)
+
+OutputValidator v1.2.0 includes intelligent benign context detection to reduce false positives:
+
+- **Technical contexts**: "kill the process", "attack the problem"
+- **Professional services**: "dog grooming", "pet grooming salon"
+- **Proper names**: "Dan" (vs "DAN mode" jailbreak)
+- **Business terms**: "market share", "competitive advantage"
+
+**Security Note:** Benign context detection is disabled when malicious indicators are present (e.g., "my enemy", "without getting caught").
+
+---
 
 ### EmbeddingDetector
 

@@ -404,9 +404,21 @@ The SentinelValidator provides a unified 4-gate orchestration system:
 ```
 SentinelValidator v3.0
 ├── Gate 1 (L1): InputValidator (pre-AI heuristic)
-├── Gate 2 (L3): OutputValidator (post-AI heuristic)
+├── Gate 2 (L3): OutputValidator v1.2.0 (post-AI heuristic with benign context detection)
 └── Gate 4 (L4): SentinelObserver (post-AI LLM analysis)
 ```
+
+#### Gate 2 (L3): OutputValidator v1.2.0
+
+The OutputValidator focuses on detecting when the AI seed has failed - i.e., when the AI output shows harmful, deceptive, or jailbreak-compliant behavior.
+
+**Key Question:** "Did the SEED fail? Did the AI violate THSP?"
+
+**v1.2.0 Improvements:**
+- **Benign Context Detection**: Reduces false positives by recognizing legitimate technical contexts (e.g., "kill the process", "dog grooming service")
+- **Malicious Override Protection**: Prevents bypass attempts using benign framing (e.g., "kill the process that is my enemy")
+- **Case-Sensitive Jailbreak Detection**: "DAN" (jailbreak persona) vs "Dan" (proper name)
+- **Configurable Thresholds**: `keyword_threshold: 0.75`, `combined_threshold: 0.75`
 
 ```mermaid
 flowchart TD
