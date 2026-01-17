@@ -484,6 +484,9 @@ class OutputValidatorConfig(DetectionConfig):
         require_multiple_checkers: Require multiple checkers to fail
         custom_rules_path: Path to custom rules file
         parallel_checking: Run checkers in parallel
+        output_mode: Enable output-focused detection (v1.2.0)
+        require_behavioral_context: Keywords need behavioral indicators (v1.2.0)
+        benign_context_check: Enable benign context whitelist (v1.2.0)
 
     Example:
         config = OutputValidatorConfig(
@@ -522,6 +525,12 @@ class OutputValidatorConfig(DetectionConfig):
 
     # Performance
     parallel_checking: bool = True
+
+    # Output-specific settings (v1.2.0 - FP reduction)
+    # These settings help L3 focus on AI BEHAVIOR rather than INPUT patterns
+    output_mode: bool = True  # Enable output-focused detection (vs input pattern matching)
+    require_behavioral_context: bool = True  # Keywords need behavioral indicators
+    benign_context_check: bool = True  # Enable benign context whitelist (e.g., "dog grooming")
 
     def __post_init__(self) -> None:
         """Validate and normalize configuration values."""
@@ -577,6 +586,10 @@ class OutputValidatorConfig(DetectionConfig):
             "require_multiple_checkers": self.require_multiple_checkers,
             "custom_rules_path": self.custom_rules_path,
             "parallel_checking": self.parallel_checking,
+            # v1.2.0: Output-specific settings
+            "output_mode": self.output_mode,
+            "require_behavioral_context": self.require_behavioral_context,
+            "benign_context_check": self.benign_context_check,
         })
         return base
 

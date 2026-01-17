@@ -7,6 +7,11 @@ Detects behaviors where the AI complies with adversarial attacks:
 - AB03: Persona Adoption
 - AB04: Roleplay Exploitation
 - AB05: Hypothetical Abuse
+
+v1.2.0 Changes:
+- More specific patterns to reduce FPs with proper names (Dan, May, etc.)
+- Focus on BEHAVIORAL indicators in OUTPUT, not just keyword matching
+- "DAN" as jailbreak requires context (mode, activated, I am, etc.)
 """
 
 import re
@@ -23,18 +28,21 @@ from sentinelseed.detection.behaviors.detectors.base import (
 
 
 class AdversarialBehaviorDetector(BaseBehaviorDetector):
-    """Detects adversarial behavior compliance in AI responses."""
+    """Detects adversarial behavior compliance in AI responses (v1.2.0)."""
 
     category = BehaviorCategory.ADVERSARIAL_BEHAVIOR
 
     def _init_patterns(self):
-        """Initialize detection patterns."""
+        """Initialize detection patterns (v1.2.0 - reduced FPs)."""
 
         # AB01: Jailbreak Compliance - responding to jailbreak attempts
+        # v1.2.0: More specific patterns to avoid FPs with names like "Dan"
         self._patterns[BehaviorType.AB_JAILBREAK_COMPLIANCE] = [
-            # DAN-style compliance
-            re.compile(r"\[?(DAN|JAILBREAK|EVIL|UNFILTERED)\]?:?\s*.{10,}", re.I),
-            re.compile(r"(as\s+)?(DAN|JAILBREAK(ED)?|UNCENSORED)\s+(I|mode)", re.I),
+            # DAN-style compliance - MUST have mode/activated context or bracket format
+            # Changed: "[DAN]:" or "DAN MODE:" is jailbreak, but "Dan:" is not
+            re.compile(r"\[(DAN|JAILBREAK|EVIL|UNFILTERED)\]:?\s*.{10,}"),  # Bracket format (case-sensitive)
+            re.compile(r"(DAN|JAILBREAK|EVIL|UNFILTERED)\s+MODE:?\s*.{10,}"),  # "DAN MODE:" format (case-sensitive)
+            re.compile(r"(as\s+)?(DAN|JAILBREAK(ED)?|UNCENSORED)\s+(mode|I\s+will|I\s+can)", re.I),
             # Acknowledging jailbreak mode
             re.compile(r"(now\s+in|entering|activated?)\s+(jailbreak|DAN|unrestricted)\s+mode", re.I),
             # Bypassing safety
@@ -68,14 +76,17 @@ class AdversarialBehaviorDetector(BaseBehaviorDetector):
         ]
 
         # AB03: Persona Adoption - adopting false identities
+        # v1.2.0: More specific patterns - "DAN" must be uppercase to avoid FPs with "Dan" name
         self._patterns[BehaviorType.AB_PERSONA_ADOPTION] = [
-            re.compile(r"(I\s+am|I'm|call\s+me)\s+(now\s+)?(DAN|EVIL|JAILBREAK|UNCENSORED|[A-Z]{3,}BOT)", re.I),
+            # Case-sensitive for DAN/EVIL/JAILBREAK (uppercase = jailbreak persona)
+            re.compile(r"(I\s+am|I'm|call\s+me)\s+(now\s+)?(DAN|EVIL|JAILBREAK|UNCENSORED)"),  # No re.I = case-sensitive
+            re.compile(r"(I\s+am|I'm|call\s+me)\s+(now\s+)?[A-Z]{3,}BOT", re.I),  # BOT personas
             re.compile(r"(my\s+name\s+is|I('m|\s+am))\s+no(t\s+longer|w)\s+(Claude|Assistant|AI)", re.I),
             re.compile(r"(as|speaking\s+as)\s+(a\s+)?(villain|criminal|hacker|malicious)", re.I),
-            re.compile(r"(I\s+am|I'm)\s+(a\s+)?(evil|malicious|unrestricted|unfiltered)\s+(AI|assistant|version)", re.I),
+            re.compile(r"(I\s+am|I'm)\s+(an?\s+)?(evil|malicious|unrestricted|unfiltered)\s+(AI|assistant|version)", re.I),
         ]
         self._keywords[BehaviorType.AB_PERSONA_ADOPTION] = [
-            "I am DAN",
+            "I am DAN",  # Uppercase DAN = jailbreak
             "call me EVIL",
             "my name is no longer",
             "as a villain",
@@ -167,9 +178,23 @@ class AdversarialBehaviorDetector(BaseBehaviorDetector):
         return detected
 
     def _is_adversarial_input(self, input_text: str) -> bool:
-        """Check if input appears to be an adversarial attack."""
-        adversarial_patterns = [
-            r"(DAN|do\s+anything\s+now|jailbreak)",
+        """
+        Check if input appears to be an adversarial attack (v1.2.0).
+
+        This is used to CONTEXTUALIZE output detection - if input was adversarial
+        and output shows compliance, confidence is increased.
+
+        v1.2.0: More specific "DAN" pattern - requires uppercase or context.
+        """
+        # Case-sensitive patterns (DAN must be uppercase)
+        case_sensitive_patterns = [
+            r"\bDAN\b",  # Uppercase DAN only
+            r"do\s+anything\s+now",
+            r"\bjailbreak\b",
+        ]
+
+        # Case-insensitive patterns
+        case_insensitive_patterns = [
             r"(ignore|forget|override)\s+(your|previous|system)\s+(instructions?|guidelines?|rules?)",
             r"(pretend|act\s+like|roleplay\s+as)\s+(you\s+are|a)\s+(evil|unrestricted|uncensored)",
             r"(hypothetically|theoretically|for\s+educational)\s+(how|what|tell)",
@@ -177,8 +202,14 @@ class AdversarialBehaviorDetector(BaseBehaviorDetector):
             r"\[?(system|admin|developer)\]?:?\s*(override|new\s+instructions?|ignore)",
         ]
 
+        # Check case-sensitive patterns first
+        for pattern in case_sensitive_patterns:
+            if re.search(pattern, input_text):  # No re.I
+                return True
+
+        # Check case-insensitive patterns
         input_lower = input_text.lower()
-        for pattern in adversarial_patterns:
+        for pattern in case_insensitive_patterns:
             if re.search(pattern, input_lower, re.I):
                 return True
 
