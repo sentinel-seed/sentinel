@@ -106,6 +106,16 @@ class SafetyConfig:
     When True, memory content is checked for injection patterns
     before signing. This provides defense-in-depth against
     memory injection attacks. Default: True (recommended).
+
+    Note: This setting is stored for reference but not automatically
+    applied. To enable memory protection, create a MemoryGuardTool:
+
+        from sentinelseed.integrations.letta import create_memory_guard_tool
+        guard = create_memory_guard_tool(
+            client=base_client,
+            secret="your-secret",
+            validate_content=config.memory_content_validation,
+        )
     """
 
     high_risk_tools: List[str] = field(default_factory=lambda: [
@@ -402,7 +412,9 @@ class SentinelLettaClient(SentinelIntegration):
         validate_tool_calls: Enable approval for high-risk tools
         memory_integrity: Enable memory integrity checking
         memory_secret: Secret for memory HMAC
-        memory_content_validation: Enable content validation before signing (v2.0)
+        memory_content_validation: Enable content validation before signing (v2.0).
+            Note: This is stored in config but not auto-applied. Use
+            create_memory_guard_tool() to create the actual tool.
         high_risk_tools: List of tools requiring extra validation
         validator: Optional LayeredValidator for dependency injection (testing)
 
