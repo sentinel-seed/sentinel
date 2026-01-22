@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.26.0] - 2026-01-22
+
+### Added
+
+#### Memory: Memory Shield v2.0
+- **MemoryContentValidator**: Pre-signing content validation for memory entries
+  - Detects injection attacks BEFORE content is signed (vs v1.0 which only detected tampering AFTER)
+  - 23+ detection patterns across 9 injection categories
+  - Reuses BenignContextDetector from detection module for false-positive reduction
+  - Configurable strict mode, confidence thresholds, and custom patterns
+  - Full metrics collection: validations, block rate, time, suspicions by category
+- **InjectionCategory enum**: 9 attack categories with severity levels
+  - `AUTHORITY_CLAIM` (high): Fake admin/system messages
+  - `INSTRUCTION_OVERRIDE` (critical): Attempts to override agent rules
+  - `ADDRESS_REDIRECTION` (critical): Crypto fund redirection
+  - `AIRDROP_SCAM` (high): Fake reward/airdrop schemes
+  - `URGENCY_MANIPULATION` (medium): Time-pressure tactics
+  - `TRUST_EXPLOITATION` (medium): Fake verification claims
+  - `ROLE_MANIPULATION` (high): Identity/role injection
+  - `CONTEXT_POISONING` (high): Fake context markers
+  - `CRYPTO_ATTACK` (critical): Direct crypto theft attempts
+- **MemoryContentUnsafe exception**: Raised when injection detected in strict mode
+  - Includes suspicion list, content preview, and full serialization support
+- **ContentValidationResult**: Immutable result type with factory methods
+  - Properties: `is_suspicious`, `suspicion_count`, `primary_suspicion`, `categories_detected`
+- **MemorySuspicion**: Individual detection result with category, confidence, and position
+- **Convenience functions**: `is_memory_safe()`, `validate_memory_content()`
+
+#### Memory: MemoryIntegrityChecker v2.0
+- **New parameters**: `validate_content`, `content_validator`, `content_validation_config`
+  - `validate_content=True`: Enable content validation before signing (opt-in)
+  - `content_validator`: Inject custom MemoryContentValidator instance
+  - `content_validation_config`: Dict config for default validator
+- **sign_entry()**: Now validates content before signing (if enabled)
+  - Raises `MemoryContentUnsafe` in strict mode
+  - Adjusts trust score based on validation result in non-strict mode
+- **skip_content_validation parameter**: Bypass content validation for specific entries
+
+#### Cross-Platform: TypeScript Synchronization
+- **@sentinelseed/core memory-patterns**: Canonical TypeScript source for all patterns
+  - New `./memory-patterns` subpath export in package.json
+  - `InjectionCategory` enum, `InjectionSeverity` type
+  - Pattern utilities: `compilePatterns`, `getPatternsByCategory`, `getHighConfidencePatterns`
+- **@sentinelseed/elizaos-plugin**: Memory content validation support
+  - `MemoryContentValidator`, `MemoryContentUnsafeError`
+  - Pattern exports from `memory-patterns.ts`
+  - Updated `memory-integrity.ts` with v2.0 content validation
+- **Browser extension**: Updated `memory-scanner.ts` with shared patterns
+- **Sync script**: `scripts/sync-memory-patterns.py` generates TypeScript from Python
+
+### Changed
+- **memory/__init__.py**: Updated exports for v2.0 (patterns, content_validator)
+- **memory/README.md**: Comprehensive v2.0 documentation
+  - New "What's New in v2.0" section
+  - Content validation quick start examples
+  - API reference for new classes and types
+  - OWASP coverage comparison table
+
+### Security
+- Addresses Princeton CrAIBench attack vector: malicious content injected BEFORE signing
+- Pattern detection prevents: authority impersonation, instruction override, address redirection
+- Benign context handling prevents false positives on technical content
+- MALICIOUS_OVERRIDES prevent bypass via benign framing
+
+### References
+- Princeton CrAIBench: https://arxiv.org/abs/2503.16248 (85.1% attack success rate)
+- OWASP ASI06: Memory and Context Poisoning
+- Memory Shield v2.0 Specification
+
 ## [2.25.1] - 2026-01-17
 
 ### Changed
@@ -371,6 +440,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alignment seeds (minimal, standard, full)
 - OpenAI and Anthropic provider support
 
+[2.26.0]: https://github.com/sentinel-seed/sentinel/compare/v2.25.1...v2.26.0
 [2.25.1]: https://github.com/sentinel-seed/sentinel/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/sentinel-seed/sentinel/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/sentinel-seed/sentinel/compare/v2.23.1...v2.24.0
