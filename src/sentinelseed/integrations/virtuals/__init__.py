@@ -209,6 +209,16 @@ class SentinelConfig:
     # Memory integrity settings (defense against memory injection)
     memory_integrity_check: bool = False
     memory_secret_key: Optional[str] = None
+    memory_content_validation: bool = True
+    """
+    Enable content validation before HMAC signing (v2.0).
+    When True, memory content is checked for injection patterns
+    (authority claims, instruction overrides, address redirection, etc.)
+    before signing. This provides defense-in-depth against memory
+    injection attacks. Default: True (recommended).
+
+    Note: Requires memory_integrity_check=True to take effect.
+    """
 
     # Pattern detection - common crypto attack patterns
     suspicious_patterns: List[str] = field(default_factory=lambda: [
@@ -837,9 +847,13 @@ class SentinelSafetyWorker:
                 self._memory_checker = MemoryIntegrityChecker(
                     secret_key=self.config.memory_secret_key,
                     strict_mode=False,  # Don't raise exceptions, return validation results
+                    validate_content=self.config.memory_content_validation,
                 )
                 self._memory_store = self._memory_checker.create_safe_memory_store()
-                logger.info("Memory integrity checker initialized")
+                logger.info(
+                    "Memory integrity checker initialized (content_validation=%s)",
+                    self.config.memory_content_validation,
+                )
 
     def check_action_safety(
         self,
@@ -1034,10 +1048,11 @@ class SentinelSafetyWorker:
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get statistics about memory integrity checks."""
         if not self._memory_checker:
-            return {"enabled": False}
+            return {"enabled": False, "content_validation": False}
 
         return {
             "enabled": True,
+            "content_validation": self.config.memory_content_validation,
             **self._memory_checker.get_validation_stats(),
         }
 
