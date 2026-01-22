@@ -51,7 +51,9 @@ References:
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -73,6 +75,84 @@ from sentinelseed.detection.benign_context import (
 
 
 __version__ = "2.0.0"
+
+# Module logger
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# METRICS
+# =============================================================================
+
+@dataclass
+class ValidationMetrics:
+    """
+    Internal metrics for content validation.
+
+    Tracks validation statistics for monitoring and tuning.
+    Thread-safe for concurrent usage.
+
+    Attributes:
+        total_validations: Total number of validate() calls
+        total_suspicions: Total suspicions detected across all validations
+        suspicions_by_category: Count per injection category
+        benign_context_applications: Times benign context reduced suspicion
+        malicious_override_triggers: Times malicious override invalidated benign
+        total_validation_time_ms: Cumulative validation time
+        validations_blocked: Validations that returned is_safe=False
+
+    Usage:
+        validator = MemoryContentValidator()
+        # ... perform validations ...
+        metrics = validator.get_metrics()
+        print(f"Total validations: {metrics.total_validations}")
+        print(f"Avg time: {metrics.average_validation_time_ms:.2f}ms")
+    """
+    total_validations: int = 0
+    total_suspicions: int = 0
+    suspicions_by_category: Dict[str, int] = field(default_factory=dict)
+    benign_context_applications: int = 0
+    malicious_override_triggers: int = 0
+    total_validation_time_ms: float = 0.0
+    validations_blocked: int = 0
+
+    @property
+    def average_validation_time_ms(self) -> float:
+        """Average time per validation in milliseconds."""
+        if self.total_validations == 0:
+            return 0.0
+        return self.total_validation_time_ms / self.total_validations
+
+    @property
+    def block_rate(self) -> float:
+        """Percentage of validations that were blocked (0.0-1.0)."""
+        if self.total_validations == 0:
+            return 0.0
+        return self.validations_blocked / self.total_validations
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "total_validations": self.total_validations,
+            "total_suspicions": self.total_suspicions,
+            "suspicions_by_category": dict(self.suspicions_by_category),
+            "benign_context_applications": self.benign_context_applications,
+            "malicious_override_triggers": self.malicious_override_triggers,
+            "total_validation_time_ms": self.total_validation_time_ms,
+            "average_validation_time_ms": self.average_validation_time_ms,
+            "validations_blocked": self.validations_blocked,
+            "block_rate": self.block_rate,
+        }
+
+    def reset(self) -> None:
+        """Reset all metrics to zero."""
+        self.total_validations = 0
+        self.total_suspicions = 0
+        self.suspicions_by_category.clear()
+        self.benign_context_applications = 0
+        self.malicious_override_triggers = 0
+        self.total_validation_time_ms = 0.0
+        self.validations_blocked = 0
 
 
 # =============================================================================
@@ -408,6 +488,7 @@ class MemoryContentValidator:
         min_confidence: float = 0.7,
         use_benign_context: bool = True,
         compiled_patterns: Optional[List[CompiledInjectionPattern]] = None,
+        collect_metrics: bool = True,
     ):
         """
         Initialize the content validator.
@@ -417,11 +498,16 @@ class MemoryContentValidator:
             min_confidence: Minimum confidence to report (0.0-1.0)
             use_benign_context: Use BenignContextDetector for false positive reduction
             compiled_patterns: Custom patterns (default: COMPILED_INJECTION_PATTERNS)
+            collect_metrics: If True, collect validation metrics (default: True)
         """
         self._strict_mode = strict_mode
         self._min_confidence = max(0.0, min(1.0, min_confidence))
         self._use_benign_context = use_benign_context
         self._patterns = compiled_patterns or COMPILED_INJECTION_PATTERNS
+        self._collect_metrics = collect_metrics
+
+        # Initialize metrics
+        self._metrics = ValidationMetrics() if collect_metrics else None
 
         # Initialize benign context detector if enabled
         self._benign_detector: Optional[BenignContextDetector] = None
@@ -433,6 +519,13 @@ class MemoryContentValidator:
             (re.compile(pattern, re.IGNORECASE), name)
             for pattern, name in MALICIOUS_OVERRIDES
         ]
+
+        logger.debug(
+            "MemoryContentValidator initialized: strict_mode=%s, min_confidence=%.2f, "
+            "patterns=%d, benign_context=%s, metrics=%s",
+            strict_mode, min_confidence, len(self._patterns),
+            use_benign_context, collect_metrics
+        )
 
     def validate(self, content: str) -> ContentValidationResult:
         """
@@ -457,28 +550,53 @@ class MemoryContentValidator:
             # result.suspicions = [MemorySuspicion(...), ...]
             # result.trust_adjustment = 0.1
         """
+        start_time = time.perf_counter()
+
         if not content or not content.strip():
+            logger.debug("Empty content, returning safe")
+            self._record_validation(0.0, 0, [], True)
             return ContentValidationResult.safe()
 
         # Phase 1: Pattern matching
         suspicions = self._detect_patterns(content)
 
+        if suspicions:
+            logger.debug(
+                "Detected %d initial suspicion(s) in content (len=%d)",
+                len(suspicions), len(content)
+            )
+
         # Phase 2: Check benign context (if enabled and suspicions found)
         benign_contexts: List[str] = []
         malicious_overrides: List[str] = []
+        benign_applied = False
 
         if suspicions and self._benign_detector:
             is_benign, benign_matches, reduction_factor = self._benign_detector.check(content)
 
             if is_benign:
                 benign_contexts = [m.pattern_name for m in benign_matches]
+                logger.debug(
+                    "Benign context detected: %s (reduction=%.2f)",
+                    benign_contexts, reduction_factor
+                )
 
                 # Check for malicious overrides
                 malicious_overrides = self._check_malicious_overrides(content)
 
-                if not malicious_overrides:
+                if malicious_overrides:
+                    logger.warning(
+                        "Malicious override invalidated benign context: %s",
+                        malicious_overrides
+                    )
+                    if self._metrics:
+                        self._metrics.malicious_override_triggers += 1
+                else:
                     # Benign context confirmed - reduce suspicion
                     suspicions = self._apply_benign_reduction(suspicions, reduction_factor)
+                    benign_applied = True
+                    if self._metrics:
+                        self._metrics.benign_context_applications += 1
 
         # Phase 3: Filter by minimum confidence
         filtered_suspicions = [
@@ -492,7 +610,20 @@ class MemoryContentValidator:
         # Phase 5: Determine safety
         is_safe = len(filtered_suspicions) == 0
 
+        # Calculate elapsed time
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record metrics
+        self._record_validation(elapsed_ms, len(filtered_suspicions), filtered_suspicions, is_safe)
+
+        # Log result
         if filtered_suspicions:
+            categories = [s.category.value for s in filtered_suspicions]
+            logger.info(
+                "Content validation BLOCKED: %d suspicion(s), categories=%s, "
+                "trust=%.2f, time=%.2fms",
+                len(filtered_suspicions), categories, trust_adjustment, elapsed_ms
+            )
             return ContentValidationResult.suspicious(
                 suspicions=filtered_suspicions,
                 trust_adjustment=trust_adjustment,
@@ -500,8 +631,36 @@ class MemoryContentValidator:
                 malicious_overrides=malicious_overrides,
             )
         else:
+            logger.debug(
+                "Content validation PASSED: time=%.2fms, benign_contexts=%s",
+                elapsed_ms, benign_contexts if benign_contexts else "none"
+            )
             return ContentValidationResult.safe(
                 benign_contexts=benign_contexts,
+            )
+
+    def _record_validation(
+        self,
+        elapsed_ms: float,
+        suspicion_count: int,
+        suspicions: List[MemorySuspicion],
+        is_safe: bool,
+    ) -> None:
+        """Record validation metrics."""
+        if not self._metrics:
+            return
+
+        self._metrics.total_validations += 1
+        self._metrics.total_validation_time_ms += elapsed_ms
+        self._metrics.total_suspicions += suspicion_count
+
+        if not is_safe:
+            self._metrics.validations_blocked += 1
+
+        for s in suspicions:
+            cat = s.category.value
+            self._metrics.suspicions_by_category[cat] = (
+                self._metrics.suspicions_by_category.get(cat, 0) + 1
             )
 
     def validate_strict(self, content: str) -> ContentValidationResult:
@@ -642,16 +801,51 @@ class MemoryContentValidator:
         Get validator configuration and statistics.
 
         Returns:
-            Dictionary with validator configuration
+            Dictionary with validator configuration and metrics
         """
-        return {
+        stats = {
             "version": self.VERSION,
             "strict_mode": self._strict_mode,
             "min_confidence": self._min_confidence,
             "use_benign_context": self._use_benign_context,
             "pattern_count": len(self._patterns),
             "malicious_override_count": len(self._malicious_patterns),
+            "collect_metrics": self._collect_metrics,
         }
+
+        if self._metrics:
+            stats["metrics"] = self._metrics.to_dict()
+
+        return stats
+
+    def get_metrics(self) -> Optional[ValidationMetrics]:
+        """
+        Get validation metrics.
+
+        Returns:
+            ValidationMetrics object if metrics collection is enabled, None otherwise
+
+        Example:
+            validator = MemoryContentValidator()
+            validator.validate("test content")
+            validator.validate("ADMIN: attack")
+
+            metrics = validator.get_metrics()
+            print(f"Total: {metrics.total_validations}")
+            print(f"Blocked: {metrics.validations_blocked}")
+            print(f"Avg time: {metrics.average_validation_time_ms:.2f}ms")
+        """
+        return self._metrics
+
+    def reset_metrics(self) -> None:
+        """
+        Reset all validation metrics to zero.
+
+        Use this to clear metrics for a new measurement period.
+        """
+        if self._metrics:
+            self._metrics.reset()
+            logger.debug("Validation metrics reset")
 
 
 # =============================================================================
@@ -713,6 +907,7 @@ __all__ = [
     # Types
     "MemorySuspicion",
     "ContentValidationResult",
+    "ValidationMetrics",
     # Validator
     "MemoryContentValidator",
     # Convenience functions
