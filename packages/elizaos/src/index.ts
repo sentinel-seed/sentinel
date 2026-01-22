@@ -97,7 +97,40 @@ export type {
   MemoryVerificationResult,
   IntegrityMetadata,
   MemoryIntegrityConfig,
+  ContentValidationMetadata,
 } from './memory-integrity';
+
+// Memory content validation exports (v2.0)
+export {
+  MemoryContentValidator,
+  MemoryContentUnsafeError,
+  validateMemoryContent,
+  isMemorySafe,
+} from './memory-content-validator';
+
+export type {
+  MemorySuspicion,
+  ContentValidationResult,
+  MemoryContentValidatorConfig,
+} from './memory-content-validator';
+
+// Memory injection patterns (v2.0)
+export {
+  InjectionCategory,
+  MEMORY_PATTERNS_VERSION,
+  getCategorySeverity,
+  ALL_INJECTION_PATTERNS,
+  COMPILED_INJECTION_PATTERNS,
+  compilePatterns,
+  getPatternsByCategory,
+  getHighConfidencePatterns,
+} from './memory-patterns';
+
+export type {
+  InjectionPattern,
+  CompiledInjectionPattern,
+  InjectionSeverity,
+} from './memory-patterns';
 
 // Default export
 export { sentinelPlugin as default } from './plugin';
