@@ -822,10 +822,11 @@ class SentinelSafetyWorker:
             workers=[safety_worker, my_other_worker],
         )
 
-        # With memory integrity enabled
+        # With memory integrity enabled (includes content validation by default)
         config = SentinelConfig(
             memory_integrity_check=True,
             memory_secret_key="your-secret-key",
+            memory_content_validation=True,  # default, detects injection patterns
         )
         safety_worker = SentinelSafetyWorker.create_worker_config(config)
     """
