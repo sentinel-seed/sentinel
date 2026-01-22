@@ -362,11 +362,17 @@ class MemoryIntegrityChecker:
                         content_preview=entry.content[:100] if entry.content else None,
                     )
                 else:
-                    # Non-strict mode: log warning but continue signing
+                    # Non-strict mode: adjust trust and continue signing
+                    # The entry is annotated with trust info so callers can
+                    # make informed decisions about suspicious content
                     logger.info(
-                        "Non-strict mode: proceeding with signing despite "
+                        "Non-strict mode: signing with reduced trust (%.2f) despite "
                         "%d content suspicion(s)",
+                        content_result.trust_adjustment,
                         content_result.suspicion_count,
+                    )
+                    entry = self._adjust_trust_for_suspicious_content(
+                        entry, content_result
                     )
 
         entry_id = str(uuid.uuid4())
@@ -418,6 +424,60 @@ class MemoryIntegrityChecker:
             return ContentValidationResult.safe()
 
         return self._content_validator.validate(content)
+
+    def _adjust_trust_for_suspicious_content(
+        self,
+        entry: MemoryEntry,
+        content_result: "ContentValidationResult",
+    ) -> MemoryEntry:
+        """
+        Adjust entry metadata to reflect suspicious content detection.
+
+        In non-strict mode, instead of blocking suspicious content, we annotate
+        the entry with trust adjustment information. This allows callers to make
+        informed decisions about how to handle potentially suspicious content.
+
+        The trust information is stored in metadata under the reserved key
+        `_sentinel_content_validation`. This metadata is included in the HMAC
+        signature, so it cannot be tampered with after signing.
+
+        Args:
+            entry: Original memory entry
+            content_result: Validation result containing suspicions
+
+        Returns:
+            New MemoryEntry with updated metadata containing trust adjustment info
+
+        Note:
+            The original entry is not modified. A new entry is created with
+            the updated metadata to maintain immutability.
+        """
+        # Create copy of metadata to avoid mutating original
+        updated_metadata = dict(entry.metadata)
+
+        # Add content validation info under reserved sentinel key
+        updated_metadata["_sentinel_content_validation"] = {
+            "trust_adjustment": content_result.trust_adjustment,
+            "suspicion_count": content_result.suspicion_count,
+            "categories": [s.category.value for s in content_result.suspicions],
+            "highest_confidence": content_result.highest_confidence,
+            "validated_at": datetime.now(timezone.utc).isoformat(),
+            "allowed_reason": "non_strict_mode",
+        }
+
+        logger.debug(
+            "Trust adjusted for suspicious content: adjustment=%.2f, suspicions=%d",
+            content_result.trust_adjustment,
+            content_result.suspicion_count,
+        )
+
+        # Return new entry with updated metadata (preserving immutability)
+        return MemoryEntry(
+            content=entry.content,
+            source=entry.source,
+            timestamp=entry.timestamp,
+            metadata=updated_metadata,
+        )
 
     def verify_entry(self, entry: SignedMemoryEntry) -> MemoryValidationResult:
         """
@@ -573,6 +633,83 @@ class MemoryIntegrityChecker:
                 metrics = validator.get_metrics()
         """
         return self._content_validator
+
+    # Reserved metadata key for content validation info
+    CONTENT_VALIDATION_KEY = "_sentinel_content_validation"
+
+    def has_content_suspicion(self, entry: SignedMemoryEntry) -> bool:
+        """
+        Check if a signed entry was flagged as suspicious during content validation.
+
+        In non-strict mode, suspicious content is signed but annotated with
+        trust adjustment information. This method checks for that annotation.
+
+        Args:
+            entry: The signed memory entry to check
+
+        Returns:
+            True if the entry has content suspicion metadata, False otherwise
+
+        Usage:
+            signed = checker.sign_entry(entry)
+            if checker.has_content_suspicion(signed):
+                # Handle with caution - content was flagged but allowed
+                handle_suspicious_memory(signed)
+        """
+        return self.CONTENT_VALIDATION_KEY in entry.metadata
+
+    def get_content_trust_info(
+        self,
+        entry: SignedMemoryEntry,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get content validation trust information from a signed entry.
+
+        Returns the full trust adjustment metadata if the entry was signed
+        in non-strict mode with suspicious content detected.
+
+        Args:
+            entry: The signed memory entry
+
+        Returns:
+            Dictionary with trust info if present, None otherwise.
+            Contains: trust_adjustment, suspicion_count, categories,
+            highest_confidence, validated_at, allowed_reason
+
+        Usage:
+            info = checker.get_content_trust_info(signed)
+            if info and info["trust_adjustment"] < 0.5:
+                # Very suspicious - maybe reject or flag for review
+                flag_for_human_review(signed)
+        """
+        return entry.metadata.get(self.CONTENT_VALIDATION_KEY)
+
+    def get_content_trust_adjustment(
+        self,
+        entry: SignedMemoryEntry,
+    ) -> Optional[float]:
+        """
+        Get the trust adjustment factor from content validation.
+
+        Convenience method to extract just the trust adjustment value.
+
+        Args:
+            entry: The signed memory entry
+
+        Returns:
+            Trust adjustment factor (0.0-1.0) if present, None otherwise.
+            Lower values indicate higher suspicion.
+
+        Usage:
+            adjustment = checker.get_content_trust_adjustment(signed)
+            if adjustment is not None and adjustment < 0.3:
+                # High confidence suspicion detected
+                reject_memory(signed)
+        """
+        info = self.get_content_trust_info(entry)
+        if info is not None:
+            return info.get("trust_adjustment")
+        return None
 
 
 class SafeMemoryStore:
