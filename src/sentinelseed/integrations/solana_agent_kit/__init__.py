@@ -335,6 +335,7 @@ class SentinelValidator(SentinelIntegration):
         max_history_size: int = 1000,
         memory_integrity_check: bool = False,
         memory_secret_key: Optional[str] = None,
+        memory_content_validation: bool = True,
         address_validation: Union[str, AddressValidationMode] = AddressValidationMode.STRICT,
         strict_mode: bool = False,
         custom_patterns: Optional[List[SuspiciousPattern]] = None,
@@ -358,6 +359,9 @@ class SentinelValidator(SentinelIntegration):
             max_history_size: Maximum validation history entries (prevents memory growth)
             memory_integrity_check: Enable memory integrity verification
             memory_secret_key: Secret key for memory HMAC (required if memory_integrity_check=True)
+            memory_content_validation: Enable content validation before HMAC signing (v2.0).
+                Detects injection patterns (authority claims, instruction overrides, etc.)
+                before signing. Default True. Requires memory_integrity_check=True.
             address_validation: How to handle invalid addresses ("ignore", "warn", "strict"). Default is STRICT for security.
             strict_mode: If True, block any transaction with concerns (default False)
             custom_patterns: Additional suspicious patterns to check
@@ -400,6 +404,7 @@ class SentinelValidator(SentinelIntegration):
         self.max_history_size = max_history_size
         self.memory_integrity_check = memory_integrity_check
         self.memory_secret_key = memory_secret_key
+        self.memory_content_validation = memory_content_validation
         self.strict_mode = strict_mode
         self.custom_patterns = DEFAULT_SUSPICIOUS_PATTERNS + (custom_patterns or [])
         self.on_validation = on_validation
@@ -424,11 +429,15 @@ class SentinelValidator(SentinelIntegration):
                 self._memory_checker = MemoryIntegrityChecker(
                     secret_key=memory_secret_key,
                     strict_mode=False,
+                    validate_content=memory_content_validation,
                 )
                 self._memory_store = self._memory_checker.create_safe_memory_store()
                 self._MemoryEntry = MemoryEntry
                 self._MemorySource = MemorySource
-                logger.debug("Memory integrity checker initialized with SafeMemoryStore")
+                logger.debug(
+                    "Memory integrity checker initialized (content_validation=%s)",
+                    memory_content_validation,
+                )
             except (ImportError, AttributeError):
                 warnings.warn(
                     "memory_integrity_check=True but sentinelseed.memory module not available. "
@@ -876,11 +885,12 @@ class SentinelValidator(SentinelIntegration):
             print(f"Memory integrity: {stats['validation_rate']:.1%} valid")
         """
         if self._memory_checker is None:
-            return {"enabled": False}
+            return {"enabled": False, "content_validation": False}
 
         checker_stats = self._memory_checker.get_validation_stats()
         return {
             "enabled": True,
+            "content_validation": self.memory_content_validation,
             "entries_stored": len(self._memory_store) if self._memory_store else 0,
             **checker_stats,
         }
