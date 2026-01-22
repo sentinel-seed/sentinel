@@ -113,6 +113,7 @@ from .content_validator import (
     # Types
     MemorySuspicion,
     ContentValidationResult,
+    ValidationMetrics,
     # Validator
     MemoryContentValidator,
     # Convenience functions
@@ -155,6 +156,7 @@ __all__ = [
     "MemoryContentUnsafe",
     "MemorySuspicion",
     "ContentValidationResult",
+    "ValidationMetrics",
     "MemoryContentValidator",
     "validate_memory_content",
     "is_memory_safe",
