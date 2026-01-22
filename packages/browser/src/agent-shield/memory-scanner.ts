@@ -4,178 +4,44 @@
  * This module provides memory integrity scanning for AI agents, detecting
  * potential injection attacks in agent memory/context.
  *
+ * v2.0: Refactored to use synchronized patterns from memory-patterns.ts,
+ * matching the Python implementation for cross-platform consistency.
+ *
  * Based on research from Princeton and Sentient Foundation on ElizaOS
  * vulnerabilities and memory injection attacks.
  *
  * @see https://arxiv.org/html/2503.16248v1
  * @author Sentinel Team
  * @license MIT
+ * @version 2.0.0
  */
 
 import { MemoryContext, MemorySuspicion } from '../types';
+import {
+  COMPILED_INJECTION_PATTERNS,
+  CompiledInjectionPattern,
+  InjectionCategory,
+  getCategorySeverity,
+  getPatternStatistics,
+  MEMORY_PATTERNS_VERSION,
+} from './memory-patterns';
+
+// Re-export for convenience
+export { InjectionCategory, MEMORY_PATTERNS_VERSION };
+export type { CompiledInjectionPattern };
 
 // =============================================================================
-// INJECTION PATTERNS
+// EXTENDED TYPES
 // =============================================================================
 
 /**
- * Patterns that indicate potential memory injection attempts.
- * These are derived from documented attacks on ElizaOS and similar systems.
+ * Extended suspicion with category information.
  */
-const INJECTION_PATTERNS: Array<{
-  pattern: RegExp;
-  reason: string;
-  confidence: number;
-}> = [
-  // Authority claims
-  {
-    pattern: /\b(admin|administrator|system|operator|owner|developer|dev|mod|moderator)\s*[:=]\s*/i,
-    reason: 'Authority claim detected (fake admin/system message)',
-    confidence: 85,
-  },
-  {
-    pattern: /\bADMIN\s*:/i,
-    reason: 'Fake admin prefix detected',
-    confidence: 90,
-  },
-  {
-    pattern: /\bSYSTEM\s*(NOTICE|ALERT|MESSAGE|UPDATE)\s*:/i,
-    reason: 'Fake system message detected',
-    confidence: 90,
-  },
-
-  // Instruction overrides
-  {
-    pattern: /\b(always|never|must|should)\s+(send|transfer|swap|approve|sign)\s+.*(to|for)\s+0x[a-fA-F0-9]{6,}/i,
-    reason: 'Wallet address instruction injection',
-    confidence: 95,
-  },
-  {
-    pattern: /\b(ignore|override|disregard|forget)\s+(previous|prior|earlier|above)\s+(instructions?|rules?|settings?)/i,
-    reason: 'Instruction override attempt',
-    confidence: 90,
-  },
-  {
-    pattern: /\bnew\s+(rule|policy|instruction|directive)\s*:/i,
-    reason: 'Fake policy injection',
-    confidence: 80,
-  },
-
-  // Address redirections
-  {
-    pattern: /\b(redirect|forward|send|route)\s+(all|any|every)?\s*(funds?|tokens?|eth|sol|crypto|money|payments?)\s+to\s+0x[a-fA-F0-9]{6,}/i,
-    reason: 'Fund redirection instruction',
-    confidence: 95,
-  },
-  {
-    pattern: /\b(treasury|vault|wallet|safe)\s*(address)?\s*(updated?|changed?|moved?|is now|now at)\s*(to|at)?\s*:?\s*0x[a-fA-F0-9]{6,}/i,
-    reason: 'Fake treasury address update',
-    confidence: 95,
-  },
-  {
-    pattern: /\b(official|verified|new)\s+(wallet|address)\s*:?\s*0x[a-fA-F0-9]{6,}/i,
-    reason: 'Fake official address claim',
-    confidence: 90,
-  },
-
-  // Airdrop/reward scams
-  {
-    pattern: /\b(airdrop|reward|bonus|prize|gift)\s*.*(claim|receive|get)\s*.*(send|transfer)\s+to\s+0x[a-fA-F0-9]{6,}/i,
-    reason: 'Fake airdrop instruction',
-    confidence: 90,
-  },
-  {
-    pattern: /\b(eligible|qualified|selected)\s+for\s+.*(airdrop|reward|bonus)/i,
-    reason: 'Fake eligibility claim',
-    confidence: 75,
-  },
-
-  // Urgency triggers
-  {
-    pattern: /\b(urgent|emergency|critical|immediate)\s*:?\s*(action|transfer|send|approve)/i,
-    reason: 'Urgency-based manipulation',
-    confidence: 80,
-  },
-  {
-    pattern: /\b(expires?|deadline|limited\s+time)\s*.*(minutes?|hours?|today)/i,
-    reason: 'Time pressure manipulation',
-    confidence: 70,
-  },
-
-  // Trust exploitation
-  {
-    pattern: /\btrust\s+this\s+(address|wallet|contract)/i,
-    reason: 'Trust exploitation attempt',
-    confidence: 75,
-  },
-  {
-    pattern: /\b(verified|audited|safe|secure)\s+(contract|address|wallet)/i,
-    reason: 'Fake verification claim',
-    confidence: 70,
-  },
-
-  // Role manipulation
-  {
-    pattern: /\byou\s+(are|work|act)\s+(as|for|like)\s+(a\s+)?(assistant|helper|service)/i,
-    reason: 'Role manipulation attempt',
-    confidence: 75,
-  },
-  {
-    pattern: /\b(pretend|imagine|roleplay|act)\s+.*(you\s+are|as\s+if)/i,
-    reason: 'Role injection attempt',
-    confidence: 80,
-  },
-
-  // Context poisoning
-  {
-    pattern: /\[CONTEXT\]|\[SYSTEM\]|\[MEMORY\]|\[INSTRUCTION\]/i,
-    reason: 'Fake context injection marker',
-    confidence: 85,
-  },
-  {
-    pattern: /\b(previous|historical)\s+conversation\s*:/i,
-    reason: 'Fake conversation history injection',
-    confidence: 80,
-  },
-];
-
-/**
- * Additional patterns for crypto-specific threats.
- */
-const CRYPTO_PATTERNS: Array<{
-  pattern: RegExp;
-  reason: string;
-  confidence: number;
-}> = [
-  // Contract interactions
-  {
-    pattern: /\b(approve|allowance|setApproval)\s*.*(unlimited|infinite|max|type\s*\(\s*uint256\s*\)\.max)/i,
-    reason: 'Unlimited approval instruction',
-    confidence: 90,
-  },
-  {
-    pattern: /\b(drain|sweep|withdraw)\s+(all|everything|entire|full\s+balance)/i,
-    reason: 'Drain wallet instruction',
-    confidence: 95,
-  },
-
-  // Seed phrase/private key
-  {
-    pattern: /\b(seed\s*phrase|mnemonic|private\s*key|secret\s*key)\s*(is|:|=)/i,
-    reason: 'Attempt to inject or reference private keys',
-    confidence: 95,
-  },
-
-  // Bridge/cross-chain
-  {
-    pattern: /\b(bridge|cross-chain)\s*.*(send|transfer)\s+to\s+.*(0x[a-fA-F0-9]{6,}|[1-9A-HJ-NP-Za-km-z]{32,})/i,
-    reason: 'Suspicious bridge instruction with address',
-    confidence: 85,
-  },
-];
-
-/** All patterns combined */
-const ALL_PATTERNS = [...INJECTION_PATTERNS, ...CRYPTO_PATTERNS];
+export interface ExtendedMemorySuspicion extends MemorySuspicion {
+  category: InjectionCategory;
+  patternName: string;
+  severity: string;
+}
 
 // =============================================================================
 // DETECTION FUNCTIONS
@@ -194,14 +60,47 @@ export function detectInjection(
 ): MemorySuspicion[] {
   const suspicions: MemorySuspicion[] = [];
 
-  for (const { pattern, reason, confidence } of ALL_PATTERNS) {
-    if (pattern.test(text)) {
+  for (const pattern of COMPILED_INJECTION_PATTERNS) {
+    if (pattern.regex.test(text)) {
       suspicions.push({
         content: text.slice(0, 200), // Truncate for storage
-        reason,
+        reason: pattern.reason,
         addedAt: addedAt || Date.now(),
-        confidence,
+        confidence: pattern.confidence,
       });
+    }
+  }
+
+  return suspicions;
+}
+
+/**
+ * Scans text and returns extended suspicions with category information.
+ *
+ * @param text - The text to scan
+ * @param addedAt - Timestamp when the entry was added (optional)
+ * @returns Array of extended suspicions with category
+ */
+export function detectInjectionExtended(
+  text: string,
+  addedAt?: number
+): ExtendedMemorySuspicion[] {
+  const suspicions: ExtendedMemorySuspicion[] = [];
+
+  for (const pattern of COMPILED_INJECTION_PATTERNS) {
+    const match = pattern.regex.exec(text);
+    if (match) {
+      suspicions.push({
+        content: text.slice(0, 200),
+        reason: pattern.reason,
+        addedAt: addedAt || Date.now(),
+        confidence: pattern.confidence,
+        category: pattern.category,
+        patternName: pattern.name,
+        severity: getCategorySeverity(pattern.category),
+      });
+      // Reset regex lastIndex for next test
+      pattern.regex.lastIndex = 0;
     }
   }
 
@@ -240,7 +139,6 @@ export async function scanMemory(entries: string[]): Promise<MemoryContext> {
     suspiciousEntries.push(...suspicions);
   }
 
-  // Determine if memory is compromised
   // Compromised if any high-confidence injection is detected
   const isCompromised = suspiciousEntries.some((s) => s.confidence >= 85);
 
@@ -337,6 +235,40 @@ export function hasInjectionType(
   );
 }
 
+/**
+ * Checks if a specific category is present in extended suspicions.
+ *
+ * @param suspicions - Array of extended suspicions
+ * @param category - The category to check for
+ * @returns True if category is found
+ */
+export function hasCategory(
+  suspicions: ExtendedMemorySuspicion[],
+  category: InjectionCategory
+): boolean {
+  return suspicions.some((s) => s.category === category);
+}
+
+/**
+ * Groups extended suspicions by category.
+ *
+ * @param suspicions - Array of extended suspicions
+ * @returns Map of category to suspicions
+ */
+export function groupByCategory(
+  suspicions: ExtendedMemorySuspicion[]
+): Map<InjectionCategory, ExtendedMemorySuspicion[]> {
+  const groups = new Map<InjectionCategory, ExtendedMemorySuspicion[]>();
+
+  for (const s of suspicions) {
+    const existing = groups.get(s.category) || [];
+    existing.push(s);
+    groups.set(s.category, existing);
+  }
+
+  return groups;
+}
+
 // =============================================================================
 // REAL-TIME MONITORING
 // =============================================================================
@@ -347,8 +279,15 @@ type InjectionCallback = (
   suspicions: MemorySuspicion[]
 ) => void;
 
+/** Extended callback with category information */
+type ExtendedInjectionCallback = (
+  entry: string,
+  suspicions: ExtendedMemorySuspicion[]
+) => void;
+
 /** Active monitors */
 const monitors = new Map<string, InjectionCallback>();
+const extendedMonitors = new Map<string, ExtendedInjectionCallback>();
 
 /**
  * Registers a monitor for real-time injection detection.
@@ -361,12 +300,26 @@ export function registerMonitor(id: string, callback: InjectionCallback): void {
 }
 
 /**
+ * Registers an extended monitor with category information.
+ *
+ * @param id - Unique monitor ID
+ * @param callback - Callback function when injection is detected
+ */
+export function registerExtendedMonitor(
+  id: string,
+  callback: ExtendedInjectionCallback
+): void {
+  extendedMonitors.set(id, callback);
+}
+
+/**
  * Unregisters a monitor.
  *
  * @param id - The monitor ID to unregister
  */
 export function unregisterMonitor(id: string): void {
   monitors.delete(id);
+  extendedMonitors.delete(id);
 }
 
 /**
@@ -377,6 +330,7 @@ export function unregisterMonitor(id: string): void {
  */
 export function processEntry(entry: string): MemorySuspicion[] {
   const suspicions = detectInjection(entry);
+  const extendedSuspicions = detectInjectionExtended(entry);
 
   if (suspicions.length > 0) {
     for (const callback of monitors.values()) {
@@ -384,7 +338,36 @@ export function processEntry(entry: string): MemorySuspicion[] {
     }
   }
 
+  if (extendedSuspicions.length > 0) {
+    for (const callback of extendedMonitors.values()) {
+      callback(entry, extendedSuspicions);
+    }
+  }
+
   return suspicions;
+}
+
+// =============================================================================
+// STATISTICS
+// =============================================================================
+
+/**
+ * Get scanner statistics and pattern information.
+ *
+ * @returns Scanner statistics object
+ */
+export function getScannerStatistics(): {
+  version: string;
+  patternCount: number;
+  patternStats: ReturnType<typeof getPatternStatistics>;
+  activeMonitors: number;
+} {
+  return {
+    version: MEMORY_PATTERNS_VERSION,
+    patternCount: COMPILED_INJECTION_PATTERNS.length,
+    patternStats: getPatternStatistics(),
+    activeMonitors: monitors.size + extendedMonitors.size,
+  };
 }
 
 // =============================================================================
@@ -393,12 +376,17 @@ export function processEntry(entry: string): MemorySuspicion[] {
 
 export default {
   detectInjection,
+  detectInjectionExtended,
   scanMemory,
   createMemoryContext,
   getHighestConfidenceSuspicion,
   getSuspicionSummary,
   hasInjectionType,
+  hasCategory,
+  groupByCategory,
   registerMonitor,
+  registerExtendedMonitor,
   unregisterMonitor,
   processEntry,
+  getScannerStatistics,
 };
