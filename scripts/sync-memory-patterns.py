@@ -9,10 +9,12 @@ Usage:
     python scripts/sync-memory-patterns.py
 
 Outputs:
+    - packages/core/src/memory-patterns.ts (canonical source for all TypeScript)
     - packages/browser/src/agent-shield/memory-patterns.ts
     - packages/elizaos/src/memory-patterns.ts
 
 The Python patterns in src/sentinelseed/memory/patterns.py are the source of truth.
+The TypeScript packages should import from @sentinelseed/core when possible.
 """
 
 import os
@@ -204,7 +206,10 @@ def main() -> int:
     ts_content = generate_full_ts_file()
 
     # Output paths
+    # Note: core is the canonical source, browser and elizaos are copies for
+    # packages that can't use @sentinelseed/core as dependency
     outputs = [
+        ROOT_DIR / "packages" / "core" / "src" / "memory-patterns.ts",
         ROOT_DIR / "packages" / "browser" / "src" / "agent-shield" / "memory-patterns.ts",
         ROOT_DIR / "packages" / "elizaos" / "src" / "memory-patterns.ts",
     ]
