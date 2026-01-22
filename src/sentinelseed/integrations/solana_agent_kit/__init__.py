@@ -315,6 +315,14 @@ class SentinelValidator(SentinelIntegration):
             agent.transfer(recipient, amount)
         else:
             print(f"Blocked: {result.concerns}")
+
+        # With memory integrity enabled (includes content validation by default)
+        validator = SentinelValidator(
+            max_transfer=10.0,
+            memory_integrity_check=True,
+            memory_secret_key="your-secret-key",
+            memory_content_validation=True,  # default, detects injection patterns
+        )
     """
 
     _integration_name = "solana_agent_kit"
