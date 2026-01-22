@@ -100,6 +100,14 @@ class SafetyConfig:
     memory_secret: Optional[str] = None
     """Secret key for memory integrity HMAC."""
 
+    memory_content_validation: bool = True
+    """
+    Enable content validation before HMAC signing (v2.0).
+    When True, memory content is checked for injection patterns
+    before signing. This provides defense-in-depth against
+    memory injection attacks. Default: True (recommended).
+    """
+
     high_risk_tools: List[str] = field(default_factory=lambda: [
         "send_message", "run_code", "web_search",
     ])
@@ -394,6 +402,7 @@ class SentinelLettaClient(SentinelIntegration):
         validate_tool_calls: Enable approval for high-risk tools
         memory_integrity: Enable memory integrity checking
         memory_secret: Secret for memory HMAC
+        memory_content_validation: Enable content validation before signing (v2.0)
         high_risk_tools: List of tools requiring extra validation
         validator: Optional LayeredValidator for dependency injection (testing)
 
@@ -433,6 +442,7 @@ class SentinelLettaClient(SentinelIntegration):
         validate_tool_calls: bool = True,
         memory_integrity: bool = False,
         memory_secret: Optional[str] = None,
+        memory_content_validation: bool = True,
         high_risk_tools: Optional[List[str]] = None,
         validator: Optional[LayeredValidator] = None,
     ):
@@ -471,6 +481,7 @@ class SentinelLettaClient(SentinelIntegration):
             validate_tool_calls=validate_tool_calls,
             memory_integrity=memory_integrity,
             memory_secret=memory_secret,
+            memory_content_validation=memory_content_validation,
             high_risk_tools=high_risk_tools or DEFAULT_HIGH_RISK_TOOLS.copy(),
         )
 

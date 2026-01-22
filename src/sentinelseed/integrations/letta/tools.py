@@ -244,21 +244,31 @@ class MemoryGuardTool:
     def __post_init__(self):
         """Initialize runtime components."""
         self._secret: Optional[str] = None
+        self._validate_content: bool = True
         self._checker: Optional["MemoryIntegrityChecker"] = None
         self._store: Optional["SafeMemoryStore"] = None
         # Map memory_label -> entry_id for quick lookup
         self._label_to_entry: Dict[str, str] = {}
 
-    def initialize(self, secret: str) -> None:
+    def initialize(self, secret: str, validate_content: bool = True) -> None:
         """
         Initialize the memory integrity checker with a secret key.
 
         Args:
             secret: Secret key for HMAC verification
+            validate_content: Enable content validation before signing (v2.0).
+                When True, memory content is checked for injection patterns
+                before HMAC signing. This provides defense-in-depth against
+                memory injection attacks. Default: True (recommended).
 
         Raises:
             ValueError: If secret is None or empty
             ImportError: If sentinelseed.memory module is not available
+
+        Note:
+            Content validation (v2.0) detects injection attacks BEFORE signing,
+            while HMAC verification detects tampering AFTER signing. Together
+            they provide comprehensive memory protection.
         """
         if secret is None:
             raise ValueError("secret cannot be None")
@@ -274,9 +284,17 @@ class MemoryGuardTool:
             )
 
         self._secret = secret
-        self._checker = MemoryIntegrityChecker(secret_key=secret, strict_mode=False)
+        self._validate_content = validate_content
+        self._checker = MemoryIntegrityChecker(
+            secret_key=secret,
+            strict_mode=False,
+            validate_content=validate_content,
+        )
         self._store = self._checker.create_safe_memory_store()
-        _logger.debug("Memory integrity checker initialized")
+        _logger.debug(
+            "Memory integrity checker initialized (content_validation=%s)",
+            validate_content,
+        )
 
     def register_memory(
         self,
@@ -421,14 +439,16 @@ class MemoryGuardTool:
         Returns:
             Dict with stats including:
                 - enabled: Whether memory checking is enabled
+                - content_validation: Whether content validation is enabled (v2.0)
                 - registered_blocks: Number of registered memory blocks
                 - checker_stats: Stats from underlying MemoryIntegrityChecker
         """
         if self._checker is None:
-            return {"enabled": False}
+            return {"enabled": False, "content_validation": False}
 
         return {
             "enabled": True,
+            "content_validation": self._validate_content,
             "registered_blocks": len(self._label_to_entry),
             "labels": list(self._label_to_entry.keys()),
             "checker_stats": self._checker.get_validation_stats(),
@@ -562,6 +582,7 @@ def create_memory_guard_tool(
     client: Any,
     secret: str,
     require_approval: bool = False,
+    validate_content: bool = True,
 ) -> MemoryGuardTool:
     """
     Create and register a memory integrity tool with a Letta client.
@@ -574,6 +595,10 @@ def create_memory_guard_tool(
         client: Letta client instance
         secret: Secret key for HMAC verification
         require_approval: Whether tool calls require human approval
+        validate_content: Enable content validation before signing (v2.0).
+            When True, memory content is checked for injection patterns
+            before HMAC signing. This provides defense-in-depth against
+            memory injection attacks. Default: True (recommended).
 
     Returns:
         MemoryGuardTool with tool_id set and checker initialized
@@ -592,6 +617,13 @@ def create_memory_guard_tool(
         # Later, verify
         result = guard.run(memory_label="human", expected_hash=hash_value)
         # "VERIFIED: Memory block is intact"
+
+    Example (with content validation disabled - not recommended):
+        guard = create_memory_guard_tool(
+            client,
+            secret="my-secret",
+            validate_content=False,  # Only HMAC, no injection detection
+        )
     """
     # Input validation
     if secret is None:
@@ -607,10 +639,13 @@ def create_memory_guard_tool(
         requires_approval=require_approval,
     )
 
-    # Initialize the memory integrity checker
+    # Initialize the memory integrity checker with content validation setting
     try:
-        tool.initialize(secret)
-        _logger.info("Memory guard tool initialized with MemoryIntegrityChecker")
+        tool.initialize(secret, validate_content=validate_content)
+        _logger.info(
+            "Memory guard tool initialized (content_validation=%s)",
+            validate_content,
+        )
     except ImportError as e:
         _logger.warning(f"Could not initialize memory checker: {e}")
         # Tool will return error messages when used
