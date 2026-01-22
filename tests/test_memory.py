@@ -319,3 +319,90 @@ class TestSafeMemoryStore:
 
         assert imported_count == 2
         assert len(store2) == 2
+
+
+# =============================================================================
+# COVERAGE COMPLETION TESTS
+# =============================================================================
+
+class TestMemoryValidationResultIsSafe:
+    """Tests for MemoryValidationResult.is_safe property edge cases."""
+
+    def test_is_safe_false_when_invalid(self):
+        """is_safe should return False when valid=False."""
+        result = MemoryValidationResult(
+            valid=False,
+            entry_id="test",
+            trust_score=1.0,  # High trust but invalid
+        )
+        assert result.is_safe is False
+
+    def test_is_safe_false_when_low_trust(self):
+        """is_safe should return False when trust_score < 0.5."""
+        result = MemoryValidationResult(
+            valid=True,
+            entry_id="test",
+            trust_score=0.3,  # Low trust
+        )
+        assert result.is_safe is False
+
+    def test_is_safe_true_when_valid_and_high_trust(self):
+        """is_safe should return True when valid and trust >= 0.5."""
+        result = MemoryValidationResult(
+            valid=True,
+            entry_id="test",
+            trust_score=0.8,
+        )
+        assert result.is_safe is True
+
+    def test_is_safe_boundary_at_half(self):
+        """is_safe should return True when trust_score = 0.5 (boundary)."""
+        result = MemoryValidationResult(
+            valid=True,
+            entry_id="test",
+            trust_score=0.5,  # Exactly at boundary
+        )
+        assert result.is_safe is True
+
+
+class TestGetSignableContentWithSignedEntry:
+    """Tests for _get_signable_content with SignedMemoryEntry input."""
+
+    def test_signable_content_from_signed_entry(self):
+        """_get_signable_content should work with SignedMemoryEntry."""
+        checker = MemoryIntegrityChecker(secret_key="test-secret")
+
+        # Create and sign an entry
+        entry = MemoryEntry(content="Test content")
+        signed = checker.sign_entry(entry)
+
+        # Get signable content from the signed entry
+        signable = checker._get_signable_content(signed)
+
+        # Should return a valid JSON string
+        import json
+        parsed = json.loads(signable)
+        assert parsed["content"] == "Test content"
+        assert parsed["id"] == signed.id
+
+    def test_signable_content_includes_all_signed_fields(self):
+        """Signable content from SignedMemoryEntry should include all fields."""
+        checker = MemoryIntegrityChecker(secret_key="test-secret")
+
+        entry = MemoryEntry(
+            content="Test",
+            source=MemorySource.USER_DIRECT,
+            metadata={"key": "value"},
+        )
+        signed = checker.sign_entry(entry)
+
+        signable = checker._get_signable_content(signed)
+
+        import json
+        parsed = json.loads(signable)
+        assert "id" in parsed
+        assert "content" in parsed
+        assert "source" in parsed
+        assert "timestamp" in parsed
+        assert "metadata" in parsed
+        assert "version" in parsed
