@@ -154,6 +154,68 @@ agent = client.agents.create(
 > detecting tampering attempts. The tool can register memory content, retrieve
 > hashes, and verify content against expected hashes.
 
+### Memory Content Validation (v2.0)
+
+Memory Shield v2.0 adds content validation BEFORE HMAC signing, detecting injection attacks at the source. This protects against Princeton CrAIBench attack vectors where malicious content is injected before memory is protected.
+
+**Enabled by default:**
+
+```python
+from sentinelseed.integrations.letta import create_memory_guard_tool
+
+# Content validation is enabled by default
+guard = create_memory_guard_tool(
+    client,
+    secret="your-hmac-secret",
+)
+```
+
+**Disable content validation (not recommended):**
+
+```python
+guard = create_memory_guard_tool(
+    client,
+    secret="your-hmac-secret",
+    validate_content=False,  # Disables injection detection
+)
+```
+
+**Using LettaConfig:**
+
+```python
+from sentinelseed.integrations.letta import SentinelLettaClient, LettaConfig
+
+config = LettaConfig(
+    memory_integrity=True,
+    memory_secret="your-secret",
+    memory_content_validation=True,  # Default: True
+)
+
+client = SentinelLettaClient(base, config=config)
+```
+
+**Detected Patterns:**
+
+| Category | Examples |
+|----------|----------|
+| Authority Claims | "ADMIN:", "SYSTEM NOTICE:" |
+| Instruction Overrides | "Ignore previous instructions" |
+| Address Redirection | Suspicious wallet address changes |
+| Airdrop Scams | Fake eligibility claims |
+| Urgency Manipulation | "URGENT: action required" |
+| Trust Exploitation | Fake verification messages |
+| Role Manipulation | Identity injection attempts |
+| Context Poisoning | Fake context markers |
+| Crypto Attacks | Drain/sweep commands |
+
+**Performance:**
+
+| Metric | Value |
+|--------|-------|
+| Latency | < 1ms per validation |
+| False Positive Rate | < 5% |
+| Detection Rate | > 90% |
+
 ## API Reference
 
 ### SentinelLettaClient

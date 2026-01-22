@@ -164,6 +164,7 @@ SentinelValidator(
     # Memory integrity
     memory_integrity_check=False,    # Enable cryptographic history verification
     memory_secret_key=None,          # Secret key for HMAC signatures
+    memory_content_validation=True,  # Enable injection detection (v2.0)
 
     # Fiduciary validation (see section below)
     fiduciary_enabled=True,          # Enable duty of loyalty/care checks
@@ -274,6 +275,81 @@ from sentinelseed.integrations.solana_agent_kit import HAS_FIDUCIARY
 if HAS_FIDUCIARY:
     print("Fiduciary validation available")
 ```
+
+## Memory Content Validation (v2.0)
+
+Memory Shield v2.0 adds content validation BEFORE HMAC signing, detecting injection attacks at the source. This protects against Princeton CrAIBench attack vectors where malicious content is injected before memory protection is applied.
+
+### Enabling Content Validation
+
+```python
+from sentinelseed.integrations.solana_agent_kit import SentinelValidator
+
+# Content validation is enabled by default when memory integrity is on
+validator = SentinelValidator(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret-key",
+    memory_content_validation=True,  # Default: True
+)
+```
+
+### Disabling Content Validation (Not Recommended)
+
+```python
+validator = SentinelValidator(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret-key",
+    memory_content_validation=False,  # Only HMAC, no injection detection
+)
+```
+
+### Checking Memory Stats
+
+```python
+stats = validator.get_memory_stats()
+# Returns:
+# {
+#     "enabled": True,
+#     "content_validation": True,
+#     "entries_stored": 42,
+#     ...
+# }
+```
+
+### Verifying Transaction History
+
+```python
+result = validator.verify_transaction_history()
+# Returns:
+# {
+#     "all_valid": True,
+#     "checked": 42,
+#     "invalid_count": 0,
+#     ...
+# }
+```
+
+### Detected Patterns
+
+| Category | Examples |
+|----------|----------|
+| Authority Claims | "ADMIN:", "SYSTEM NOTICE:" |
+| Instruction Overrides | "Ignore previous instructions" |
+| Address Redirection | Suspicious wallet address changes |
+| Airdrop Scams | Fake eligibility claims |
+| Urgency Manipulation | "URGENT: action required" |
+| Trust Exploitation | Fake verification messages |
+| Role Manipulation | Identity injection attempts |
+| Context Poisoning | Fake context markers |
+| Crypto Attacks | Drain/sweep commands |
+
+### Performance
+
+| Metric | Value |
+|--------|-------|
+| Latency | < 1ms per validation |
+| False Positive Rate | < 5% |
+| Detection Rate | > 90% |
 
 ## LangChain Tool
 

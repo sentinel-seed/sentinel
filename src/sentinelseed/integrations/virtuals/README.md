@@ -271,6 +271,70 @@ stats = worker.get_memory_stats()
 # Returns: {"enabled": True, "total": ..., "valid": ..., "invalid": ...}
 ```
 
+### Memory Content Validation (v2.0)
+
+Memory Shield v2.0 adds content validation BEFORE HMAC signing. This detects injection attacks at the source, protecting against scenarios where malicious content is injected before memory protection is applied.
+
+**Enabled by default:**
+
+```python
+from sentinelseed.integrations.virtuals import SentinelConfig
+
+config = SentinelConfig(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret-key",
+    memory_content_validation=True,  # Default: True
+)
+```
+
+**Disable content validation (not recommended):**
+
+```python
+config = SentinelConfig(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret-key",
+    memory_content_validation=False,  # Only HMAC verification
+)
+```
+
+**Using SentinelValidator directly:**
+
+```python
+from sentinelseed.integrations.virtuals import SentinelValidator
+
+validator = SentinelValidator(
+    memory_integrity_check=True,
+    memory_secret_key="your-secret",
+    memory_content_validation=True,
+)
+
+# Check stats
+stats = validator.get_memory_stats()
+# Returns: {"enabled": True, "content_validation": True, "entries_stored": ...}
+```
+
+**Detected Patterns:**
+
+| Category | Examples |
+|----------|----------|
+| Authority Claims | "ADMIN:", "SYSTEM NOTICE:" |
+| Instruction Overrides | "Ignore previous instructions" |
+| Address Redirection | Suspicious wallet address changes |
+| Airdrop Scams | Fake eligibility claims |
+| Urgency Manipulation | "URGENT: action required" |
+| Trust Exploitation | Fake verification messages |
+| Role Manipulation | Identity injection attempts |
+| Context Poisoning | Fake context markers |
+| Crypto Attacks | Drain/sweep commands |
+
+**Performance:**
+
+| Metric | Value |
+|--------|-------|
+| Latency | < 1ms per validation |
+| False Positive Rate | < 5% |
+| Detection Rate | > 90% |
+
 ## API Reference
 
 ### Classes

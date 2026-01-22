@@ -55,6 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Browser extension**: Updated `memory-scanner.ts` with shared patterns
 - **Sync script**: `scripts/sync-memory-patterns.py` generates TypeScript from Python
 
+#### Integrations: Memory Shield v2.0 Support
+- **Letta Integration**: Content validation support for MemoryGuardTool
+  - New `validate_content` parameter in `create_memory_guard_tool()` (default: True)
+  - New `memory_content_validation` field in `LettaConfig` dataclass
+  - Injection detection before HMAC signing
+- **Virtuals Integration**: Content validation in SentinelConfig/SentinelValidator
+  - New `memory_content_validation` field in `SentinelConfig` dataclass (default: True)
+  - Stats include `content_validation` status
+  - Full pattern detection for GAME SDK agents
+- **Solana Agent Kit Integration**: Content validation for transaction validation
+  - New `memory_content_validation` parameter in `SentinelValidator.__init__` (default: True)
+  - Stats and history verification expose content validation status
+  - Crypto-specific pattern detection (drain, sweep, bulk transfers)
+
 ### Changed
 - **memory/__init__.py**: Updated exports for v2.0 (patterns, content_validator)
 - **memory/README.md**: Comprehensive v2.0 documentation
