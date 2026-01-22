@@ -16,6 +16,11 @@ The Solution:
 - Reject tampered entries with clear error reporting
 - Optional: track memory lineage for audit trails
 
+v2.0 Additions:
+- Content validation before signing (opt-in)
+- Integration with MemoryContentValidator for injection detection
+- Configurable strict mode for content validation
+
 Reference: https://arxiv.org/abs/2503.16248 (Princeton CrAIBench)
 """
 
@@ -24,13 +29,20 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .content_validator import MemoryContentValidator, ContentValidationResult
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class MemoryTamperingDetected(Exception):
@@ -111,17 +123,33 @@ class SignedMemoryEntry:
 
 @dataclass
 class MemoryValidationResult:
-    """Result of memory validation."""
+    """
+    Result of memory validation.
+
+    v2.0: Added content_validation field for pre-signing content checks.
+    """
     valid: bool
     entry_id: str
     reason: Optional[str] = None
     tampered_fields: List[str] = field(default_factory=list)
     trust_score: float = 1.0  # 0.0 = untrusted, 1.0 = fully trusted
+    content_validation: Optional["ContentValidationResult"] = None  # v2.0
 
     @property
     def is_safe(self) -> bool:
-        """Check if memory is safe to use."""
-        return self.valid and self.trust_score >= 0.5
+        """
+        Check if memory is safe to use.
+
+        v2.0: Also considers content_validation if present.
+        """
+        if not self.valid or self.trust_score < 0.5:
+            return False
+
+        # v2.0: Check content validation if present
+        if self.content_validation is not None:
+            return self.content_validation.is_safe
+
+        return True
 
 
 class MemoryIntegrityChecker:
@@ -130,6 +158,9 @@ class MemoryIntegrityChecker:
 
     Uses HMAC-SHA256 to sign and verify memory entries, preventing
     memory injection attacks that manipulate agent context.
+
+    v2.0: Added optional content validation before signing to detect
+    injection attacks in the content itself (not just tampering).
 
     Usage:
         checker = MemoryIntegrityChecker(secret_key="your-secret-key")
@@ -153,6 +184,24 @@ class MemoryIntegrityChecker:
         # Safe to use
         process(signed.content)
 
+    v2.0 Usage (with content validation):
+        from sentinelseed.memory import MemoryIntegrityChecker, MemoryContentUnsafe
+
+        checker = MemoryIntegrityChecker(
+            secret_key="your-secret-key",
+            validate_content=True,  # Enable content validation
+            content_validation_config={
+                "strict_mode": True,
+                "min_confidence": 0.8,
+            }
+        )
+
+        try:
+            signed = checker.sign_entry(entry)
+        except MemoryContentUnsafe as e:
+            # Content contains detected injection patterns
+            log_attack(e.suspicions)
+
     Security Notes:
         - Keep secret_key secure and never expose to agents
         - Rotate keys periodically
@@ -160,13 +209,17 @@ class MemoryIntegrityChecker:
         - Store keys in environment variables or secure vaults
     """
 
-    VERSION = "1.0"
+    VERSION = "2.0"
 
     def __init__(
         self,
         secret_key: Optional[str] = None,
         algorithm: str = "sha256",
         strict_mode: bool = True,
+        # v2.0: Content validation options (opt-in)
+        validate_content: bool = False,
+        content_validator: Optional["MemoryContentValidator"] = None,
+        content_validation_config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the memory integrity checker.
@@ -177,6 +230,9 @@ class MemoryIntegrityChecker:
             algorithm: Hash algorithm (sha256, sha384, sha512)
             strict_mode: If True, raises exceptions on invalid entries.
                         If False, returns validation result instead.
+            validate_content: If True, validates content before signing (v2.0)
+            content_validator: Custom MemoryContentValidator instance (v2.0)
+            content_validation_config: Config dict for default validator (v2.0)
         """
         if secret_key is None:
             # Try environment variable
@@ -190,6 +246,31 @@ class MemoryIntegrityChecker:
         self._algorithm = algorithm
         self._strict_mode = strict_mode
         self._validation_log: List[Dict[str, Any]] = []
+
+        # v2.0: Content validation (opt-in)
+        self._validate_content = validate_content
+        self._content_validator: Optional["MemoryContentValidator"] = None
+
+        if validate_content:
+            if content_validator is not None:
+                self._content_validator = content_validator
+            else:
+                # Lazy import to avoid circular dependency
+                from .content_validator import MemoryContentValidator
+                config = content_validation_config or {}
+                self._content_validator = MemoryContentValidator(**config)
+
+            logger.debug(
+                "MemoryIntegrityChecker initialized with content validation: "
+                "strict_mode=%s, validator_strict=%s",
+                strict_mode,
+                self._content_validator._strict_mode if self._content_validator else None
+            )
+        else:
+            logger.debug(
+                "MemoryIntegrityChecker initialized: strict_mode=%s, content_validation=disabled",
+                strict_mode
+            )
 
     def _compute_hmac(self, data: str) -> str:
         """Compute HMAC for given data."""
@@ -223,21 +304,71 @@ class MemoryIntegrityChecker:
 
         return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
-    def sign_entry(self, entry: MemoryEntry) -> SignedMemoryEntry:
+    def sign_entry(
+        self,
+        entry: MemoryEntry,
+        skip_content_validation: bool = False,
+    ) -> SignedMemoryEntry:
         """
         Sign a memory entry with HMAC.
 
+        v2.0: Optionally validates content before signing to detect injection
+        attacks. Content validation is opt-in and configured at checker init.
+
         Args:
             entry: The memory entry to sign
+            skip_content_validation: If True, skip content validation even if
+                                    enabled at init (use with caution)
 
         Returns:
             SignedMemoryEntry with cryptographic signature
+
+        Raises:
+            MemoryContentUnsafe: If content validation is enabled, strict mode
+                               is True, and suspicious content is detected
 
         Example:
             entry = MemoryEntry(content="User balance is 100 SOL")
             signed = checker.sign_entry(entry)
             # signed.hmac_signature contains the verification hash
+
+        v2.0 Example (with content validation):
+            try:
+                signed = checker.sign_entry(entry)
+            except MemoryContentUnsafe as e:
+                log_attack(e.suspicions)
         """
+        # v2.0: Content validation (if enabled and not skipped)
+        if self._validate_content and not skip_content_validation:
+            content_result = self._validate_content_before_signing(entry.content)
+
+            if not content_result.is_safe:
+                # Lazy import to avoid circular dependency
+                from .content_validator import MemoryContentUnsafe
+
+                logger.warning(
+                    "Content validation BLOCKED signing: %d suspicion(s), "
+                    "categories=%s, trust=%.2f",
+                    content_result.suspicion_count,
+                    [s.category.value for s in content_result.suspicions],
+                    content_result.trust_adjustment,
+                )
+
+                if self._strict_mode:
+                    raise MemoryContentUnsafe(
+                        message=f"Memory content validation failed: "
+                                f"{content_result.suspicion_count} suspicion(s) detected",
+                        suspicions=list(content_result.suspicions),
+                        content_preview=entry.content[:100] if entry.content else None,
+                    )
+                else:
+                    # Non-strict mode: log warning but continue signing
+                    logger.info(
+                        "Non-strict mode: proceeding with signing despite "
+                        "%d content suspicion(s)",
+                        content_result.suspicion_count,
+                    )
+
         entry_id = str(uuid.uuid4())
         source_value = entry.source.value if isinstance(entry.source, MemorySource) else entry.source
 
@@ -255,6 +386,8 @@ class MemoryIntegrityChecker:
         signable_string = json.dumps(signable_data, sort_keys=True, separators=(",", ":"))
         signature = self._compute_hmac(signable_string)
 
+        logger.debug("Signed memory entry: id=%s, source=%s", entry_id, source_value)
+
         return SignedMemoryEntry(
             id=entry_id,
             content=entry.content,
@@ -265,6 +398,26 @@ class MemoryIntegrityChecker:
             signed_at=datetime.now(timezone.utc).isoformat(),
             version=self.VERSION,
         )
+
+    def _validate_content_before_signing(
+        self,
+        content: str,
+    ) -> "ContentValidationResult":
+        """
+        Internal method to validate content before signing.
+
+        Args:
+            content: The content to validate
+
+        Returns:
+            ContentValidationResult from the content validator
+        """
+        if self._content_validator is None:
+            # Return safe result if no validator configured
+            from .content_validator import ContentValidationResult
+            return ContentValidationResult.safe()
+
+        return self._content_validator.validate(content)
 
     def verify_entry(self, entry: SignedMemoryEntry) -> MemoryValidationResult:
         """
@@ -395,6 +548,32 @@ class MemoryIntegrityChecker:
             "validation_rate": valid / total if total > 0 else 1.0,
         }
 
+    # v2.0: Content validation methods
+
+    def is_content_validation_enabled(self) -> bool:
+        """
+        Check if content validation is enabled.
+
+        Returns:
+            True if content validation is enabled, False otherwise
+        """
+        return self._validate_content
+
+    def get_content_validator(self) -> Optional["MemoryContentValidator"]:
+        """
+        Get the content validator instance.
+
+        Returns:
+            The MemoryContentValidator instance if content validation is enabled,
+            None otherwise
+
+        Usage:
+            validator = checker.get_content_validator()
+            if validator:
+                metrics = validator.get_metrics()
+        """
+        return self._content_validator
+
 
 class SafeMemoryStore:
     """
@@ -424,24 +603,35 @@ class SafeMemoryStore:
         content: str,
         source: Union[MemorySource, str] = MemorySource.UNKNOWN,
         metadata: Optional[Dict[str, Any]] = None,
+        skip_content_validation: bool = False,
     ) -> SignedMemoryEntry:
         """
         Add a memory entry (automatically signed).
+
+        v2.0: Added skip_content_validation parameter for cases where
+        content validation should be bypassed for specific entries.
 
         Args:
             content: The memory content
             source: Source of the memory
             metadata: Optional metadata
+            skip_content_validation: If True, skip content validation (v2.0)
 
         Returns:
             The signed memory entry
+
+        Raises:
+            MemoryContentUnsafe: If content validation fails in strict mode
         """
         entry = MemoryEntry(
             content=content,
             source=source,
             metadata=metadata or {},
         )
-        signed = self._checker.sign_entry(entry)
+        signed = self._checker.sign_entry(
+            entry,
+            skip_content_validation=skip_content_validation,
+        )
         self._entries[signed.id] = signed
         return signed
 
