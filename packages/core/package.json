@@ -15,6 +15,11 @@
       "types": "./dist/patterns.d.ts",
       "import": "./dist/patterns.mjs",
       "require": "./dist/patterns.js"
+    },
+    "./memory-patterns": {
+      "types": "./dist/memory-patterns.d.ts",
+      "import": "./dist/memory-patterns.mjs",
+      "require": "./dist/memory-patterns.js"
     }
   },
   "files": [

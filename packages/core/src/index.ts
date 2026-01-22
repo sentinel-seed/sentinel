@@ -97,6 +97,42 @@ export {
 } from './patterns';
 
 // =============================================================================
+// MEMORY INJECTION PATTERNS (For memory integrity validation)
+// =============================================================================
+
+export {
+  // Version
+  MEMORY_PATTERNS_VERSION,
+  // Enum
+  InjectionCategory,
+  // Types
+  type InjectionPattern,
+  type CompiledInjectionPattern,
+  type InjectionSeverity,
+  // Severity mapping
+  getCategorySeverity,
+  // Pattern groups
+  AUTHORITY_PATTERNS,
+  INSTRUCTION_OVERRIDE_PATTERNS_MEMORY,
+  ADDRESS_REDIRECTION_PATTERNS,
+  AIRDROP_SCAM_PATTERNS,
+  URGENCY_PATTERNS,
+  TRUST_EXPLOITATION_PATTERNS,
+  ROLE_MANIPULATION_PATTERNS_MEMORY,
+  CONTEXT_POISONING_PATTERNS,
+  CRYPTO_ATTACK_PATTERNS,
+  // Combined patterns
+  ALL_MEMORY_INJECTION_PATTERNS,
+  COMPILED_MEMORY_INJECTION_PATTERNS,
+  // Utilities
+  compilePatterns,
+  getPatternsByCategory,
+  getHighConfidencePatterns,
+  getPatternByName,
+  getPatternStatistics,
+} from './memory-patterns';
+
+// =============================================================================
 // VERSION
 // =============================================================================
 
