@@ -54,7 +54,7 @@ from sentinelseed.integrations._base import SentinelIntegration, AsyncSentinelIn
 
 
 # Version (synchronized with pyproject.toml)
-__version__ = "2.24.0"
+__version__ = "2.26.0"
 
 
 # Default validation model - using current Haiku model

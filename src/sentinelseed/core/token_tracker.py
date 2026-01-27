@@ -10,8 +10,12 @@ Provides both individual and aggregate metrics.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 import time
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletion
+    from anthropic.types import Message
 
 
 @dataclass

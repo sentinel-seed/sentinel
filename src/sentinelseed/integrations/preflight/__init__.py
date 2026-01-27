@@ -40,7 +40,7 @@ References:
 - GoPlus Security: https://docs.gopluslabs.io/reference/solanatokensecurityusingget
 """
 
-__version__ = "2.24.0"
+__version__ = "2.26.0"
 __author__ = "Sentinel Team"
 
 from .simulator import (
