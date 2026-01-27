@@ -6,9 +6,9 @@ Technical documentation for the Sentinel Decision Firewall.
 
 | Version | Language | Pages | Download |
 |---------|----------|-------|----------|
-| v2.0 | English | 38 | [WHITEPAPER_v2.0_EN.pdf](./WHITEPAPER_v2.0_EN.pdf?raw=true) |
-| v2.0 | Português | 39 | [WHITEPAPER_v2.0_PT.pdf](./WHITEPAPER_v2.0_PT.pdf?raw=true) |
-| v1.0 | English | 44 | [WHITEPAPER_v1.0.pdf](./WHITEPAPER_v1.0.pdf?raw=true) |
+| v2.0 | English | 38 | [WHITEPAPER_v2.0_EN.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_EN.pdf) |
+| v2.0 | Português | 39 | [WHITEPAPER_v2.0_PT.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_PT.pdf) |
+| v1.0 | English | 44 | [WHITEPAPER_v1.0.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v1.0.pdf) |
 
 > **Note:** Click the links above to download. GitHub's PDF preview may not render these files correctly due to embedded fonts and vector graphics.
 
@@ -21,7 +21,3 @@ Technical documentation for the Sentinel Decision Firewall.
 - 30+ framework integrations
 - Universal Compliance (EU AI Act, OWASP, CSA)
 - Validated 97.6% safety rate across 6+ models
-
-## Online Version
-
-Read the interactive whitepaper at [sentinelseed.dev/whitepaper](https://sentinelseed.dev/whitepaper)
