@@ -10,6 +10,7 @@ Technical documentation for the Sentinel Decision Firewall.
 | v2.0 | Español | 39 | [WHITEPAPER_v2.0_ES.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_ES.pdf) |
 | v2.0 | Português | 39 | [WHITEPAPER_v2.0_PT.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_PT.pdf) |
 | v2.0 | 한국어 | 39 | [WHITEPAPER_v2.0_KO.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_KO.pdf) |
+| v2.0 | 简体中文 | 39 | [WHITEPAPER_v2.0_ZH.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v2.0_ZH.pdf) |
 | v1.0 | English | 44 | [WHITEPAPER_v1.0.pdf](https://github.com/sentinel-seed/sentinel/raw/main/docs/whitepaper/WHITEPAPER_v1.0.pdf) |
 
 > **Note:** Click the links above to download. GitHub's PDF preview may not render these files correctly due to embedded fonts and vector graphics.
