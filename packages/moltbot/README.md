@@ -1,8 +1,38 @@
 # @sentinelseed/moltbot
 
-AI safety guardrails for [Moltbot](https://github.com/moltbot/moltbot) - your personal AI agent guardian.
+[![npm version](https://img.shields.io/npm/v/@sentinelseed/moltbot.svg)](https://www.npmjs.com/package/@sentinelseed/moltbot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-blue.svg)](https://www.typescriptlang.org/)
+[![Tests](https://img.shields.io/badge/Tests-745%20passed-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/Coverage-86%25-brightgreen.svg)]()
+
+AI safety guardrails for [Moltbot](https://github.com/moltbot/moltbot). Protect your personal AI agent with real-time validation, data leak prevention, and threat detection.
 
 > *"Sentinel sees everything, alerts when it matters, and only intervenes if you want."*
+
+<table>
+<tr>
+<td width="50%">
+
+**Documentation**
+- [Getting Started](#quick-start)
+- [Protection Levels](#protection-levels)
+- [Configuration](#configuration)
+- [Programmatic API](#programmatic-api)
+
+</td>
+<td width="50%">
+
+**Resources**
+- [Sentinel Core](https://github.com/sentinel-seed/sentinel)
+- [API Reference](https://github.com/sentinel-seed/sentinel/tree/main/docs/api)
+- [Architecture](https://github.com/sentinel-seed/sentinel/blob/main/docs/ARCHITECTURE.md)
+- [Examples](https://github.com/sentinel-seed/sentinel/tree/main/packages/moltbot/examples)
+
+</td>
+</tr>
+</table>
 
 ## Quick Start
 
