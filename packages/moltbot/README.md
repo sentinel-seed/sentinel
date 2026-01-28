@@ -266,27 +266,53 @@ if (inputResult.threatLevel >= 4) {
 
 Sentinel integrates with Moltbot hooks to provide layered protection:
 
+```mermaid
+flowchart TB
+    subgraph INPUT["Input Layer"]
+        A[User Message] --> B{L1: Input Analysis}
+        B -->|Safe| C[Continue]
+        B -->|Threat| D[Alert]
+        D --> C
+    end
+
+    subgraph AGENT["Agent Layer"]
+        C --> E{L2: Seed Injection}
+        E -->|Inject Safety Context| F[AI Processing]
+    end
+
+    subgraph OUTPUT["Output Layer"]
+        F --> G{L3: Output Validation}
+        G -->|Safe| H[Continue]
+        G -->|Data Leak| I[Block]
+    end
+
+    subgraph TOOLS["Tool Layer"]
+        H --> J{L4: Tool Validation}
+        J -->|Safe| K[Execute Tool]
+        J -->|Dangerous| L[Block]
+        K --> M[Response]
+        L --> M
+    end
+
+    I --> M
+    M --> N[User]
+
+    style B fill:#4a90d9,color:#fff
+    style E fill:#50c878,color:#fff
+    style G fill:#f5a623,color:#fff
+    style J fill:#d9534f,color:#fff
+    style I fill:#d9534f,color:#fff
+    style L fill:#d9534f,color:#fff
 ```
-User Input
-    |
-    v
-[L1: Input Analysis] --> Detect prompt injection, jailbreak attempts
-    |
-    v
-[L2: Seed Injection] --> Add safety context to AI
-    |
-    v
-    AI Processing
-    |
-    v
-[L3: Output Validation] --> Prevent data leaks
-    |
-    v
-[L4: Tool Validation] --> Block dangerous commands
-    |
-    v
-Safe Output
-```
+
+### Validation Layers
+
+| Layer | Hook | Function | Can Block |
+|-------|------|----------|-----------|
+| **L1** | `message_received` | Analyze input for threats | No (alerts only) |
+| **L2** | `before_agent_start` | Inject safety seed | No (context only) |
+| **L3** | `message_sending` | Validate output content | Yes |
+| **L4** | `before_tool_call` | Validate tool calls | Yes |
 
 ### What Gets Detected
 
