@@ -25,9 +25,9 @@ AI safety guardrails for [Moltbot](https://github.com/moltbot/moltbot). Protect 
 <td width="50%">
 
 **Resources**
+- [Integration Guide](https://github.com/sentinel-seed/sentinel/blob/main/docs/integrations/moltbot.md)
 - [Sentinel Core](https://github.com/sentinel-seed/sentinel)
 - [API Reference](https://github.com/sentinel-seed/sentinel/tree/main/docs/api)
-- [Architecture](https://github.com/sentinel-seed/sentinel/blob/main/docs/ARCHITECTURE.md)
 - [Examples](https://github.com/sentinel-seed/sentinel/tree/main/packages/moltbot/examples)
 
 </td>
