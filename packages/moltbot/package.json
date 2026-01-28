@@ -79,7 +79,7 @@
     "url": "https://github.com/sentinel-seed/sentinel/issues"
   },
   "dependencies": {
-    "@sentinelseed/core": "^0.1.0"
+    "@sentinelseed/core": "^2.25.0"
   },
   "peerDependencies": {
     "moltbot": ">=1.0.0"

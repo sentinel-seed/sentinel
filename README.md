@@ -51,7 +51,7 @@ Sentinel is an **AI safety framework** that protects across three surfaces:
 - **Database Guard:** Query validation to prevent SQL injection and data exfiltration
 - **Humanoid Safety:** ISO/TS 15066 contact force limits for robotics
 - **Python SDK:** Easy integration with any LLM
-- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, OpenGuardrails, PyRIT, Google ADK
+- **Framework Support:** LangChain, LangGraph, CrewAI, DSPy, Letta, Virtuals, ElizaOS, VoltAgent, Moltbot, OpenGuardrails, PyRIT, Google ADK
 - **REST API:** Deploy alignment as a service
 
 ---
@@ -471,8 +471,9 @@ Sentinel provides native integrations for 23+ frameworks. Install optional depen
 | Garak | [`integrations/garak/README.md`](src/sentinelseed/integrations/garak/README.md) | 185 |
 | PyRIT | [`integrations/pyrit/README.md`](src/sentinelseed/integrations/pyrit/README.md) | 228 |
 | OpenGuardrails | [`integrations/openguardrails/README.md`](src/sentinelseed/integrations/openguardrails/README.md) | 261 |
+| Moltbot | [`docs/integrations/moltbot.md`](docs/integrations/moltbot.md) | 656 |
 
-**Total:** 8,100+ lines of integration documentation
+**Total:** 8,700+ lines of integration documentation
 
 </details>
 
@@ -867,6 +868,40 @@ const agent = new Agent({
 
 Features: THSP validation, OWASP protection (SQL injection, XSS, command injection), PII detection/redaction, streaming support.
 
+### Moltbot
+
+```typescript
+// npm install @sentinelseed/moltbot
+// Add to your moltbot.config.json:
+{
+  "plugins": {
+    "sentinel": {
+      "level": "guard"
+    }
+  }
+}
+```
+
+Or use programmatically:
+
+```typescript
+import { createSentinelHooks } from '@sentinelseed/moltbot';
+
+const hooks = createSentinelHooks({
+  level: 'guard',
+  alerts: { enabled: true, webhook: 'https://...' }
+});
+
+export const moltbot_hooks = {
+  message_received: hooks.messageReceived,
+  before_agent_start: hooks.beforeAgentStart,
+  message_sending: hooks.messageSending,
+  before_tool_call: hooks.beforeToolCall,
+};
+```
+
+Features: 4 protection levels (off/watch/guard/shield), escape hatches (pause, allow-once, trust), CLI commands (`/sentinel status`), webhook alerts, audit logging. [Full documentation](docs/integrations/moltbot.md).
+
 ### OpenAI Agents SDK
 
 ```python
@@ -1182,6 +1217,7 @@ sentinel/
 ├── packages/                  # External packages (npm/PyPI)
 │   ├── elizaos/              # @sentinelseed/elizaos-plugin
 │   ├── voltagent/            # @sentinelseed/voltagent
+│   ├── moltbot/              # @sentinelseed/moltbot
 │   ├── solana-agent-kit/     # @sentinelseed/solana-agent-kit
 │   ├── promptfoo/            # sentinelseed-promptfoo (PyPI)
 │   ├── vscode/               # VS Code/Cursor/Windsurf extension
@@ -1290,6 +1326,7 @@ MIT License. See [LICENSE](LICENSE)
 |----------|---------|---------|
 | **PyPI** | [sentinelseed](https://pypi.org/project/sentinelseed) | `pip install sentinelseed` |
 | **npm** | [@sentinelseed/core](https://npmjs.com/package/@sentinelseed/core) | `npm install @sentinelseed/core` |
+| **npm** | [@sentinelseed/moltbot](https://npmjs.com/package/@sentinelseed/moltbot) | `npm install @sentinelseed/moltbot` |
 | **MCP** | [mcp-server-sentinelseed](https://npmjs.com/package/mcp-server-sentinelseed) | `npx mcp-server-sentinelseed` |
 | **VS Code** | [sentinel-ai-safety](https://marketplace.visualstudio.com/items?itemName=sentinelseed.sentinel-ai-safety) | Search "Sentinel AI Safety" |
 | **OpenVSX** | [sentinel-ai-safety](https://open-vsx.org/extension/sentinelseed/sentinel-ai-safety) | For Cursor/Windsurf/VSCodium |
