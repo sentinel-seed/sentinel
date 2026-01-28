@@ -1,0 +1,79 @@
+{
+  "id": "sentinel",
+  "name": "Sentinel Safety",
+  "description": "AI safety guardrails for Moltbot - protects against data leaks, validates tool usage, and provides security monitoring.",
+  "uiHints": {
+    "level": {
+      "label": "Protection Level",
+      "help": "watch = monitor only, guard = block critical, shield = maximum protection"
+    },
+    "alerts.enabled": {
+      "label": "Enable Alerts"
+    },
+    "alerts.webhook": {
+      "label": "Webhook URL",
+      "placeholder": "https://your-webhook.com/sentinel",
+      "help": "Optional URL for security alerts"
+    },
+    "ignorePatterns": {
+      "label": "Ignore Patterns",
+      "help": "Patterns to ignore during validation (regex strings)",
+      "advanced": true
+    },
+    "trustedTools": {
+      "label": "Trusted Tools",
+      "help": "Tool names that bypass validation",
+      "advanced": true
+    },
+    "dangerousTools": {
+      "label": "Dangerous Tools",
+      "help": "Tool names that are always blocked",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "level": {
+        "type": "string",
+        "enum": ["off", "watch", "guard", "shield"],
+        "default": "watch"
+      },
+      "alerts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "webhook": {
+            "type": "string"
+          }
+        }
+      },
+      "ignorePatterns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "trustedTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "dangerousTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      }
+    }
+  }
+}
